@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: #f4f7fa;
+  color: #0f172a;
+}
+
+/* Screen Reader / accessibility mode: larger text, higher contrast */
+html.accessible-mode {
+  font-size: 118%;
+}
+html.accessible-mode * {
+  letter-spacing: 0.01em;
+}
+html.accessible-mode :focus-visible {
+  outline: 3px solid #f59e0b !important;
+  outline-offset: 2px;
+}
