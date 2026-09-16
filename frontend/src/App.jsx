@@ -6,6 +6,7 @@ import { AttractionsExplorer } from './components/AttractionsExplorer';
 import { FerrySearch } from './components/FerrySearch';
 import { CartDrawer } from './components/CartDrawer';
 import { DigitalWallet } from './components/DigitalWallet';
+import { AdminDashboard } from './components/AdminDashboard';
 import { Waves } from 'lucide-react';
 
 export default function App() {
@@ -131,6 +132,10 @@ export default function App() {
             user={currentUser}
             onRequireLogin={() => setIsLoginOpen(true)}
           />
+        )}
+
+        {activeTab === 'ADMIN' && (
+          <AdminDashboard user={currentUser} />
         )}
       </main>
 
