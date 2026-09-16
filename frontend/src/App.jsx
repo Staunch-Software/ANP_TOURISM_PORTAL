@@ -5,7 +5,8 @@ import { LoginModal } from './components/LoginModal';
 import { AttractionsExplorer } from './components/AttractionsExplorer';
 import { FerrySearch } from './components/FerrySearch';
 import { CartDrawer } from './components/CartDrawer';
-import { Compass, Waves } from 'lucide-react';
+import { DigitalWallet } from './components/DigitalWallet';
+import { Waves } from 'lucide-react';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -126,14 +127,10 @@ export default function App() {
         )}
 
         {activeTab === 'PASSES' && (
-          <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center">
-            <Compass className="w-12 h-12 text-cyan-600 mx-auto mb-3" />
-            <h3 className="font-serif text-xl font-bold text-navy-800">Your Digital Pass Wallet</h3>
-            <p className="text-slate-500 text-xs mt-1">View tamper-proof Ed25519 QR passes for turnstile access.</p>
-            <span className="inline-block mt-4 px-3 py-1 bg-cyan-50 text-cyan-700 rounded-lg text-xs font-bold">
-              Ready to wire in Phase F6
-            </span>
-          </div>
+          <DigitalWallet
+            user={currentUser}
+            onRequireLogin={() => setIsLoginOpen(true)}
+          />
         )}
       </main>
 
