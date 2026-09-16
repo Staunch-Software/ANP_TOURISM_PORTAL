@@ -4,6 +4,7 @@ import { Navbar } from './components/Navbar';
 import { LoginModal } from './components/LoginModal';
 import { AttractionsExplorer } from './components/AttractionsExplorer';
 import { FerrySearch } from './components/FerrySearch';
+import { CartDrawer } from './components/CartDrawer';
 import { Compass, Waves } from 'lucide-react';
 
 export default function App() {
@@ -11,6 +12,7 @@ export default function App() {
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('ATTRACTIONS');
   const [cartCount, setCartCount] = useState(0);
+  const [isCartOpen, setIsCartOpen] = useState(false);
 
   useEffect(() => {
     const savedUser = localStorage.getItem('aniidco_user');
@@ -45,7 +47,7 @@ export default function App() {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         cartCount={cartCount}
-        onOpenCart={() => alert("Cart Drawer opens in Phase F5!")}
+        onOpenCart={() => setIsCartOpen(true)}
       />
 
       {/* Hero Section */}
@@ -158,6 +160,16 @@ export default function App() {
         onLoginSuccess={(userData) => {
           setCurrentUser(userData);
           refreshCartCount();
+        }}
+      />
+
+      <CartDrawer
+        isOpen={isCartOpen}
+        onClose={() => setIsCartOpen(false)}
+        onCartUpdated={refreshCartCount}
+        onOrderConfirmed={() => {
+          refreshCartCount();
+          setActiveTab('PASSES');
         }}
       />
     </div>
