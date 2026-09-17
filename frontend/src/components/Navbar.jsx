@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldCheck, ShoppingBag, LogOut, Anchor } from 'lucide-react';
+import { ShieldCheck, ShoppingBag, LogOut, Anchor, Waves, ScanLine } from 'lucide-react';
 
 export function Navbar({
   user,
@@ -123,6 +123,32 @@ export function Navbar({
               <Anchor className="w-4 h-4" /> Ferry Operator
             </button>
           )}
+
+          {(user?.role === 'VENDOR' || user?.role === 'ADMIN') && (
+            <button
+              onClick={() => setActiveTab('VENDOR')}
+              className={`px-5 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-1.5 ${
+                activeTab === 'VENDOR'
+                  ? 'bg-cyan-700 text-white shadow-md'
+                  : 'text-cyan-300 hover:text-cyan-200 hover:bg-navy-600'
+              }`}
+            >
+              <Waves className="w-4 h-4" /> Activity Vendor
+            </button>
+          )}
+
+          {(user?.role === 'OPERATOR' || user?.role === 'VENDOR' || user?.role === 'ADMIN') && (
+            <button
+              onClick={() => setActiveTab('SCANNER')}
+              className={`px-5 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-1.5 ${
+                activeTab === 'SCANNER'
+                  ? 'bg-emerald-700 text-white shadow-md'
+                  : 'text-emerald-400 hover:text-emerald-300 hover:bg-navy-600'
+              }`}
+            >
+              <ScanLine className="w-4 h-4" /> Gate Scanner
+            </button>
+          )}
         </nav>
 
         {/* Right Section: Cart + Account */}
@@ -143,7 +169,7 @@ export function Navbar({
           {user ? (
             <div className="flex items-center gap-3 bg-navy-700 border border-navy-600 px-3 py-1.5 rounded-lg">
               <div className="w-8 h-8 rounded-md bg-cyan-600/20 text-cyan-300 border border-cyan-600/40 flex items-center justify-center font-bold text-xs">
-                {user.role === 'ADMIN' ? 'ADM' : 'TR'}
+                {user.role === 'ADMIN' ? 'ADM' : user.role === 'OPERATOR' ? 'OPR' : user.role === 'VENDOR' ? 'VND' : 'TR'}
               </div>
               <div className="hidden lg:block text-left">
                 <div className="text-xs font-bold text-white leading-tight">{user.phone_number}</div>
