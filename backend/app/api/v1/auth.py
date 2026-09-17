@@ -10,7 +10,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.redis import get_redis
 from app.models.user import User
-from app.schemas.auth import OTPRequest, TokenResponse
+from app.schemas.auth import OTPRequest, TokenResponse, ProfileResponse, ProfileUpdateRequest
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -27,6 +27,9 @@ async def verify_otp(req: OTPRequest, db: AsyncSession = Depends(get_db), r=Depe
         db.add(user)
         await db.commit()
         await db.refresh(user)
+
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="This account has been suspended. Contact ANIIDCO support for assistance.")
 
     # RFP Clause 7.1.12: Single Active Session Enforcement
     session_id = str(uuid.uuid4())
@@ -85,15 +88,46 @@ async def get_current_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="This account has been suspended. Contact ANIIDCO support for assistance.")
+
     return user
 
 
-@router.get("/me")
+@router.get("/me", response_model=ProfileResponse)
 async def get_my_profile(current_user: User = Depends(get_current_user)):
-    return {
-        "user_id": str(current_user.id),
-        "phone_number": current_user.phone_number,
-        "full_name": current_user.full_name,
-        "nationality": current_user.nationality,
-        "role": current_user.user_type,
-    }
+    return ProfileResponse(
+        user_id=str(current_user.id),
+        phone_number=current_user.phone_number,
+        full_name=current_user.full_name,
+        email=current_user.email,
+        state_or_country=current_user.state_or_country,
+        nationality=current_user.nationality,
+        role=current_user.user_type,
+        profile_complete=bool(current_user.email),
+    )
+
+
+@router.patch("/me", response_model=ProfileResponse)
+async def update_my_profile(
+    req: ProfileUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    current_user.full_name = req.full_name
+    current_user.email = req.email
+    current_user.nationality = req.nationality
+    current_user.state_or_country = req.state_or_country
+    await db.commit()
+    await db.refresh(current_user)
+
+    return ProfileResponse(
+        user_id=str(current_user.id),
+        phone_number=current_user.phone_number,
+        full_name=current_user.full_name,
+        email=current_user.email,
+        state_or_country=current_user.state_or_country,
+        nationality=current_user.nationality,
+        role=current_user.user_type,
+        profile_complete=bool(current_user.email),
+    )

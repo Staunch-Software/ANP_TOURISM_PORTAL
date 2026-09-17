@@ -77,14 +77,22 @@ export default function App() {
           <div className="pt-2 flex flex-wrap justify-center gap-3">
             <button
               onClick={() => setActiveTab('ATTRACTIONS')}
-              className="px-6 py-3 rounded-lg text-sm font-bold transition-all bg-white text-navy-800 shadow-lg hover:bg-slate-100"
+              className={`px-6 py-3 rounded-lg text-sm font-bold transition-all ${
+                activeTab === 'ATTRACTIONS'
+                  ? 'bg-white text-navy-800 shadow-lg'
+                  : 'bg-white/10 text-white border border-white/30 hover:bg-white/20'
+              }`}
             >
               Browse Attractions
             </button>
 
             <button
               onClick={() => setActiveTab('FERRY')}
-              className="px-6 py-3 rounded-lg text-sm font-bold transition-all bg-white/10 text-white border border-white/30 hover:bg-white/20"
+              className={`px-6 py-3 rounded-lg text-sm font-bold transition-all ${
+                activeTab === 'FERRY'
+                  ? 'bg-white text-navy-800 shadow-lg'
+                  : 'bg-white/10 text-white border border-white/30 hover:bg-white/20'
+              }`}
             >
               Book a Ferry
             </button>

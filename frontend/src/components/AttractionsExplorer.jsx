@@ -24,7 +24,7 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user }) {
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [passengerName, setPassengerName] = useState('');
   const [passengerAge, setPassengerAge] = useState('28');
-  const [passengerId, setPassengerId] = useState('9812-4412-8819');
+  const [passengerId, setPassengerId] = useState('');
   const [loading, setLoading] = useState(false);
   const [bookingLoading, setBookingLoading] = useState(false);
 
@@ -89,7 +89,7 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user }) {
           age: parseInt(passengerAge) || 25,
           gender: "MALE",
           id_type: nationality === 'INDIAN' ? "AADHAAR" : "PASSPORT",
-          id_number: passengerId || "4812-9912-1011"
+          id_number: passengerId
         }
       });
 

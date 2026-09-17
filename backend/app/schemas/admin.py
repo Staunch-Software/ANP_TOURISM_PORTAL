@@ -51,3 +51,32 @@ class EmergencyThrottleResponse(BaseModel):
     entity_affected: str
     action_taken: str
     message: str
+
+
+class UserSummary(BaseModel):
+    user_id: str
+    phone_number: str
+    full_name: str
+    email: Optional[str] = None
+    role: str
+    is_active: bool
+    created_at: str
+
+
+class UserRoleUpdateRequest(BaseModel):
+    role: Optional[str] = None  # TOURIST, ADMIN, OPERATOR, VENDOR
+    is_active: Optional[bool] = None
+
+
+class SlotCapacityUpdateRequest(BaseModel):
+    new_capacity: int
+    reason: str = "Admin Manual Expansion"
+
+
+class SlotCapacityUpdateResponse(BaseModel):
+    slot_id: str
+    old_capacity: int
+    new_capacity: int
+    booked_count: int
+    available_seats: int
+    message: str

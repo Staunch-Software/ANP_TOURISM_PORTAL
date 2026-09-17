@@ -1,6 +1,7 @@
 import uuid
 import io
 import csv
+from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -9,6 +10,7 @@ from sqlalchemy.future import select
 from sqlalchemy import func
 
 from app.core.database import get_db
+from app.core.redis import get_redis
 from app.models.user import User
 from app.models.order import Order, OrderItem
 from app.models.ticket import Ticket
@@ -21,6 +23,10 @@ from app.schemas.admin import (
     RevenueSummaryResponse,
     EmergencyThrottleRequest,
     EmergencyThrottleResponse,
+    UserSummary,
+    UserRoleUpdateRequest,
+    SlotCapacityUpdateRequest,
+    SlotCapacityUpdateResponse,
 )
 
 router = APIRouter(prefix="/admin", tags=["Government Admin MIS & Harbor Manifest"])
@@ -248,3 +254,116 @@ async def emergency_weather_throttle(
             )
 
     raise HTTPException(status_code=400, detail="Must provide either schedule_id or slot_id")
+
+
+# -------------------------------------------------------------
+# 5. User Management & Role Control (RFP Clause 7.2.1-III)
+# -------------------------------------------------------------
+VALID_ROLES = {"TOURIST", "ADMIN", "OPERATOR", "VENDOR"}
+
+
+@router.get("/users", response_model=List[UserSummary])
+async def list_users(
+    admin_user: User = Depends(verify_admin_role),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(select(User).order_by(User.created_at.asc()))
+    users = res.scalars().all()
+
+    return [
+        UserSummary(
+            user_id=str(u.id),
+            phone_number=u.phone_number,
+            full_name=u.full_name,
+            email=u.email,
+            role=u.user_type,
+            is_active=u.is_active,
+            created_at=str(u.created_at),
+        )
+        for u in users
+    ]
+
+
+@router.patch("/users/{user_id}", response_model=UserSummary)
+async def update_user_role(
+    user_id: str,
+    req: UserRoleUpdateRequest,
+    admin_user: User = Depends(verify_admin_role),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        target_uuid = uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid User UUID")
+
+    res = await db.execute(select(User).where(User.id == target_uuid))
+    target_user = res.scalars().first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if req.role is not None:
+        if req.role not in VALID_ROLES:
+            raise HTTPException(status_code=400, detail=f"Role must be one of {sorted(VALID_ROLES)}")
+        target_user.user_type = req.role
+
+    if req.is_active is not None:
+        target_user.is_active = req.is_active
+
+    await db.commit()
+    await db.refresh(target_user)
+
+    return UserSummary(
+        user_id=str(target_user.id),
+        phone_number=target_user.phone_number,
+        full_name=target_user.full_name,
+        email=target_user.email,
+        role=target_user.user_type,
+        is_active=target_user.is_active,
+        created_at=str(target_user.created_at),
+    )
+
+
+# -------------------------------------------------------------
+# 6. Dynamic Slot Quota Expansion (RFP Clause 7.2.1-III, Page 30)
+# -------------------------------------------------------------
+@router.patch("/slots/{slot_id}/capacity", response_model=SlotCapacityUpdateResponse)
+async def update_slot_capacity(
+    slot_id: str,
+    payload: SlotCapacityUpdateRequest,
+    admin_user: User = Depends(verify_admin_role),
+    db: AsyncSession = Depends(get_db),
+    r=Depends(get_redis),
+):
+    try:
+        slot_uuid = uuid.UUID(slot_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid Slot UUID")
+
+    res = await db.execute(select(AttractionSlot).where(AttractionSlot.id == slot_uuid))
+    slot = res.scalars().first()
+    if not slot:
+        raise HTTPException(status_code=404, detail="Slot not found")
+
+    if payload.new_capacity < slot.booked_count:
+        raise HTTPException(
+            status_code=400,
+            detail=f"New capacity ({payload.new_capacity}) cannot be lower than seats already booked ({slot.booked_count})",
+        )
+
+    old_capacity = slot.total_capacity
+    slot.total_capacity = payload.new_capacity
+    await db.commit()
+    await db.refresh(slot)
+
+    redis_held = await r.get(f"slot_hold_count:{str(slot.id)}")
+    held_count = int(redis_held) if redis_held else 0
+    available = max(0, slot.total_capacity - slot.booked_count - held_count)
+
+    return SlotCapacityUpdateResponse(
+        slot_id=str(slot.id),
+        old_capacity=old_capacity,
+        new_capacity=slot.total_capacity,
+        booked_count=slot.booked_count,
+        available_seats=available,
+        message=f"Slot capacity successfully updated to {slot.total_capacity} seats ({payload.reason})",
+    )

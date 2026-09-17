@@ -25,7 +25,7 @@ export function FerrySearch({ onAddToCart, onRequireLogin, user }) {
   const [passengerName, setPassengerName] = useState('');
   const [passengerAge, setPassengerAge] = useState('29');
   const [passengerGender, setPassengerGender] = useState('MALE');
-  const [passengerId, setPassengerId] = useState('9812-4412-8819');
+  const [passengerId, setPassengerId] = useState('');
   const [holdCountdown, setHoldCountdown] = useState(null);
 
   useEffect(() => {
@@ -124,7 +124,7 @@ export function FerrySearch({ onAddToCart, onRequireLogin, user }) {
           age: parseInt(passengerAge) || 28,
           gender: passengerGender,
           id_type: "AADHAAR",
-          id_number: passengerId || "4812-9912-1011"
+          id_number: passengerId
         }
       });
 

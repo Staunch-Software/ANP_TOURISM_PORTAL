@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import API from '../api/client';
 import {
   ShieldCheck, TrendingUp, Users, DollarSign, Download,
-  Ship, CloudRain, CheckCircle2, FileSpreadsheet, RefreshCw
+  Ship, CloudRain, CheckCircle2, FileSpreadsheet, RefreshCw, Sliders
 } from 'lucide-react';
 
 export function AdminDashboard({ user }) {
@@ -12,12 +12,62 @@ export function AdminDashboard({ user }) {
   const [manifestData, setManifestData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [manifestLoading, setManifestLoading] = useState(false);
+  const [downloadingCsv, setDownloadingCsv] = useState(false);
   const [actionMessage, setActionMessage] = useState(null);
+
+  // Slot Management State (RFP Page 30)
+  const [attractions, setAttractions] = useState([]);
+  const [selectedAttractionId, setSelectedAttractionId] = useState('');
+  const [attractionSlots, setAttractionSlots] = useState([]);
+  const [expandingSlotId, setExpandingSlotId] = useState(null);
+
+  // User Management & RBAC State (RFP Clause 7.2.1-III, Page 30)
+  const [users, setUsers] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [savingUserId, setSavingUserId] = useState(null);
 
   useEffect(() => {
     fetchMISData();
     fetchSchedules();
+    fetchAttractionsList();
+    fetchUsers();
   }, []);
+
+  const fetchUsers = async () => {
+    setUsersLoading(true);
+    try {
+      const res = await API.get('/admin/users');
+      setUsers(res.data);
+    } catch (err) {
+      console.error("Failed to load users", err);
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
+  const handleRoleChange = async (userId, newRole) => {
+    setSavingUserId(userId);
+    try {
+      const res = await API.patch(`/admin/users/${userId}`, { role: newRole });
+      setUsers((prev) => prev.map((u) => (u.user_id === userId ? res.data : u)));
+    } catch (err) {
+      alert(err.response?.data?.detail || "Failed to update role");
+    } finally {
+      setSavingUserId(null);
+    }
+  };
+
+  const handleToggleActive = async (userId, nextActive) => {
+    setSavingUserId(userId);
+    try {
+      const res = await API.patch(`/admin/users/${userId}`, { is_active: nextActive });
+      setUsers((prev) => prev.map((u) => (u.user_id === userId ? res.data : u)));
+    } catch (err) {
+      alert(err.response?.data?.detail || "Failed to update account status");
+    } finally {
+      setSavingUserId(null);
+    }
+  };
 
   const fetchMISData = async () => {
     setLoading(true);
@@ -45,6 +95,45 @@ export function AdminDashboard({ user }) {
     }
   };
 
+  const fetchAttractionsList = async () => {
+    try {
+      const res = await API.get('/attractions');
+      setAttractions(res.data);
+      if (res.data.length > 0) {
+        setSelectedAttractionId(res.data[0].id);
+        fetchSlots(res.data[0].id);
+      }
+    } catch (err) {
+      console.error("Failed to load attractions", err);
+    }
+  };
+
+  const fetchSlots = async (attractionId) => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const res = await API.get(`/attractions/${attractionId}/slots?target_date=${today}`);
+      setAttractionSlots(res.data);
+    } catch (err) {
+      console.error("Failed to load slots", err);
+    }
+  };
+
+  const handleIncreaseQuota = async (slot, increment) => {
+    const newTotal = slot.total_capacity + increment;
+    setExpandingSlotId(slot.slot_id);
+    try {
+      await API.patch(`/admin/slots/${slot.slot_id}/capacity`, {
+        new_capacity: newTotal,
+        reason: `Peak Rush Expansion (+${increment})`,
+      });
+      fetchSlots(selectedAttractionId);
+    } catch (err) {
+      alert(err.response?.data?.detail || "Failed to update slot capacity");
+    } finally {
+      setExpandingSlotId(null);
+    }
+  };
+
   const fetchManifest = async (scheduleId) => {
     if (!scheduleId) return;
     setManifestLoading(true);
@@ -64,15 +153,38 @@ export function AdminDashboard({ user }) {
     fetchManifest(id);
   };
 
-  const handleDownloadCSV = () => {
+  // Authenticated CSV Download (fixes the missing Authorization header error
+  // from window.open, which performs a plain browser navigation with no
+  // custom headers and gets rejected by the admin-only endpoint).
+  const handleDownloadCSV = async () => {
     if (!selectedScheduleId) return;
-    const downloadUrl = `http://localhost:8000/api/v1/admin/manifest/${selectedScheduleId}/export-csv`;
-    window.open(downloadUrl, '_blank');
+    setDownloadingCsv(true);
+    try {
+      const response = await API.get(`/admin/manifest/${selectedScheduleId}/export-csv`, {
+        responseType: 'blob',
+      });
+
+      const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const vesselName = manifestData?.vessel_name?.replace(/\s+/g, '_') || 'Vessel';
+      link.setAttribute('download', `PMB_Manifest_${vesselName}_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("CSV download error", err);
+      alert("Failed to export PMB CSV. Check if you are logged in as Admin.");
+    } finally {
+      setDownloadingCsv(false);
+    }
   };
 
   const handleEmergencyHalt = async () => {
     if (!selectedScheduleId) return;
-    if (!window.confirm("CONFIRM EMERGENCY WEATHER HALT: This will cancel the selected ferry departure and trigger 100% automated refunds.")) return;
+    if (!window.confirm("CONFIRM EMERGENCY WEATHER HALT: This will cancel the selected ferry departure and trigger 100% automated refunds under Force Majeure.")) return;
 
     try {
       const res = await API.post('/admin/emergency-throttle', {
@@ -83,7 +195,7 @@ export function AdminDashboard({ user }) {
 
       setActionMessage({
         type: 'SUCCESS',
-        text: res.data.message
+        text: res.data.message || 'Sailing suspended. Automated refunds initiated.'
       });
       fetchSchedules();
     } catch (err) {
@@ -111,11 +223,11 @@ export function AdminDashboard({ user }) {
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold mb-2">
-            <ShieldCheck className="w-3.5 h-3.5" /> Administrative Directorate View
+            <ShieldCheck className="w-3.5 h-3.5" /> ANIIDCO Directorate &amp; Regulatory Authority
           </div>
           <h2 className="font-serif text-2xl font-black text-navy-800">Government MIS &amp; Harbor Oversight</h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Real-time financial reconciliation, Port Management Board (PMB) passenger manifests, and weather controls.
+            Real-time financial reconciliation, Port Management Board (PMB) passenger manifests, and crowd slot controls.
           </p>
         </div>
 
@@ -137,7 +249,6 @@ export function AdminDashboard({ user }) {
 
       {/* 2. Top Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Revenue */}
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-2">
           <div className="flex justify-between items-center text-slate-500 text-xs font-semibold">
             <span>Treasury Revenue</span>
@@ -151,7 +262,6 @@ export function AdminDashboard({ user }) {
           <p className="text-[11px] text-emerald-700 font-medium">Reconciled via Bank Gateway</p>
         </div>
 
-        {/* Total Tickets Issued */}
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-2">
           <div className="flex justify-between items-center text-slate-500 text-xs font-semibold">
             <span>Confirmed Passes</span>
@@ -165,7 +275,6 @@ export function AdminDashboard({ user }) {
           <p className="text-[11px] text-slate-500 font-medium">Turnstile-ready Ed25519 tokens</p>
         </div>
 
-        {/* Monument Share */}
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-2">
           <div className="flex justify-between items-center text-slate-500 text-xs font-semibold">
             <span>Heritage &amp; Monuments</span>
@@ -179,7 +288,6 @@ export function AdminDashboard({ user }) {
           <p className="text-[11px] text-slate-500 font-medium">Cellular Jail &amp; Museums</p>
         </div>
 
-        {/* Ferry Share */}
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-2">
           <div className="flex justify-between items-center text-slate-500 text-xs font-semibold">
             <span>Ferry Operations</span>
@@ -205,7 +313,7 @@ export function AdminDashboard({ user }) {
               <FileSpreadsheet className="w-5 h-5 text-cyan-600" /> Maritime Passenger Manifest
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Mandatory vessel manifest required by Harbor Marine Police prior to casting off.
+              Official passenger roster required by Harbor Marine Police prior to vessel cast-off.
             </p>
           </div>
 
@@ -223,13 +331,14 @@ export function AdminDashboard({ user }) {
               ))}
             </select>
 
-            {/* One-Click Official CSV Export */}
+            {/* Authenticated Download CSV Button */}
             <button
               type="button"
+              disabled={downloadingCsv}
               onClick={handleDownloadCSV}
               className="px-4 py-2 bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs rounded-lg flex items-center gap-2 shadow-md transition-all"
             >
-              <Download className="w-4 h-4" /> Download PMB CSV
+              <Download className="w-4 h-4" /> {downloadingCsv ? 'Generating...' : 'Download PMB CSV'}
             </button>
 
             {/* Emergency Weather Halt Button */}
@@ -287,6 +396,191 @@ export function AdminDashboard({ user }) {
                     </td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* 4. Live Slot Quota Expansion & Carrying Capacity (RFP Page 30) */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div>
+            <span className="text-[10px] font-extrabold uppercase tracking-widest text-cyan-700">
+              Crowd &amp; Carrying Capacity Management
+            </span>
+            <h3 className="font-serif text-base font-black text-navy-800 flex items-center gap-2">
+              <Sliders className="w-4 h-4 text-cyan-600" /> Active Slot Quota &amp; Expansion Controls
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Dynamically expand seat allocation when slots are sold out during peak tourist rush.
+            </p>
+          </div>
+
+          <select
+            value={selectedAttractionId}
+            onChange={(e) => {
+              setSelectedAttractionId(e.target.value);
+              fetchSlots(e.target.value);
+            }}
+            className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-navy-800 focus:border-cyan-500 focus:outline-none"
+          >
+            {attractions.map((a) => (
+              <option key={a.id} value={a.id}>{a.title}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {attractionSlots.map((slot) => {
+            const isSoldOut = slot.available_seats === 0;
+            const isExpanding = expandingSlotId === slot.slot_id;
+
+            return (
+              <div
+                key={slot.slot_id}
+                className={`p-4 rounded-2xl border transition-all ${
+                  isSoldOut ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-200'
+                }`}
+              >
+                <div className="flex justify-between items-start mb-2">
+                  <div>
+                    <span className="text-sm font-mono font-black text-navy-800 block">
+                      {slot.start_time} - {slot.end_time}
+                    </span>
+                    <span className={`text-xs font-bold ${isSoldOut ? 'text-red-600' : 'text-emerald-700'}`}>
+                      {slot.available_seats} / {slot.total_capacity} Seats Available
+                    </span>
+                  </div>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                    isSoldOut
+                      ? 'bg-red-100 text-red-700 border border-red-200'
+                      : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                  }`}>
+                    {isSoldOut ? 'SOLD OUT' : 'OPEN'}
+                  </span>
+                </div>
+
+                {/* Dynamic Expansion Actions */}
+                <div className="pt-3 border-t border-slate-200 flex items-center justify-between gap-2">
+                  <span className="text-[11px] text-slate-500">Expand Quota:</span>
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      disabled={isExpanding}
+                      onClick={() => handleIncreaseQuota(slot, 10)}
+                      className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg text-xs font-bold text-cyan-700 transition-colors disabled:opacity-50"
+                    >
+                      +10 Seats
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isExpanding}
+                      onClick={() => handleIncreaseQuota(slot, 25)}
+                      className="px-2.5 py-1 bg-cyan-700 hover:bg-cyan-600 rounded-lg text-xs font-bold text-white shadow-sm transition-all disabled:opacity-50"
+                    >
+                      +25 Seats
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 5. User Management & Role Control (RFP Clause 7.2.1-III, Page 30) */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div>
+            <span className="text-[10px] font-extrabold uppercase tracking-widest text-cyan-700">
+              Role-Based Access Control (RBAC)
+            </span>
+            <h3 className="font-serif text-base font-black text-navy-800 flex items-center gap-2">
+              <Users className="w-4 h-4 text-cyan-600" /> System Users &amp; Stakeholder Permissions
+            </h3>
+            <p className="text-xs text-slate-500">
+              Manage permissions for Visitors, Ferry Operators, and Regulatory Staff.
+            </p>
+          </div>
+
+          <button
+            onClick={fetchUsers}
+            disabled={usersLoading}
+            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg text-xs font-bold text-navy-800 flex items-center gap-2 self-start sm:self-auto"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${usersLoading ? 'animate-spin' : ''}`} /> Refresh
+          </button>
+        </div>
+
+        {usersLoading ? (
+          <div className="text-center py-12 text-slate-400 text-xs">Loading registered users...</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 text-slate-500 font-mono text-[11px] uppercase tracking-wider border-b border-slate-200">
+                <tr>
+                  <th className="p-3">Mobile Number</th>
+                  <th className="p-3">Full Legal Name</th>
+                  <th className="p-3">Email</th>
+                  <th className="p-3">Registered</th>
+                  <th className="p-3">Assigned Role</th>
+                  <th className="p-3">Account Status</th>
+                  <th className="p-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {users.map((u) => {
+                  const isSelf = u.user_id === user?.user_id;
+                  const isSaving = savingUserId === u.user_id;
+                  return (
+                    <tr key={u.user_id} className="hover:bg-slate-50 transition-colors">
+                      <td className="p-3 font-mono font-bold text-navy-800">{u.phone_number}</td>
+                      <td className="p-3 font-bold text-navy-800">{u.full_name}</td>
+                      <td className="p-3 text-slate-500">{u.email || '—'}</td>
+                      <td className="p-3 text-slate-400 font-mono text-[11px]">
+                        {new Date(u.created_at).toLocaleDateString('en-IN')}
+                      </td>
+                      <td className="p-3">
+                        <select
+                          value={u.role}
+                          disabled={isSelf || isSaving}
+                          onChange={(e) => handleRoleChange(u.user_id, e.target.value)}
+                          className="px-2 py-1 bg-white border border-slate-300 rounded-lg text-[11px] font-bold text-navy-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <option value="TOURIST">TOURIST</option>
+                          <option value="OPERATOR">OPERATOR</option>
+                          <option value="VENDOR">VENDOR</option>
+                          <option value="ADMIN">ADMIN</option>
+                        </select>
+                      </td>
+                      <td className="p-3">
+                        {u.is_active ? (
+                          <span className="text-emerald-700 font-bold flex items-center gap-1 text-[11px]">● Active</span>
+                        ) : (
+                          <span className="text-red-600 font-bold flex items-center gap-1 text-[11px]">● Suspended</span>
+                        )}
+                      </td>
+                      <td className="p-3 text-right">
+                        {isSelf ? (
+                          <span className="text-slate-400 text-[11px]">Protected (You)</span>
+                        ) : (
+                          <button
+                            disabled={isSaving}
+                            onClick={() => handleToggleActive(u.user_id, !u.is_active)}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border disabled:opacity-50 ${
+                              u.is_active
+                                ? 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200'
+                                : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                            }`}
+                          >
+                            {u.is_active ? 'Suspend' : 'Reactivate'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

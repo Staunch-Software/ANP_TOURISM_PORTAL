@@ -1,13 +1,35 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import API from '../api/client';
-import { ShieldCheck, Phone, KeyRound, X, AlertCircle } from 'lucide-react';
+import { ShieldCheck, Phone, KeyRound, User, Mail, Globe, ArrowRight, AlertCircle } from 'lucide-react';
 
 export function LoginModal({ isOpen, onClose, onLoginSuccess }) {
+  const [step, setStep] = useState('PHONE'); // PHONE -> OTP -> PROFILE
   const [phoneNumber, setPhoneNumber] = useState('9999999999');
   const [otp, setOtp] = useState('123456');
-  const [step, setStep] = useState('PHONE');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // Profile Fields (RFP Page 24)
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [nationality, setNationality] = useState('INDIAN');
+  const [stateOrCountry, setStateOrCountry] = useState('');
+
+  // Reset to a fresh sign-in flow every time the modal is (re)opened —
+  // otherwise it re-mounts hidden and remembers whatever step/error state
+  // was left over from the previous session (e.g. reopens straight to OTP
+  // after a prior successful login + logout).
+  useEffect(() => {
+    if (isOpen) {
+      setStep('PHONE');
+      setOtp('123456');
+      setError(null);
+      setFullName('');
+      setEmail('');
+      setNationality('INDIAN');
+      setStateOrCountry('');
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -37,10 +59,40 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess }) {
       const profileRes = await API.get('/auth/me');
       localStorage.setItem('aniidco_user', JSON.stringify(profileRes.data));
 
-      onLoginSuccess(profileRes.data);
-      onClose();
+      // RFP Section 7.2.1-1: registration must capture full legal name,
+      // email, nationality, and state/country before a booking can proceed.
+      if (!profileRes.data.profile_complete) {
+        setFullName(profileRes.data.full_name === 'Valued Tourist' ? '' : profileRes.data.full_name);
+        setNationality(profileRes.data.nationality || 'INDIAN');
+        setStep('PROFILE');
+      } else {
+        onLoginSuccess(profileRes.data);
+        onClose();
+      }
     } catch (err) {
       setError(err.response?.data?.detail || 'Authentication failed. Please check OTP.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveProfile = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await API.patch('/auth/me', {
+        full_name: fullName,
+        email: email,
+        nationality: nationality,
+        state_or_country: stateOrCountry,
+      });
+
+      localStorage.setItem('aniidco_user', JSON.stringify(res.data));
+      onLoginSuccess(res.data);
+      onClose();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to save profile');
     } finally {
       setLoading(false);
     }
@@ -72,7 +124,7 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess }) {
           onClick={onClose}
           className="absolute top-4 right-4 text-white/80 hover:text-white p-1 rounded-lg"
         >
-          <X className="w-5 h-5" />
+          ✕
         </button>
 
         <div className="p-6">
@@ -81,8 +133,14 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess }) {
               <ShieldCheck className="w-6 h-6" />
             </div>
             <div>
-              <h3 className="font-serif text-lg font-bold text-navy-800">Visitor Authentication (2FA)</h3>
-              <p className="text-xs text-slate-500">Strict Single-Session Concurrency (RFP 7.1.12)</p>
+              <h3 className="font-serif text-lg font-bold text-navy-800">
+                {step === 'PROFILE' ? 'Complete Tourist Profile' : 'Visitor Authentication (2FA)'}
+              </h3>
+              <p className="text-xs text-slate-500">
+                {step === 'PROFILE'
+                  ? 'Required for port clearance & turnstile pass issuance (RFP 7.2.1)'
+                  : 'Strict Single-Session Concurrency (RFP 7.1.12)'}
+              </p>
             </div>
           </div>
 
@@ -93,7 +151,7 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess }) {
             </div>
           )}
 
-          {step === 'PHONE' ? (
+          {step === 'PHONE' && (
             <form onSubmit={handleSendOtp} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1.5">Mobile Number</label>
@@ -103,7 +161,7 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess }) {
                     type="tel"
                     maxLength="10"
                     value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, ''))}
                     placeholder="Enter 10-digit number"
                     className="w-full pl-12 pr-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-navy-800 focus:outline-none focus:border-cyan-500 font-mono"
                     required
@@ -118,7 +176,9 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess }) {
                 <Phone className="w-4 h-4" /> Send OTP
               </button>
             </form>
-          ) : (
+          )}
+
+          {step === 'OTP' && (
             <form onSubmit={handleVerifyOtp} className="space-y-4">
               <div>
                 <div className="flex justify-between items-center mb-1.5">
@@ -152,6 +212,77 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess }) {
                 className="w-full py-2.5 bg-emerald-700 hover:bg-emerald-600 font-bold rounded-lg text-sm text-white shadow-md transition-all flex items-center justify-center gap-2"
               >
                 {loading ? 'Verifying...' : 'Confirm & Log In'}
+              </button>
+            </form>
+          )}
+
+          {/* STEP 3: Profile Completion (RFP Section 7.2.1-1) */}
+          {step === 'PROFILE' && (
+            <form onSubmit={handleSaveProfile} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1 flex items-center gap-1">
+                  <User className="w-3.5 h-3.5 text-cyan-600" /> Full Legal Name (As per Govt ID)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Rahul Sharma"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1 flex items-center gap-1">
+                  <Mail className="w-3.5 h-3.5 text-cyan-600" /> Email ID (For E-Ticket Dispatch)
+                </label>
+                <input
+                  type="email"
+                  placeholder="rahul.sharma@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1 flex items-center gap-1">
+                    <Globe className="w-3.5 h-3.5 text-cyan-600" /> Nationality
+                  </label>
+                  <select
+                    value={nationality}
+                    onChange={(e) => setNationality(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+                  >
+                    <option value="INDIAN">Indian Citizen</option>
+                    <option value="FOREIGN">Foreign National</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">
+                    State / Country
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Delhi or UK"
+                    value={stateOrCountry}
+                    onChange={(e) => setStateOrCountry(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+                    required
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2.5 mt-2 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-lg text-sm shadow-md flex items-center justify-center gap-2"
+              >
+                {loading ? 'Saving...' : 'Complete Profile & Enter Portal'} <ArrowRight className="w-4 h-4" />
               </button>
             </form>
           )}
