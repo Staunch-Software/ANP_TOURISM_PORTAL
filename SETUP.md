@@ -106,15 +106,20 @@ Open `http://localhost:5173`.
 
 - Phone: any 10-digit number
 - OTP: `123456` (hardcoded for demo/dev — no real SMS is sent)
-- To get **Admin** access, promote a user manually after their first login:
+- To get **Admin** access, run the admin seed script with the phone number you want to promote
+  (works whether or not that number has logged in yet — it creates the account if needed):
 
   ```bash
-  # Docker:
-  docker exec -it aniidco_postgres psql -U postgres -d aniidco_portal -c "UPDATE users SET user_type='ADMIN' WHERE phone_number='<their number>';"
+  cd backend
+  venv\Scripts\activate          # Windows
+  # source venv/bin/activate     # Mac/Linux
 
-  # Native Postgres:
-  psql -U postgres -d aniidco_portal -c "UPDATE users SET user_type='ADMIN' WHERE phone_number='<their number>';"
+  python seed_admin.py <phone_number>
+  # example: python seed_admin.py 9999999999
   ```
+
+  Then log in with that number to see the **Admin MIS** tab. Safe to re-run — it just confirms
+  the account is already ADMIN if it's run again.
 
 ---
 
