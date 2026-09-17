@@ -55,6 +55,30 @@ def verify_admin_or_operator_role(current_user: User = Depends(get_current_user)
     return current_user
 
 
+def verify_admin_or_vendor_role(current_user: User = Depends(get_current_user)) -> User:
+    """Activity/attraction manifests and revenue are needed by both the
+    Directorate (oversight) and the water sports / activity vendor
+    (visitor roster) per RFP Clause 7.2.1-II/III."""
+    if current_user.user_type not in ["ADMIN", "TOURISM_OFFICER", "VENDOR"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access Denied: Requires Administrator or Activity Vendor privilege",
+        )
+    return current_user
+
+
+def verify_staff_role(current_user: User = Depends(get_current_user)) -> User:
+    """Gate/turnstile ticket check-in may be performed by Ferry Operators,
+    Activity Vendors, or Administrators — anyone responsible for admitting
+    a passenger/visitor at the point of service."""
+    if current_user.user_type not in ["ADMIN", "TOURISM_OFFICER", "OPERATOR", "VENDOR"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access Denied: Requires staff privilege (Operator, Vendor, or Administrator)",
+        )
+    return current_user
+
+
 # -------------------------------------------------------------
 # 1. Harbor Passenger Manifest (JSON Data)
 # -------------------------------------------------------------

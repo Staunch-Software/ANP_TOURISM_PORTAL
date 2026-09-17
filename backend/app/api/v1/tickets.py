@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,8 +9,14 @@ from app.core.database import get_db
 from app.models.user import User
 from app.models.ticket import Ticket
 from app.api.v1.auth import get_current_user
+from app.api.v1.admin import verify_staff_role
 from app.services.crypto_service import verify_ticket_offline, get_public_key_hex
-from app.schemas.ticket import TicketPassResponse, OfflineVerificationResponse
+from app.schemas.ticket import (
+    TicketPassResponse,
+    OfflineVerificationResponse,
+    StaffCheckInRequest,
+    StaffCheckInResponse,
+)
 
 router = APIRouter(prefix="/tickets", tags=["Digital Pass Wallet & Offline Verification"])
 
@@ -76,4 +83,49 @@ async def simulate_offline_gate_scan(
         is_signature_valid=is_valid,
         verification_mode="100% OFFLINE MATHEMATICAL PROOF (Ed25519)",
         gate_decision="GREEN LIGHT - ENTRY GRANTED" if is_valid else "RED LIGHT - INVALID SIGNATURE",
+    )
+
+
+# 4. Staff Gate/Turnstile Check-In (Ferry Operator, Vendor, or Admin)
+@router.post("/staff/check-in", response_model=StaffCheckInResponse)
+async def staff_check_in_ticket(
+    payload: StaffCheckInRequest,
+    staff_user: User = Depends(verify_staff_role),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    RFP Page 28-29: Ground-staff entry validation. Cryptographically
+    verifies the Ed25519 signature, then transitions the ticket from
+    ISSUED to CHECKED_IN in Postgres — this is the durable state change
+    that prevents passback fraud (a ticket cannot be validated twice).
+    """
+    res = await db.execute(select(Ticket).where(Ticket.ticket_ref == payload.ticket_ref))
+    ticket = res.scalars().first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket reference not found")
+
+    if not verify_ticket_offline(ticket.qr_payload_json, ticket.qr_signature_b64):
+        raise HTTPException(status_code=400, detail="INVALID SIGNATURE: This QR code failed cryptographic verification.")
+
+    if ticket.check_in_status == "CHECKED_IN":
+        raise HTTPException(
+            status_code=400,
+            detail=f"PASSBACK ERROR: Ticket already checked in at {ticket.checked_in_at}.",
+        )
+
+    if ticket.check_in_status == "CANCELLED":
+        raise HTTPException(status_code=400, detail="INVALID PASS: This ticket was cancelled and refunded.")
+
+    ticket.check_in_status = "CHECKED_IN"
+    ticket.checked_in_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(ticket)
+
+    return StaffCheckInResponse(
+        check_in_status=ticket.check_in_status,
+        ticket_ref=ticket.ticket_ref,
+        passenger_name=ticket.passenger_name,
+        item_type=ticket.item_type,
+        slot_or_seat_info=ticket.slot_or_seat_info,
+        message="Valid ticket verified. Entry granted.",
     )

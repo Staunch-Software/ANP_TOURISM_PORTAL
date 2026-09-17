@@ -19,3 +19,16 @@ class OfflineVerificationResponse(BaseModel):
     is_signature_valid: bool
     verification_mode: str
     gate_decision: str
+
+
+class StaffCheckInRequest(BaseModel):
+    ticket_ref: str
+
+
+class StaffCheckInResponse(BaseModel):
+    check_in_status: str
+    ticket_ref: str
+    passenger_name: str
+    item_type: str
+    slot_or_seat_info: str
+    message: str

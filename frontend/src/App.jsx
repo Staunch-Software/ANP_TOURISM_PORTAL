@@ -8,6 +8,8 @@ import { CartDrawer } from './components/CartDrawer';
 import { DigitalWallet } from './components/DigitalWallet';
 import { AdminDashboard } from './components/AdminDashboard';
 import { OperatorDashboard } from './components/OperatorDashboard';
+import { VendorDashboard } from './components/VendorDashboard';
+import { StaffGateScanner } from './components/StaffGateScanner';
 import { OperatorRegisterModal } from './components/OperatorRegisterModal';
 import { Waves } from 'lucide-react';
 
@@ -151,6 +153,14 @@ export default function App() {
 
         {activeTab === 'OPERATOR' && (
           <OperatorDashboard user={currentUser} />
+        )}
+
+        {activeTab === 'VENDOR' && (
+          <VendorDashboard user={currentUser} />
+        )}
+
+        {activeTab === 'SCANNER' && (
+          <StaffGateScanner user={currentUser} />
         )}
       </main>
 
