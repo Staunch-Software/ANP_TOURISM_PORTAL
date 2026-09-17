@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldCheck, ShoppingBag, LogOut } from 'lucide-react';
+import { ShieldCheck, ShoppingBag, LogOut, Anchor } from 'lucide-react';
 
 export function Navbar({
   user,
@@ -108,6 +108,19 @@ export function Navbar({
               }`}
             >
               <ShieldCheck className="w-4 h-4" /> Admin MIS
+            </button>
+          )}
+
+          {(user?.role === 'OPERATOR' || user?.role === 'ADMIN') && (
+            <button
+              onClick={() => setActiveTab('OPERATOR')}
+              className={`px-5 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-1.5 ${
+                activeTab === 'OPERATOR'
+                  ? 'bg-cyan-700 text-white shadow-md'
+                  : 'text-cyan-300 hover:text-cyan-200 hover:bg-navy-600'
+              }`}
+            >
+              <Anchor className="w-4 h-4" /> Ferry Operator
             </button>
           )}
         </nav>

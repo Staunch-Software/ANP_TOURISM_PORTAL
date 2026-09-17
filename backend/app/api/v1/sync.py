@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 logger = logging.getLogger("anp.sync")
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import get_db
@@ -26,6 +27,8 @@ from app.models.user import User
 from app.models.order import Order, OrderItem
 from app.models.ticket import Ticket
 from app.models.lpu_heartbeat import LPUHeartbeat
+from app.models.gate import Gate
+from app.models.gate_staff import GateStaff
 from app.schemas.sync import (
     TicketChangeItem,
     TicketChangeLeg,
@@ -37,6 +40,7 @@ from app.schemas.sync import (
     HeartbeatRequest,
     HeartbeatResponse,
 )
+from app.schemas.gate_staff import StaffSyncEntry, StaffChangesResponse
 
 router = APIRouter(prefix="/sync", tags=["LPU Fleet Sync"])
 
@@ -46,24 +50,68 @@ def verify_sync_api_key(x_sync_api_key: str = Header(...)):
         raise HTTPException(status_code=403, detail="Invalid LPU sync credentials")
 
 
+async def require_provisioned_gate(db: AsyncSession, site_id: str) -> Gate:
+    """
+    Nothing syncs for a site the Directorate hasn't provisioned -- same
+    shape as Aepms-backend's VesselInfo check in receive_heartbeat
+    ("Vessel not provisioned for AEPMS"). An admin creates the Gate (and
+    assigns its GateService titles) via /admin/gates before that LPU's
+    SITE_ID can push or pull anything.
+    """
+    res = await db.execute(
+        select(Gate)
+        .where(Gate.site_id == site_id, Gate.is_active == True)  # noqa: E712
+        .options(selectinload(Gate.services))
+    )
+    gate = res.scalars().first()
+    if not gate:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Site '{site_id}' is not provisioned -- ask an admin to create it via POST /admin/gates",
+        )
+    return gate
+
+
 # -------------------------------------------------------------
 # 1. PULL: bookings issued/cancelled/updated since an LPU's last sync
 # -------------------------------------------------------------
 @router.get("/tickets/changes", response_model=TicketChangesResponse, dependencies=[Depends(verify_sync_api_key)])
 async def get_ticket_changes(
     since: datetime = Query(..., description="ISO timestamp of the LPU's last successful pull"),
-    site_id: str = Query(None, description="Requesting LPU's site id, for future per-site scoping"),
+    site_id: str = Query(..., description="Requesting LPU's site id -- scopes results to that gate's assigned services"),
     db: AsyncSession = Depends(get_db),
 ):
     if since.tzinfo is not None:
         since = since.replace(tzinfo=None)
 
-    # Every row in a multi-attraction booking shares booking_ref -- if ANY
-    # leg changed since the LPU's last pull, resend the whole booking so
-    # the LPU's local item list (which must mirror this order 1:1) stays
-    # complete rather than getting a partial update.
+    gate = await require_provisioned_gate(db, site_id)
+    allowed_titles = [s.title for s in gate.services]
+    if not allowed_titles:
+        # Provisioned but no services assigned yet -- fail closed (nothing
+        # relevant configured) rather than silently sending the whole
+        # fleet's tickets, which is exactly the bug this scoping exists
+        # to fix.
+        return TicketChangesResponse(tickets=[], server_time=datetime.now(timezone.utc))
+
+    # Every row in a multi-attraction booking shares booking_ref. A
+    # booking is relevant to this gate if ANY of its legs matches one of
+    # the gate's assigned titles -- once relevant, the WHOLE booking (all
+    # legs, in their original item_index order) is sent, not just the
+    # matching leg(s). This has to be booking-level, not leg-level:
+    # item_index is a fixed position in the signed QR's own items[] array,
+    # shared identically across every site that ever sees this booking, so
+    # omitting a non-matching leg would desync those positions instead of
+    # just trimming irrelevant data. The tradeoff is a gate occasionally
+    # holding one "spillover" leg from a booking that's mostly for another
+    # site -- far short of the old behavior (every site got every ticket
+    # fleet-wide), and the LPU's own SITE_ALLOWED_TITLES / wrong-gate check
+    # already refuses to validate that spillover leg at the actual scan.
     changed_refs = (await db.execute(
-        select(Ticket.booking_ref).where(Ticket.updated_at > since).distinct().limit(1000)
+        select(Ticket.booking_ref)
+        .where(Ticket.updated_at > since)
+        .where(Ticket.title.in_(allowed_titles))
+        .distinct()
+        .limit(1000)
     )).scalars().all()
     if not changed_refs:
         return TicketChangesResponse(tickets=[], server_time=datetime.now(timezone.utc))
@@ -111,6 +159,8 @@ async def get_ticket_changes(
 # -------------------------------------------------------------
 @router.post("/checkins", response_model=CheckinResponse, dependencies=[Depends(verify_sync_api_key)])
 async def push_checkin(req: CheckinRequest, db: AsyncSession = Depends(get_db)):
+    await require_provisioned_gate(db, req.site_id)
+
     # Locked read: two check-ins for the same leg can genuinely race here
     # (a retry racing the original push, or -- the case worth catching --
     # two DIFFERENT LPUs pushing a check-in for the same physical QR at
@@ -171,6 +221,8 @@ async def push_checkin(req: CheckinRequest, db: AsyncSession = Depends(get_db)):
 # -------------------------------------------------------------
 @router.post("/counter-tickets", response_model=CounterTicketResponse, dependencies=[Depends(verify_sync_api_key)])
 async def push_counter_ticket(req: CounterTicketRequest, db: AsyncSession = Depends(get_db)):
+    await require_provisioned_gate(db, req.site_id)
+
     existing = await db.execute(select(Ticket).where(Ticket.ticket_ref == req.ticket_ref))
     if existing.scalars().first():
         # Already synced in a previous (retried) attempt -- no-op.
@@ -254,6 +306,8 @@ async def push_counter_ticket(req: CounterTicketRequest, db: AsyncSession = Depe
 # -------------------------------------------------------------
 @router.post("/heartbeat", response_model=HeartbeatResponse, dependencies=[Depends(verify_sync_api_key)])
 async def push_heartbeat(req: HeartbeatRequest, db: AsyncSession = Depends(get_db)):
+    await require_provisioned_gate(db, req.site_id)
+
     res = await db.execute(select(LPUHeartbeat).where(LPUHeartbeat.site_id == req.site_id))
     row = res.scalars().first()
 
@@ -272,3 +326,44 @@ async def push_heartbeat(req: HeartbeatRequest, db: AsyncSession = Depends(get_d
     await db.commit()
 
     return HeartbeatResponse(status="OK", site_id=req.site_id)
+
+
+# -------------------------------------------------------------
+# 5. PULL: staff (COUNTER/GATEKEEPER) accounts for this site, created/
+# edited/removed by an admin via /admin/gates/{site_id}/staff. Same
+# "since" shape as the ticket pull; a deleted GateStaff row shows up here
+# as is_deleted=True (never actually removed from this table) so the LPU
+# knows to delete its own local copy instead of that account silently
+# staying valid forever on a device that already pulled it once.
+# -------------------------------------------------------------
+@router.get("/staff", response_model=StaffChangesResponse, dependencies=[Depends(verify_sync_api_key)])
+async def get_staff_changes(
+    since: datetime = Query(..., description="ISO timestamp of the LPU's last successful staff pull"),
+    site_id: str = Query(..., description="Requesting LPU's site id"),
+    db: AsyncSession = Depends(get_db),
+):
+    await require_provisioned_gate(db, site_id)
+
+    if since.tzinfo is not None:
+        since = since.replace(tzinfo=None)
+
+    res = await db.execute(
+        select(GateStaff).where(GateStaff.site_id == site_id, GateStaff.updated_at > since)
+    )
+    rows = res.scalars().all()
+
+    return StaffChangesResponse(
+        staff=[
+            StaffSyncEntry(
+                username=s.username,
+                password_hash=s.password_hash,
+                full_name=s.full_name,
+                role=s.role,
+                is_active=s.is_active,
+                is_deleted=s.is_deleted,
+                updated_at=s.updated_at,
+            )
+            for s in rows
+        ],
+        server_time=datetime.now(timezone.utc),
+    )

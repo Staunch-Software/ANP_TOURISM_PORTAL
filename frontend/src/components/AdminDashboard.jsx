@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import API from '../api/client';
 import {
   ShieldCheck, TrendingUp, Users, DollarSign, Download,
-  Ship, CloudRain, CheckCircle2, FileSpreadsheet, RefreshCw, Sliders
+  Ship, CloudRain, CheckCircle2, FileSpreadsheet, RefreshCw, Sliders,
+  UserPlus, ShieldAlert, MapPin, KeyRound, Trash2, Plus
 } from 'lucide-react';
 
 export function AdminDashboard({ user }) {
@@ -26,12 +27,224 @@ export function AdminDashboard({ user }) {
   const [usersLoading, setUsersLoading] = useState(false);
   const [savingUserId, setSavingUserId] = useState(null);
 
+  // Direct User Creation (Path B) & Operator Application Approvals (Path A)
+  // — RFP Clauses 7.2.1-1, 7.2.1-7, 7.2.1-III/IV
+  const [newPhone, setNewPhone] = useState('');
+  const [newName, setNewName] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newRole, setNewRole] = useState('OPERATOR');
+  const [creatingUser, setCreatingUser] = useState(false);
+  const [createUserMessage, setCreateUserMessage] = useState(null);
+
+  const [applications, setApplications] = useState([]);
+  const [applicationsLoading, setApplicationsLoading] = useState(false);
+  const [decidingApplicationId, setDecidingApplicationId] = useState(null);
+
+  // Gate / LPU Site Provisioning -- select a site first, everything below
+  // (services it serves, staff who can log into that LPU) is scoped to it.
+  const [gates, setGates] = useState([]);
+  const [gatesLoading, setGatesLoading] = useState(false);
+  const [selectedSiteId, setSelectedSiteId] = useState('');
+
+  const [newGateSiteId, setNewGateSiteId] = useState('');
+  const [newGateName, setNewGateName] = useState('');
+  const [creatingGate, setCreatingGate] = useState(false);
+  const [gateMessage, setGateMessage] = useState(null);
+
+  const [newServiceTitle, setNewServiceTitle] = useState('');
+  const [newServiceAttractionId, setNewServiceAttractionId] = useState('');
+  const [assigningService, setAssigningService] = useState(false);
+
+  const [newStaffUsername, setNewStaffUsername] = useState('');
+  const [newStaffPassword, setNewStaffPassword] = useState('');
+  const [newStaffFullName, setNewStaffFullName] = useState('');
+  const [newStaffRole, setNewStaffRole] = useState('GATEKEEPER');
+  const [creatingStaff, setCreatingStaff] = useState(false);
+  const [staffList, setStaffList] = useState([]);
+  const [staffLoading, setStaffLoading] = useState(false);
+
   useEffect(() => {
     fetchMISData();
     fetchSchedules();
     fetchAttractionsList();
     fetchUsers();
+    fetchApplications();
+    fetchGates();
   }, []);
+
+  useEffect(() => {
+    if (selectedSiteId) fetchStaffForGate(selectedSiteId);
+    else setStaffList([]);
+  }, [selectedSiteId]);
+
+  const fetchGates = async () => {
+    setGatesLoading(true);
+    try {
+      const res = await API.get('/admin/gates');
+      setGates(res.data);
+      if (!selectedSiteId && res.data.length > 0) setSelectedSiteId(res.data[0].site_id);
+    } catch (err) {
+      console.error('Failed to load gates', err);
+    } finally {
+      setGatesLoading(false);
+    }
+  };
+
+  const fetchStaffForGate = async (siteId) => {
+    setStaffLoading(true);
+    try {
+      const res = await API.get(`/admin/gates/${siteId}/staff`);
+      setStaffList(res.data);
+    } catch (err) {
+      console.error('Failed to load staff', err);
+    } finally {
+      setStaffLoading(false);
+    }
+  };
+
+  const handleCreateGate = async (e) => {
+    e.preventDefault();
+    setCreatingGate(true);
+    setGateMessage(null);
+    try {
+      const res = await API.post('/admin/gates', { site_id: newGateSiteId.trim(), name: newGateName.trim() });
+      setGateMessage({ type: 'SUCCESS', text: `Gate '${res.data.site_id}' provisioned. Put SITE_ID=${res.data.site_id} in that LPU device's .env before starting it.` });
+      setNewGateSiteId('');
+      setNewGateName('');
+      await fetchGates();
+      setSelectedSiteId(res.data.site_id);
+    } catch (err) {
+      setGateMessage({ type: 'ERROR', text: err.response?.data?.detail || 'Failed to create gate' });
+    } finally {
+      setCreatingGate(false);
+    }
+  };
+
+  const handleAssignService = async (e) => {
+    e.preventDefault();
+    if (!selectedSiteId) return;
+    setAssigningService(true);
+    try {
+      const res = await API.post(`/admin/gates/${selectedSiteId}/services`, {
+        title: newServiceTitle.trim(),
+        attraction_id: newServiceAttractionId || null,
+      });
+      setGates((prev) => prev.map((g) => (g.site_id === selectedSiteId ? res.data : g)));
+      setNewServiceTitle('');
+      setNewServiceAttractionId('');
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to assign service');
+    } finally {
+      setAssigningService(false);
+    }
+  };
+
+  const handleUnassignService = async (serviceId) => {
+    try {
+      const res = await API.delete(`/admin/gates/${selectedSiteId}/services/${serviceId}`);
+      setGates((prev) => prev.map((g) => (g.site_id === selectedSiteId ? res.data : g)));
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to remove service');
+    }
+  };
+
+  const handleCreateStaff = async (e) => {
+    e.preventDefault();
+    if (!selectedSiteId) return;
+    setCreatingStaff(true);
+    try {
+      await API.post(`/admin/gates/${selectedSiteId}/staff`, {
+        username: newStaffUsername.trim(),
+        password: newStaffPassword,
+        full_name: newStaffFullName.trim(),
+        role: newStaffRole,
+      });
+      setNewStaffUsername('');
+      setNewStaffPassword('');
+      setNewStaffFullName('');
+      setNewStaffRole('GATEKEEPER');
+      fetchStaffForGate(selectedSiteId);
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to create staff account');
+    } finally {
+      setCreatingStaff(false);
+    }
+  };
+
+  const handleDeleteStaff = async (staffId, username) => {
+    if (!window.confirm(`Remove '${username}'? They'll be deleted from the LPU on its next sync.`)) return;
+    try {
+      await API.delete(`/admin/gates/${selectedSiteId}/staff/${staffId}`);
+      fetchStaffForGate(selectedSiteId);
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to remove staff account');
+    }
+  };
+
+  const selectedGate = gates.find((g) => g.site_id === selectedSiteId) || null;
+
+  const fetchApplications = async () => {
+    setApplicationsLoading(true);
+    try {
+      const res = await API.get('/admin/operator-applications?application_status=PENDING');
+      setApplications(res.data);
+    } catch (err) {
+      console.error("Failed to load operator applications", err);
+    } finally {
+      setApplicationsLoading(false);
+    }
+  };
+
+  const handleDirectCreateUser = async (e) => {
+    e.preventDefault();
+    setCreatingUser(true);
+    setCreateUserMessage(null);
+    try {
+      const res = await API.post('/admin/users/create', {
+        phone_number: newPhone,
+        full_name: newName,
+        email: newEmail || null,
+        role: newRole,
+      });
+      setCreateUserMessage({ type: 'SUCCESS', text: `${res.data.full_name} (${res.data.phone_number}) provisioned as ${res.data.role}.` });
+      setNewPhone('');
+      setNewName('');
+      setNewEmail('');
+      setNewRole('OPERATOR');
+      fetchUsers();
+    } catch (err) {
+      setCreateUserMessage({ type: 'ERROR', text: err.response?.data?.detail || 'Failed to create user' });
+    } finally {
+      setCreatingUser(false);
+    }
+  };
+
+  const handleApproveApplication = async (applicationId) => {
+    setDecidingApplicationId(applicationId);
+    try {
+      await API.post(`/admin/operator-applications/${applicationId}/approve`, { reason: 'Documents verified by Directorate' });
+      fetchApplications();
+      fetchUsers();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to approve application');
+    } finally {
+      setDecidingApplicationId(null);
+    }
+  };
+
+  const handleRejectApplication = async (applicationId) => {
+    const reason = window.prompt('Reason for rejection (shown to the applicant):', 'Documents could not be verified');
+    if (reason === null) return;
+    setDecidingApplicationId(applicationId);
+    try {
+      await API.post(`/admin/operator-applications/${applicationId}/reject`, { reason });
+      fetchApplications();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to reject application');
+    } finally {
+      setDecidingApplicationId(null);
+    }
+  };
 
   const fetchUsers = async () => {
     setUsersLoading(true);
@@ -583,6 +796,377 @@ export function AdminDashboard({ user }) {
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+      </div>
+
+      {/* 6. Stakeholder Governance & Service Provider Onboarding
+          (RFP Clauses 7.2.1-1, 7.2.1-7, 7.2.1-III/IV, Pages 24, 28, 30-31) */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
+        <div>
+          <span className="text-[10px] font-extrabold uppercase tracking-widest text-cyan-700">
+            RFP Clause 7.2.1-III Compliance
+          </span>
+          <h3 className="font-serif text-lg font-black text-navy-800 flex items-center gap-2">
+            <Users className="w-5 h-5 text-cyan-600" /> Stakeholder Governance &amp; Operator Approvals
+          </h3>
+          <p className="text-xs text-slate-500">
+            Review service provider compliance documents and provision administrative or operational staff directly.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Path B: Direct Create User */}
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
+            <h4 className="text-sm font-bold text-navy-800 flex items-center gap-1.5">
+              <UserPlus className="w-4 h-4 text-cyan-600" /> Direct User Creation &amp; Role Assignment
+            </h4>
+
+            {createUserMessage && (
+              <div className={`p-2.5 rounded-lg text-[11px] font-medium ${
+                createUserMessage.type === 'SUCCESS' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'
+              }`}>
+                {createUserMessage.text}
+              </div>
+            )}
+
+            <form onSubmit={handleDirectCreateUser} className="space-y-3">
+              <div>
+                <label className="text-[11px] text-slate-500 block mb-1">Mobile Number</label>
+                <input
+                  type="tel"
+                  maxLength="10"
+                  placeholder="9876543210"
+                  value={newPhone}
+                  onChange={(e) => setNewPhone(e.target.value.replace(/\D/g, ''))}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-[11px] text-slate-500 block mb-1">Full Legal Name / Agency Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Makruzz Operations Head"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] text-slate-500 block mb-1">Assigned Role</label>
+                  <select
+                    value={newRole}
+                    onChange={(e) => setNewRole(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+                  >
+                    <option value="OPERATOR">Ferry Operator</option>
+                    <option value="ADMIN">Directorate Admin</option>
+                    <option value="VENDOR">Vendor / Counter Staff</option>
+                    <option value="TOURIST">Standard Tourist</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-500 block mb-1">Email ID</label>
+                  <input
+                    type="email"
+                    placeholder="ops@makruzz.com"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+                  />
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={creatingUser}
+                className="w-full py-2.5 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-lg text-xs shadow-md disabled:opacity-50"
+              >
+                {creatingUser ? 'Provisioning...' : 'Provision User & Assign Role'}
+              </button>
+            </form>
+          </div>
+
+          {/* Path A: Pending Service Provider Applications */}
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
+            <div className="flex justify-between items-center">
+              <h4 className="text-sm font-bold text-navy-800 flex items-center gap-1.5">
+                <ShieldAlert className="w-4 h-4 text-amber-600" /> Pending Service Provider Approvals
+              </h4>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                {applications.length} Pending
+              </span>
+            </div>
+
+            {applicationsLoading ? (
+              <p className="text-xs text-slate-400 text-center py-6">Loading applications...</p>
+            ) : applications.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-6">No pending applications right now.</p>
+            ) : (
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                {applications.map((app) => {
+                  const isDeciding = decidingApplicationId === app.user_id;
+                  return (
+                    <div key={app.user_id} className="p-3.5 bg-white border border-slate-200 rounded-xl space-y-2">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <strong className="text-xs text-navy-800 block">{app.business_name}</strong>
+                          <span className="text-[11px] text-slate-500 font-mono">GSTIN: {app.gstin}</span>
+                        </div>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                          PENDING KYC
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-500 flex justify-between pt-1 border-t border-slate-100">
+                        <span>License: <strong className="text-navy-800">{app.trade_license_number}</strong></span>
+                        <span>Category: <strong className="text-navy-800">{app.service_category?.replace('_', ' ')}</strong></span>
+                      </div>
+                      <div className="text-[11px] text-slate-500">
+                        Applicant: <strong className="text-navy-800">{app.full_name}</strong> · {app.phone_number} · {app.email}
+                      </div>
+                      <div className="flex gap-2 pt-2">
+                        <button
+                          disabled={isDeciding}
+                          onClick={() => handleApproveApplication(app.user_id)}
+                          className="flex-1 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold disabled:opacity-50"
+                        >
+                          {isDeciding ? 'Working...' : 'Approve & Onboard'}
+                        </button>
+                        <button
+                          disabled={isDeciding}
+                          onClick={() => handleRejectApplication(app.user_id)}
+                          className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-medium disabled:opacity-50"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 7. Gate / LPU Site Provisioning -- select a site first; the
+          services it serves and the staff who can log into that LPU are
+          both scoped to whichever site is picked below. */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div>
+            <span className="text-[10px] font-extrabold uppercase tracking-widest text-cyan-700">
+              Local Processing Unit (LPU) Fleet
+            </span>
+            <h3 className="font-serif text-lg font-black text-navy-800 flex items-center gap-2">
+              <MapPin className="w-5 h-5 text-cyan-600" /> Gate / Site Provisioning
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Every physical gate/counter device syncs only what's provisioned here for its site_id -- nothing syncs to an unprovisioned site.
+            </p>
+          </div>
+          <button
+            onClick={fetchGates}
+            disabled={gatesLoading}
+            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg text-xs font-bold text-navy-800 flex items-center gap-2 self-start sm:self-auto"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${gatesLoading ? 'animate-spin' : ''}`} /> Refresh
+          </button>
+        </div>
+
+        {gateMessage && (
+          <div className={`p-2.5 rounded-lg text-[11px] font-medium ${
+            gateMessage.type === 'SUCCESS' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'
+          }`}>
+            {gateMessage.text}
+          </div>
+        )}
+
+        {/* Create a new gate */}
+        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5">
+          <h4 className="text-sm font-bold text-navy-800 flex items-center gap-1.5 mb-3">
+            <Plus className="w-4 h-4 text-cyan-600" /> Provision a New Site
+          </h4>
+          <form onSubmit={handleCreateGate} className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+            <div>
+              <label className="text-[11px] text-slate-500 block mb-1">site_id (must match that device's .env exactly)</label>
+              <input
+                type="text"
+                placeholder="HAVELOCK_GATE1"
+                value={newGateSiteId}
+                onChange={(e) => setNewGateSiteId(e.target.value.toUpperCase().replace(/\s+/g, '_'))}
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800 font-mono"
+                required
+              />
+            </div>
+            <div>
+              <label className="text-[11px] text-slate-500 block mb-1">Display Name</label>
+              <input
+                type="text"
+                placeholder="Havelock Radhanagar Gate 1"
+                value={newGateName}
+                onChange={(e) => setNewGateName(e.target.value)}
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={creatingGate}
+              className="py-2.5 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-lg text-xs shadow-md disabled:opacity-50"
+            >
+              {creatingGate ? 'Provisioning...' : 'Create Gate'}
+            </button>
+          </form>
+        </div>
+
+        {/* Select a site -- everything below is scoped to this */}
+        <div>
+          <label className="text-[11px] text-slate-500 block mb-1">Select Site</label>
+          <select
+            value={selectedSiteId}
+            onChange={(e) => setSelectedSiteId(e.target.value)}
+            className="w-full sm:w-96 px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-navy-800 font-mono focus:border-cyan-500 focus:outline-none"
+          >
+            {gates.length === 0 && <option value="">No gates provisioned yet</option>}
+            {gates.map((g) => (
+              <option key={g.site_id} value={g.site_id}>{g.site_id} -- {g.name} ({g.services.length} service{g.services.length === 1 ? '' : 's'})</option>
+            ))}
+          </select>
+        </div>
+
+        {selectedGate && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Services this site serves */}
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
+              <h4 className="text-sm font-bold text-navy-800">Attractions/Routes served by {selectedGate.site_id}</h4>
+
+              {selectedGate.services.length === 0 ? (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+                  No services assigned -- this LPU's ticket sync will return nothing until at least one is added.
+                </p>
+              ) : (
+                <div className="space-y-1.5">
+                  {selectedGate.services.map((s) => (
+                    <div key={s.id} className="flex items-center justify-between px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs">
+                      <span className="text-navy-800 font-medium">{s.title}</span>
+                      <button onClick={() => handleUnassignService(s.id)} className="text-red-600 hover:text-red-700" title="Remove">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <form onSubmit={handleAssignService} className="flex gap-2 pt-2 border-t border-slate-200">
+                <select
+                  value={newServiceAttractionId}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    setNewServiceAttractionId(id);
+                    const a = attractions.find((x) => x.id === id);
+                    if (a) setNewServiceTitle(a.title);
+                  }}
+                  className="flex-1 px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-[11px] text-navy-800"
+                >
+                  <option value="">Pick an attraction (or type a ferry route below)</option>
+                  {attractions.map((a) => (
+                    <option key={a.id} value={a.id}>{a.title}</option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  placeholder="Exact title to serve"
+                  value={newServiceTitle}
+                  onChange={(e) => setNewServiceTitle(e.target.value)}
+                  className="flex-1 px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-[11px] text-navy-800"
+                  required
+                />
+                <button
+                  type="submit"
+                  disabled={assigningService}
+                  className="px-3 py-1.5 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-lg text-[11px] disabled:opacity-50"
+                >
+                  Add
+                </button>
+              </form>
+            </div>
+
+            {/* Staff (COUNTER/GATEKEEPER) accounts for this site */}
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
+              <h4 className="text-sm font-bold text-navy-800 flex items-center gap-1.5">
+                <KeyRound className="w-4 h-4 text-cyan-600" /> Gate/Counter Staff Logins for {selectedGate.site_id}
+              </h4>
+
+              {staffLoading ? (
+                <p className="text-xs text-slate-400 text-center py-4">Loading staff...</p>
+              ) : staffList.length === 0 ? (
+                <p className="text-xs text-slate-400 text-center py-2">No staff accounts yet for this site.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {staffList.map((s) => (
+                    <div key={s.id} className="flex items-center justify-between px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs">
+                      <div>
+                        <span className="text-navy-800 font-bold font-mono">{s.username}</span>
+                        <span className="text-slate-400 ml-2">{s.full_name}</span>
+                        <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">{s.role}</span>
+                      </div>
+                      <button onClick={() => handleDeleteStaff(s.id, s.username)} className="text-red-600 hover:text-red-700" title="Remove">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <form onSubmit={handleCreateStaff} className="space-y-2 pt-2 border-t border-slate-200">
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    placeholder="username"
+                    value={newStaffUsername}
+                    onChange={(e) => setNewStaffUsername(e.target.value)}
+                    className="px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-[11px] text-navy-800 font-mono"
+                    required
+                  />
+                  <input
+                    type="password"
+                    placeholder="password"
+                    value={newStaffPassword}
+                    onChange={(e) => setNewStaffPassword(e.target.value)}
+                    className="px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-[11px] text-navy-800"
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    placeholder="Full name"
+                    value={newStaffFullName}
+                    onChange={(e) => setNewStaffFullName(e.target.value)}
+                    className="px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-[11px] text-navy-800"
+                    required
+                  />
+                  <select
+                    value={newStaffRole}
+                    onChange={(e) => setNewStaffRole(e.target.value)}
+                    className="px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-[11px] text-navy-800"
+                  >
+                    <option value="GATEKEEPER">Gatekeeper</option>
+                    <option value="COUNTER">Counter</option>
+                  </select>
+                </div>
+                <button
+                  type="submit"
+                  disabled={creatingStaff}
+                  className="w-full py-2 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-lg text-[11px] disabled:opacity-50"
+                >
+                  {creatingStaff ? 'Creating...' : 'Create Staff Login'}
+                </button>
+              </form>
+            </div>
           </div>
         )}
       </div>

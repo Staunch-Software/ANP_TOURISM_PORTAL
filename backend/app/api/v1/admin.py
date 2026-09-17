@@ -27,6 +27,9 @@ from app.schemas.admin import (
     UserRoleUpdateRequest,
     SlotCapacityUpdateRequest,
     SlotCapacityUpdateResponse,
+    DirectUserCreateRequest,
+    OperatorApplicationSummary,
+    OperatorApplicationDecisionRequest,
 )
 
 router = APIRouter(prefix="/admin", tags=["Government Admin MIS & Harbor Manifest"])
@@ -41,13 +44,24 @@ def verify_admin_role(current_user: User = Depends(get_current_user)) -> User:
     return current_user
 
 
+def verify_admin_or_operator_role(current_user: User = Depends(get_current_user)) -> User:
+    """Voyage manifests are needed by both the Directorate (oversight) and
+    the vessel operator (boarding roster) per RFP Clause 7.2.1-II/III."""
+    if current_user.user_type not in ["ADMIN", "TOURISM_OFFICER", "OPERATOR"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access Denied: Requires Administrator or Ferry Operator privilege",
+        )
+    return current_user
+
+
 # -------------------------------------------------------------
 # 1. Harbor Passenger Manifest (JSON Data)
 # -------------------------------------------------------------
 @router.get("/manifest/{schedule_id}", response_model=HarborManifestResponse)
 async def get_harbor_manifest(
     schedule_id: str,
-    admin_user: User = Depends(verify_admin_role),
+    admin_user: User = Depends(verify_admin_or_operator_role),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -112,7 +126,7 @@ async def get_harbor_manifest(
 @router.get("/manifest/{schedule_id}/export-csv")
 async def export_harbor_manifest_csv(
     schedule_id: str,
-    admin_user: User = Depends(verify_admin_role),
+    admin_user: User = Depends(verify_admin_or_operator_role),
     db: AsyncSession = Depends(get_db),
 ):
     manifest_data = await get_harbor_manifest(schedule_id, admin_user, db)
@@ -367,3 +381,144 @@ async def update_slot_capacity(
         available_seats=available,
         message=f"Slot capacity successfully updated to {slot.total_capacity} seats ({payload.reason})",
     )
+
+
+# -------------------------------------------------------------
+# 7. Direct User Creation & Service Provider Approval Workflow
+# (RFP Clauses 7.2.1-1, 7.2.1-7, 7.2.1-III/IV, Pages 24, 28, 30-31)
+# -------------------------------------------------------------
+def _user_to_summary(u: User) -> UserSummary:
+    return UserSummary(
+        user_id=str(u.id),
+        phone_number=u.phone_number,
+        full_name=u.full_name,
+        email=u.email,
+        role=u.user_type,
+        is_active=u.is_active,
+        created_at=str(u.created_at),
+    )
+
+
+def _user_to_application_summary(u: User) -> OperatorApplicationSummary:
+    return OperatorApplicationSummary(
+        user_id=str(u.id),
+        phone_number=u.phone_number,
+        full_name=u.full_name,
+        email=u.email,
+        business_name=u.business_name,
+        gstin=u.gstin,
+        trade_license_number=u.trade_license_number,
+        service_category=u.service_category,
+        approval_status=u.approval_status,
+        approval_notes=u.approval_notes,
+        created_at=str(u.created_at),
+    )
+
+
+@router.post("/users/create", response_model=UserSummary)
+async def admin_create_user(
+    payload: DirectUserCreateRequest,
+    admin_user: User = Depends(verify_admin_role),
+    db: AsyncSession = Depends(get_db),
+):
+    """Path B of the onboarding workflow: Directorate admin directly
+    provisions a user with any role, bypassing the self-service
+    application queue."""
+    if payload.role not in VALID_ROLES:
+        raise HTTPException(status_code=400, detail=f"Role must be one of {sorted(VALID_ROLES)}")
+
+    res = await db.execute(select(User).where(User.phone_number == payload.phone_number))
+    existing = res.scalars().first()
+
+    if existing:
+        existing.full_name = payload.full_name
+        existing.user_type = payload.role
+        if payload.email:
+            existing.email = payload.email
+        await db.commit()
+        await db.refresh(existing)
+        return _user_to_summary(existing)
+
+    new_user = User(
+        phone_number=payload.phone_number,
+        full_name=payload.full_name,
+        email=payload.email,
+        user_type=payload.role,
+        is_active=True,
+    )
+    db.add(new_user)
+    await db.commit()
+    await db.refresh(new_user)
+    return _user_to_summary(new_user)
+
+
+@router.get("/operator-applications", response_model=List[OperatorApplicationSummary])
+async def list_operator_applications(
+    application_status: str = "PENDING",
+    admin_user: User = Depends(verify_admin_role),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lists Service Provider self-registrations awaiting (or already
+    given) a decision. Pass ?application_status=APPROVED or REJECTED
+    to see historical decisions instead of the pending queue."""
+    res = await db.execute(
+        select(User)
+        .where(User.approval_status == application_status)
+        .order_by(User.created_at.asc())
+    )
+    applicants = res.scalars().all()
+    return [_user_to_application_summary(u) for u in applicants]
+
+
+@router.post("/operator-applications/{user_id}/approve", response_model=OperatorApplicationSummary)
+async def approve_operator_application(
+    user_id: str,
+    payload: OperatorApplicationDecisionRequest,
+    admin_user: User = Depends(verify_admin_role),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        target_uuid = uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid User UUID")
+
+    res = await db.execute(select(User).where(User.id == target_uuid))
+    applicant = res.scalars().first()
+    if not applicant:
+        raise HTTPException(status_code=404, detail="Application not found")
+    if applicant.approval_status != "PENDING":
+        raise HTTPException(status_code=400, detail=f"Application is already {applicant.approval_status}, not PENDING")
+
+    applicant.approval_status = "APPROVED"
+    applicant.approval_notes = payload.reason
+    applicant.user_type = "OPERATOR"
+    applicant.is_active = True
+    await db.commit()
+    await db.refresh(applicant)
+    return _user_to_application_summary(applicant)
+
+
+@router.post("/operator-applications/{user_id}/reject", response_model=OperatorApplicationSummary)
+async def reject_operator_application(
+    user_id: str,
+    payload: OperatorApplicationDecisionRequest,
+    admin_user: User = Depends(verify_admin_role),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        target_uuid = uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid User UUID")
+
+    res = await db.execute(select(User).where(User.id == target_uuid))
+    applicant = res.scalars().first()
+    if not applicant:
+        raise HTTPException(status_code=404, detail="Application not found")
+    if applicant.approval_status != "PENDING":
+        raise HTTPException(status_code=400, detail=f"Application is already {applicant.approval_status}, not PENDING")
+
+    applicant.approval_status = "REJECTED"
+    applicant.approval_notes = payload.reason
+    await db.commit()
+    await db.refresh(applicant)
+    return _user_to_application_summary(applicant)

@@ -4,8 +4,8 @@ import { ShieldCheck, Phone, KeyRound, User, Mail, Globe, ArrowRight, AlertCircl
 
 export function LoginModal({ isOpen, onClose, onLoginSuccess }) {
   const [step, setStep] = useState('PHONE'); // PHONE -> OTP -> PROFILE
-  const [phoneNumber, setPhoneNumber] = useState('9999999999');
-  const [otp, setOtp] = useState('123456');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -22,7 +22,8 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess }) {
   useEffect(() => {
     if (isOpen) {
       setStep('PHONE');
-      setOtp('123456');
+      setPhoneNumber('');
+      setOtp('');
       setError(null);
       setFullName('');
       setEmail('');

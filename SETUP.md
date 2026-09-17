@@ -106,15 +106,20 @@ Open `http://localhost:5173`.
 
 - Phone: any 10-digit number
 - OTP: `123456` (hardcoded for demo/dev — no real SMS is sent)
-- To get **Admin** access, promote a user manually after their first login:
+- To get **Admin** access, run the admin seed script:
 
   ```bash
-  # Docker:
-  docker exec -it aniidco_postgres psql -U postgres -d aniidco_portal -c "UPDATE users SET user_type='ADMIN' WHERE phone_number='<their number>';"
+  cd backend
+  venv\Scripts\activate          # Windows
+  # source venv/bin/activate     # Mac/Linux
 
-  # Native Postgres:
-  psql -U postgres -d aniidco_portal -c "UPDATE users SET user_type='ADMIN' WHERE phone_number='<their number>';"
+  python seed_admin.py
   ```
+
+  With no arguments, it creates/promotes a default admin account (`9000000001`) and prints
+  the phone number + OTP to log in with right in the terminal. Or pass your own number:
+  `python seed_admin.py <phone_number>`. Safe to re-run — it just confirms the account is
+  already ADMIN if it's run again.
 
 ---
 

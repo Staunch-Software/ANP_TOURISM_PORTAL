@@ -23,6 +23,8 @@ from app.models.ticket import Ticket
 from app.models.attraction import Attraction, AttractionSlot
 from app.models.ferry import Vessel, FerrySchedule, FerrySeat
 from app.models.lpu_heartbeat import LPUHeartbeat
+from app.models.gate import Gate, GateService
+from app.models.gate_staff import GateStaff
 
 config = context.config
 

@@ -10,7 +10,14 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.redis import get_redis
 from app.models.user import User
-from app.schemas.auth import OTPRequest, TokenResponse, ProfileResponse, ProfileUpdateRequest
+from app.schemas.auth import (
+    OTPRequest,
+    TokenResponse,
+    ProfileResponse,
+    ProfileUpdateRequest,
+    OperatorRegistrationRequest,
+    OperatorRegistrationResponse,
+)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -105,6 +112,7 @@ async def get_my_profile(current_user: User = Depends(get_current_user)):
         nationality=current_user.nationality,
         role=current_user.user_type,
         profile_complete=bool(current_user.email),
+        approval_status=current_user.approval_status,
     )
 
 
@@ -130,4 +138,49 @@ async def update_my_profile(
         nationality=current_user.nationality,
         role=current_user.user_type,
         profile_complete=bool(current_user.email),
+        approval_status=current_user.approval_status,
+    )
+
+
+VALID_SERVICE_CATEGORIES = {"FERRY_OPERATOR", "WATER_SPORTS"}
+
+
+@router.post("/register-operator", response_model=OperatorRegistrationResponse)
+async def register_operator(
+    req: OperatorRegistrationRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    RFP Clause 7.2.1-1/7 (Pages 24, 28): Self-service Service Provider
+    onboarding. The applicant must already be a verified phone number
+    (signed in via OTP) — this call attaches their business details and
+    puts the account into PENDING approval. Their role stays unchanged
+    (they do NOT become an OPERATOR) until an administrator approves
+    the application via /admin/operator-applications/{id}/approve.
+    """
+    if req.service_category not in VALID_SERVICE_CATEGORIES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"service_category must be one of {sorted(VALID_SERVICE_CATEGORIES)}",
+        )
+
+    if current_user.approval_status == "PENDING":
+        raise HTTPException(status_code=400, detail="An application is already pending review for this account.")
+
+    current_user.business_name = req.business_name
+    current_user.gstin = req.gstin
+    current_user.trade_license_number = req.trade_license_number
+    current_user.service_category = req.service_category
+    current_user.email = req.email
+    current_user.approval_status = "PENDING"
+    current_user.approval_notes = None
+    await db.commit()
+    await db.refresh(current_user)
+
+    return OperatorRegistrationResponse(
+        user_id=str(current_user.id),
+        business_name=current_user.business_name,
+        approval_status=current_user.approval_status,
+        message="Application submitted. ANIIDCO will review your documents and notify you once approved.",
     )
