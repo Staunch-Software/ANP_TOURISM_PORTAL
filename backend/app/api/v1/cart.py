@@ -214,7 +214,7 @@ async def checkout_cart(
     db.add(order)
     await db.flush()
 
-    for item_str in raw_items:
+    for position, item_str in enumerate(raw_items):
         item = json.loads(item_str)
         item_price = float(item["price"])
         gross_total += item_price
@@ -222,6 +222,7 @@ async def checkout_cart(
 
         oi = OrderItem(
             order_id=order.id,
+            position=position,
             item_type=item["item_type"],
             attraction_slot_id=uuid.UUID(item["slot_id"]) if item["item_type"] == "ATTRACTION" else None,
             ferry_seat_id=uuid.UUID(item["seat_id"]) if item["item_type"] == "FERRY" else None,

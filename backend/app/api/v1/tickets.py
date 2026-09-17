@@ -8,6 +8,7 @@ from app.core.database import get_db
 from app.models.user import User
 from app.models.ticket import Ticket
 from app.api.v1.auth import get_current_user
+from app.core.config import settings
 from app.services.crypto_service import verify_ticket_offline, get_public_key_hex
 from app.schemas.ticket import TicketPassResponse, OfflineVerificationResponse
 
@@ -53,7 +54,13 @@ async def get_offline_scanner_public_key():
     return {
         "algorithm": "Ed25519",
         "public_key_hex": get_public_key_hex(),
-        "description": "Bake this public key into Android scanners & turnstiles for 100% offline verification",
+        "lpu_fleet_public_key_hex": settings.LPU_ED25519_PUBLIC_KEY_HEX or None,
+        "description": (
+            "Bake public_key_hex into Android scanners & turnstiles for 100% offline "
+            "verification of web/app-issued tickets. lpu_fleet_public_key_hex additionally "
+            "verifies tickets issued offline at an LPU counter, signed with the LPU fleet's "
+            "own key -- both are needed to accept every valid ticket at a gate."
+        ),
     }
 
 

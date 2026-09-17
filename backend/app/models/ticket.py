@@ -32,3 +32,33 @@ class Ticket(Base):
     check_in_status = Column(String(30), default="ISSUED")  # ISSUED, CHECKED_IN, CANCELLED
     checked_in_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Where this ticket originated: "CLOUD" (this web/app checkout) or
+    # "COUNTER" (issued offline by an LPU at a physical ticket counter,
+    # see POST /sync/counter-tickets). Counter-origin tickets are signed
+    # with the LPU fleet's own keypair, not this server's.
+    issued_by = Column(String(20), default="CLOUD")
+    site_id = Column(String(50), nullable=True)  # LPU site that issued/checked in this ticket
+
+    # --- Multi-attraction booking support (RFP p.28: "A Unified QR code
+    # can be utilized for a single booking transaction across multiple
+    # attractions") ---
+    # `booking_ref` groups every Ticket row that shares one signed QR --
+    # for a single-attraction purchase this is just `ticket_ref` again
+    # (see payments.py). `item_index` is that row's position among the
+    # booking's attractions, matching the position of its entry in the
+    # signed payload's `items` array -- an LPU matches a scan to a local
+    # row by that position, so a booking's rows must never be reordered
+    # once first synced.
+    booking_ref = Column(String(50), nullable=True, index=True)
+    item_index = Column(Integer, nullable=True)
+
+    # Monotonic counter for this leg. Bumped here (the authoritative side
+    # for create/cancel) on every state change this server makes -- see
+    # api/v1/payments.py (starts at 1) and api/v1/sync.py's push_checkin
+    # (bumped on a successful check-in from an LPU). The LPU fleet merges
+    # incoming snapshots by comparing this instead of `updated_at`, since
+    # an LPU device's clock can drift after days offline in a way a plain
+    # integer, bumped once per real event, can't be fooled by.
+    version = Column(Integer, nullable=False, default=1)

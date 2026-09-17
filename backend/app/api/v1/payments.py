@@ -41,10 +41,10 @@ async def confirm_payment_and_issue_tickets(
         await db.commit()
         raise HTTPException(status_code=400, detail="Payment declined by bank")
 
-    items_res = await db.execute(select(OrderItem).where(OrderItem.order_id == order.id))
+    items_res = await db.execute(
+        select(OrderItem).where(OrderItem.order_id == order.id).order_by(OrderItem.position)
+    )
     order_items = items_res.scalars().all()
-
-    tickets_to_create = []
 
     for item in order_items:
         if item.item_type == "FERRY" and item.ferry_seat_id:
@@ -64,23 +64,36 @@ async def confirm_payment_and_issue_tickets(
                 if cur > 0:
                     await r.decr(slot_hold_key)
 
+    # One booking -> one signed QR covering every attraction in the order
+    # (RFP p.28: "A Unified QR code can be utilized for a single booking
+    # transaction across multiple attractions"), instead of a separate QR
+    # per attraction. All passengers in a multi-item booking share one QR
+    # scanned once per attraction, so the payload is keyed on the FIRST
+    # passenger for "pax"/"doc" -- individual passenger details per leg
+    # still live on each Ticket row for the wallet/admin views.
+    booking_ref = order.order_ref
+    head_item = order_items[0]
+
+    payload_dict = {
+        "ref": booking_ref,
+        "items": [
+            {"typ": item.item_type, "ttl": item.title, "sub": item.slot_or_seat_info}
+            for item in order_items
+        ],
+        "pax": head_item.passenger_name,
+        "doc": f"{head_item.id_type}:{head_item.id_number[-4:]}",
+        "iss": "ANIIDCO_GOVT_AN",
+        "iat": int(datetime.utcnow().timestamp()),
+    }
+    compact_json, signature_b64 = sign_ticket_payload(payload_dict)
+
+    tickets_to_create = []
+    for item_index, item in enumerate(order_items):
         ticket_ref = f"AN-2026-TKT-{random.randint(100000, 999999)}"
-
-        payload_dict = {
-            "ref": ticket_ref,
-            "typ": item.item_type,
-            "ttl": item.title,
-            "sub": item.slot_or_seat_info,
-            "pax": item.passenger_name,
-            "doc": f"{item.id_type}:{item.id_number[-4:]}",
-            "iss": "ANIIDCO_GOVT_AN",
-            "iat": int(datetime.utcnow().timestamp()),
-        }
-
-        compact_json, signature_b64 = sign_ticket_payload(payload_dict)
-
         ticket = Ticket(
             ticket_ref=ticket_ref,
+            booking_ref=booking_ref,
+            item_index=item_index,
             order_id=order.id,
             order_item_id=item.id,
             user_id=current_user.id,
@@ -95,6 +108,7 @@ async def confirm_payment_and_issue_tickets(
             qr_payload_json=compact_json,
             qr_signature_b64=signature_b64,
             check_in_status="ISSUED",
+            issued_by="CLOUD",
         )
         tickets_to_create.append(ticket)
 
