@@ -106,20 +106,20 @@ Open `http://localhost:5173`.
 
 - Phone: any 10-digit number
 - OTP: `123456` (hardcoded for demo/dev — no real SMS is sent)
-- To get **Admin** access, run the admin seed script with the phone number you want to promote
-  (works whether or not that number has logged in yet — it creates the account if needed):
+- To get **Admin** access, run the admin seed script:
 
   ```bash
   cd backend
   venv\Scripts\activate          # Windows
   # source venv/bin/activate     # Mac/Linux
 
-  python seed_admin.py <phone_number>
-  # example: python seed_admin.py 9999999999
+  python seed_admin.py
   ```
 
-  Then log in with that number to see the **Admin MIS** tab. Safe to re-run — it just confirms
-  the account is already ADMIN if it's run again.
+  With no arguments, it creates/promotes a default admin account (`9000000001`) and prints
+  the phone number + OTP to log in with right in the terminal. Or pass your own number:
+  `python seed_admin.py <phone_number>`. Safe to re-run — it just confirms the account is
+  already ADMIN if it's run again.
 
 ---
 
