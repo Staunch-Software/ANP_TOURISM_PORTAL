@@ -7,11 +7,14 @@ import { FerrySearch } from './components/FerrySearch';
 import { CartDrawer } from './components/CartDrawer';
 import { DigitalWallet } from './components/DigitalWallet';
 import { AdminDashboard } from './components/AdminDashboard';
+import { OperatorDashboard } from './components/OperatorDashboard';
+import { OperatorRegisterModal } from './components/OperatorRegisterModal';
 import { Waves } from 'lucide-react';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const [isOperatorRegisterOpen, setIsOperatorRegisterOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('ATTRACTIONS');
   const [cartCount, setCartCount] = useState(0);
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -145,6 +148,10 @@ export default function App() {
         {activeTab === 'ADMIN' && (
           <AdminDashboard user={currentUser} />
         )}
+
+        {activeTab === 'OPERATOR' && (
+          <OperatorDashboard user={currentUser} />
+        )}
       </main>
 
       <footer className="bg-navy-900 text-slate-400 py-8 px-4 mt-auto">
@@ -157,6 +164,15 @@ export default function App() {
             <div className="text-slate-300 font-bold text-xs mb-1">Support</div>
             <div>Helpline: 1800-345-0000</div>
             <div>grievance@aniidco.gov.in</div>
+          </div>
+          <div className="text-[11.5px] leading-loose">
+            <div className="text-slate-300 font-bold text-xs mb-1">For Businesses</div>
+            <button
+              onClick={() => setIsOperatorRegisterOpen(true)}
+              className="text-cyan-300 hover:text-cyan-200 underline underline-offset-2"
+            >
+              Partner with ANIIDCO — Register as an Operator
+            </button>
           </div>
         </div>
         <div className="max-w-7xl mx-auto border-t border-navy-700 mt-4 pt-3 text-[10.5px] text-slate-500">
@@ -181,6 +197,11 @@ export default function App() {
           refreshCartCount();
           setActiveTab('PASSES');
         }}
+      />
+
+      <OperatorRegisterModal
+        isOpen={isOperatorRegisterOpen}
+        onClose={() => setIsOperatorRegisterOpen(false)}
       />
     </div>
   );

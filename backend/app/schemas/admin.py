@@ -80,3 +80,28 @@ class SlotCapacityUpdateResponse(BaseModel):
     booked_count: int
     available_seats: int
     message: str
+
+
+class DirectUserCreateRequest(BaseModel):
+    phone_number: str
+    full_name: str
+    email: Optional[str] = None
+    role: str  # TOURIST, ADMIN, OPERATOR, VENDOR
+
+
+class OperatorApplicationSummary(BaseModel):
+    user_id: str
+    phone_number: str
+    full_name: str
+    email: Optional[str] = None
+    business_name: Optional[str] = None
+    gstin: Optional[str] = None
+    trade_license_number: Optional[str] = None
+    service_category: Optional[str] = None
+    approval_status: str
+    approval_notes: Optional[str] = None
+    created_at: str
+
+
+class OperatorApplicationDecisionRequest(BaseModel):
+    reason: Optional[str] = None

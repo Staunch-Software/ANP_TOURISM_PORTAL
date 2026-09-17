@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import API from '../api/client';
 import {
   ShieldCheck, TrendingUp, Users, DollarSign, Download,
-  Ship, CloudRain, CheckCircle2, FileSpreadsheet, RefreshCw, Sliders
+  Ship, CloudRain, CheckCircle2, FileSpreadsheet, RefreshCw, Sliders,
+  UserPlus, ShieldAlert
 } from 'lucide-react';
 
 export function AdminDashboard({ user }) {
@@ -26,12 +27,89 @@ export function AdminDashboard({ user }) {
   const [usersLoading, setUsersLoading] = useState(false);
   const [savingUserId, setSavingUserId] = useState(null);
 
+  // Direct User Creation (Path B) & Operator Application Approvals (Path A)
+  // — RFP Clauses 7.2.1-1, 7.2.1-7, 7.2.1-III/IV
+  const [newPhone, setNewPhone] = useState('');
+  const [newName, setNewName] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newRole, setNewRole] = useState('OPERATOR');
+  const [creatingUser, setCreatingUser] = useState(false);
+  const [createUserMessage, setCreateUserMessage] = useState(null);
+
+  const [applications, setApplications] = useState([]);
+  const [applicationsLoading, setApplicationsLoading] = useState(false);
+  const [decidingApplicationId, setDecidingApplicationId] = useState(null);
+
   useEffect(() => {
     fetchMISData();
     fetchSchedules();
     fetchAttractionsList();
     fetchUsers();
+    fetchApplications();
   }, []);
+
+  const fetchApplications = async () => {
+    setApplicationsLoading(true);
+    try {
+      const res = await API.get('/admin/operator-applications?application_status=PENDING');
+      setApplications(res.data);
+    } catch (err) {
+      console.error("Failed to load operator applications", err);
+    } finally {
+      setApplicationsLoading(false);
+    }
+  };
+
+  const handleDirectCreateUser = async (e) => {
+    e.preventDefault();
+    setCreatingUser(true);
+    setCreateUserMessage(null);
+    try {
+      const res = await API.post('/admin/users/create', {
+        phone_number: newPhone,
+        full_name: newName,
+        email: newEmail || null,
+        role: newRole,
+      });
+      setCreateUserMessage({ type: 'SUCCESS', text: `${res.data.full_name} (${res.data.phone_number}) provisioned as ${res.data.role}.` });
+      setNewPhone('');
+      setNewName('');
+      setNewEmail('');
+      setNewRole('OPERATOR');
+      fetchUsers();
+    } catch (err) {
+      setCreateUserMessage({ type: 'ERROR', text: err.response?.data?.detail || 'Failed to create user' });
+    } finally {
+      setCreatingUser(false);
+    }
+  };
+
+  const handleApproveApplication = async (applicationId) => {
+    setDecidingApplicationId(applicationId);
+    try {
+      await API.post(`/admin/operator-applications/${applicationId}/approve`, { reason: 'Documents verified by Directorate' });
+      fetchApplications();
+      fetchUsers();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to approve application');
+    } finally {
+      setDecidingApplicationId(null);
+    }
+  };
+
+  const handleRejectApplication = async (applicationId) => {
+    const reason = window.prompt('Reason for rejection (shown to the applicant):', 'Documents could not be verified');
+    if (reason === null) return;
+    setDecidingApplicationId(applicationId);
+    try {
+      await API.post(`/admin/operator-applications/${applicationId}/reject`, { reason });
+      fetchApplications();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to reject application');
+    } finally {
+      setDecidingApplicationId(null);
+    }
+  };
 
   const fetchUsers = async () => {
     setUsersLoading(true);
@@ -585,6 +663,157 @@ export function AdminDashboard({ user }) {
             </table>
           </div>
         )}
+      </div>
+
+      {/* 6. Stakeholder Governance & Service Provider Onboarding
+          (RFP Clauses 7.2.1-1, 7.2.1-7, 7.2.1-III/IV, Pages 24, 28, 30-31) */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
+        <div>
+          <span className="text-[10px] font-extrabold uppercase tracking-widest text-cyan-700">
+            RFP Clause 7.2.1-III Compliance
+          </span>
+          <h3 className="font-serif text-lg font-black text-navy-800 flex items-center gap-2">
+            <Users className="w-5 h-5 text-cyan-600" /> Stakeholder Governance &amp; Operator Approvals
+          </h3>
+          <p className="text-xs text-slate-500">
+            Review service provider compliance documents and provision administrative or operational staff directly.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Path B: Direct Create User */}
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
+            <h4 className="text-sm font-bold text-navy-800 flex items-center gap-1.5">
+              <UserPlus className="w-4 h-4 text-cyan-600" /> Direct User Creation &amp; Role Assignment
+            </h4>
+
+            {createUserMessage && (
+              <div className={`p-2.5 rounded-lg text-[11px] font-medium ${
+                createUserMessage.type === 'SUCCESS' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'
+              }`}>
+                {createUserMessage.text}
+              </div>
+            )}
+
+            <form onSubmit={handleDirectCreateUser} className="space-y-3">
+              <div>
+                <label className="text-[11px] text-slate-500 block mb-1">Mobile Number</label>
+                <input
+                  type="tel"
+                  maxLength="10"
+                  placeholder="9876543210"
+                  value={newPhone}
+                  onChange={(e) => setNewPhone(e.target.value.replace(/\D/g, ''))}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-[11px] text-slate-500 block mb-1">Full Legal Name / Agency Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Makruzz Operations Head"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] text-slate-500 block mb-1">Assigned Role</label>
+                  <select
+                    value={newRole}
+                    onChange={(e) => setNewRole(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+                  >
+                    <option value="OPERATOR">Ferry Operator</option>
+                    <option value="ADMIN">Directorate Admin</option>
+                    <option value="VENDOR">Vendor / Counter Staff</option>
+                    <option value="TOURIST">Standard Tourist</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-500 block mb-1">Email ID</label>
+                  <input
+                    type="email"
+                    placeholder="ops@makruzz.com"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+                  />
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={creatingUser}
+                className="w-full py-2.5 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-lg text-xs shadow-md disabled:opacity-50"
+              >
+                {creatingUser ? 'Provisioning...' : 'Provision User & Assign Role'}
+              </button>
+            </form>
+          </div>
+
+          {/* Path A: Pending Service Provider Applications */}
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
+            <div className="flex justify-between items-center">
+              <h4 className="text-sm font-bold text-navy-800 flex items-center gap-1.5">
+                <ShieldAlert className="w-4 h-4 text-amber-600" /> Pending Service Provider Approvals
+              </h4>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                {applications.length} Pending
+              </span>
+            </div>
+
+            {applicationsLoading ? (
+              <p className="text-xs text-slate-400 text-center py-6">Loading applications...</p>
+            ) : applications.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-6">No pending applications right now.</p>
+            ) : (
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                {applications.map((app) => {
+                  const isDeciding = decidingApplicationId === app.user_id;
+                  return (
+                    <div key={app.user_id} className="p-3.5 bg-white border border-slate-200 rounded-xl space-y-2">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <strong className="text-xs text-navy-800 block">{app.business_name}</strong>
+                          <span className="text-[11px] text-slate-500 font-mono">GSTIN: {app.gstin}</span>
+                        </div>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                          PENDING KYC
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-500 flex justify-between pt-1 border-t border-slate-100">
+                        <span>License: <strong className="text-navy-800">{app.trade_license_number}</strong></span>
+                        <span>Category: <strong className="text-navy-800">{app.service_category?.replace('_', ' ')}</strong></span>
+                      </div>
+                      <div className="text-[11px] text-slate-500">
+                        Applicant: <strong className="text-navy-800">{app.full_name}</strong> · {app.phone_number} · {app.email}
+                      </div>
+                      <div className="flex gap-2 pt-2">
+                        <button
+                          disabled={isDeciding}
+                          onClick={() => handleApproveApplication(app.user_id)}
+                          className="flex-1 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold disabled:opacity-50"
+                        >
+                          {isDeciding ? 'Working...' : 'Approve & Onboard'}
+                        </button>
+                        <button
+                          disabled={isDeciding}
+                          onClick={() => handleRejectApplication(app.user_id)}
+                          className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-medium disabled:opacity-50"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
