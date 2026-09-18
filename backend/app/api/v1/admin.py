@@ -16,6 +16,7 @@ from app.models.order import Order, OrderItem
 from app.models.ticket import Ticket
 from app.models.ferry import FerrySchedule, FerrySeat, Vessel
 from app.models.attraction import AttractionSlot
+from app.models.admin_alert import AdminAlert
 from app.api.v1.auth import get_current_user
 from app.schemas.admin import (
     HarborManifestResponse,
@@ -30,6 +31,7 @@ from app.schemas.admin import (
     DirectUserCreateRequest,
     OperatorApplicationSummary,
     OperatorApplicationDecisionRequest,
+    AdminAlertSummary,
 )
 
 router = APIRouter(prefix="/admin", tags=["Government Admin MIS & Harbor Manifest"])
@@ -515,7 +517,9 @@ async def approve_operator_application(
 
     applicant.approval_status = "APPROVED"
     applicant.approval_notes = payload.reason
-    applicant.user_type = "OPERATOR"
+    # FERRY_OPERATOR applicants become OPERATOR; WATER_SPORTS applicants
+    # become VENDOR — service_category was captured at registration time.
+    applicant.user_type = "OPERATOR" if applicant.service_category == "FERRY_OPERATOR" else "VENDOR"
     applicant.is_active = True
     await db.commit()
     await db.refresh(applicant)
@@ -546,3 +550,52 @@ async def reject_operator_application(
     await db.commit()
     await db.refresh(applicant)
     return _user_to_application_summary(applicant)
+
+
+# -------------------------------------------------------------
+# 8. Fraud/Compliance Alerts (RFP Group Bookings Clause V)
+# -------------------------------------------------------------
+def _alert_to_summary(a: AdminAlert) -> AdminAlertSummary:
+    return AdminAlertSummary(
+        alert_id=str(a.id),
+        alert_type=a.alert_type,
+        message=a.message,
+        related_order_id=str(a.related_order_id) if a.related_order_id else None,
+        is_resolved=a.is_resolved,
+        created_at=str(a.created_at),
+    )
+
+
+@router.get("/alerts", response_model=List[AdminAlertSummary])
+async def list_admin_alerts(
+    include_resolved: bool = False,
+    admin_user: User = Depends(verify_admin_role),
+    db: AsyncSession = Depends(get_db),
+):
+    query = select(AdminAlert).order_by(AdminAlert.created_at.desc())
+    if not include_resolved:
+        query = query.where(AdminAlert.is_resolved == False)
+    res = await db.execute(query)
+    return [_alert_to_summary(a) for a in res.scalars().all()]
+
+
+@router.post("/alerts/{alert_id}/resolve", response_model=AdminAlertSummary)
+async def resolve_admin_alert(
+    alert_id: str,
+    admin_user: User = Depends(verify_admin_role),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        alert_uuid = uuid.UUID(alert_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid Alert UUID")
+
+    res = await db.execute(select(AdminAlert).where(AdminAlert.id == alert_uuid))
+    alert = res.scalars().first()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    alert.is_resolved = True
+    await db.commit()
+    await db.refresh(alert)
+    return _alert_to_summary(alert)

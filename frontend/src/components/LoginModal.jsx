@@ -1,16 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import API from '../api/client';
-import { ShieldCheck, Landmark, Phone, KeyRound, User, Mail, Globe, ArrowRight, AlertCircle } from 'lucide-react';
+import {
+  ShieldCheck, Landmark, Phone, KeyRound, User, Mail, Globe, ArrowRight,
+  AlertCircle, Lock,
+} from 'lucide-react';
 
-// Purely a presentational split — both contexts hit the exact same
-// /auth/verify-otp flow and the backend decides the real role from the
-// phone number. This just tailors the copy/icon so a tourist never sees
-// government-staff language and staff get an entry point that doesn't
-// look like a generic "sign in" button.
+// Purely a presentational split — both contexts hit the exact same auth
+// endpoints and the backend decides the real role from the phone number.
+// This just tailors the copy/icon so a tourist never sees government-staff
+// language and staff get an entry point that doesn't look like a generic
+// "sign in" button.
 const CONTEXT_COPY = {
   VISITOR: {
     icon: ShieldCheck,
-    title: 'Visitor Authentication (2FA)',
+    title: 'Visitor Login',
     subtitle: 'Strict Single-Session Concurrency (RFP 7.1.12)',
   },
   STAFF: {
@@ -21,9 +24,21 @@ const CONTEXT_COPY = {
 };
 
 export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VISITOR' }) {
-  const [step, setStep] = useState('PHONE'); // PHONE -> OTP -> PROFILE
+  // CREDENTIALS: phone + password (RFP 7.2.1-1 default subsequent login)
+  // PHONE -> OTP: first-time registration, or the "Login with OTP" /
+  //   "Forgot Password" fallback (otpIntent distinguishes the two)
+  // SET_PASSWORD: shown once right after OTP if the account has no
+  //   password yet, or whenever the OTP path was entered via "Forgot
+  //   Password" (otpIntent === 'RESET')
+  // PROFILE: RFP 7.2.1-1 mandatory profile fields, if still incomplete
+  const [step, setStep] = useState('CREDENTIALS');
+  const [otpIntent, setOtpIntent] = useState('REGISTER'); // 'REGISTER' | 'RESET'
+
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [password, setPassword] = useState('');
   const [otp, setOtp] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -35,13 +50,16 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
 
   // Reset to a fresh sign-in flow every time the modal is (re)opened —
   // otherwise it re-mounts hidden and remembers whatever step/error state
-  // was left over from the previous session (e.g. reopens straight to OTP
-  // after a prior successful login + logout).
+  // was left over from the previous session.
   useEffect(() => {
     if (isOpen) {
-      setStep('PHONE');
+      setStep('CREDENTIALS');
+      setOtpIntent('REGISTER');
       setPhoneNumber('');
+      setPassword('');
       setOtp('');
+      setNewPassword('');
+      setConfirmPassword('');
       setError(null);
       setFullName('');
       setEmail('');
@@ -51,6 +69,47 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
   }, [isOpen]);
 
   if (!isOpen) return null;
+
+  const afterAuthenticated = (profile) => {
+    localStorage.setItem('aniidco_user', JSON.stringify(profile));
+
+    if (otpIntent === 'RESET' || !profile.has_password) {
+      setStep('SET_PASSWORD');
+      return;
+    }
+    // RFP Section 7.2.1-1: registration must capture full legal name,
+    // email, nationality, and state/country before a booking can proceed.
+    if (!profile.profile_complete) {
+      setFullName(profile.full_name === 'Valued Tourist' ? '' : profile.full_name);
+      setNationality(profile.nationality || 'INDIAN');
+      setStep('PROFILE');
+      return;
+    }
+    onLoginSuccess(profile);
+    onClose();
+  };
+
+  const handlePasswordLogin = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await API.post('/auth/login-password', { phone_number: phoneNumber, password });
+      localStorage.setItem('aniidco_token', res.data.access_token);
+      const profileRes = await API.get('/auth/me');
+      afterAuthenticated(profileRes.data);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Invalid mobile number or password.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const goToOtpFlow = (intent) => {
+    setOtpIntent(intent);
+    setError(null);
+    setStep('PHONE');
+  };
 
   const handleSendOtp = (e) => {
     e.preventDefault();
@@ -72,24 +131,43 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
         phone_number: phoneNumber,
         otp: otp,
       });
-
       localStorage.setItem('aniidco_token', res.data.access_token);
-
       const profileRes = await API.get('/auth/me');
-      localStorage.setItem('aniidco_user', JSON.stringify(profileRes.data));
+      afterAuthenticated(profileRes.data);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Authentication failed. Please check OTP.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      // RFP Section 7.2.1-1: registration must capture full legal name,
-      // email, nationality, and state/country before a booking can proceed.
-      if (!profileRes.data.profile_complete) {
-        setFullName(profileRes.data.full_name === 'Valued Tourist' ? '' : profileRes.data.full_name);
-        setNationality(profileRes.data.nationality || 'INDIAN');
+  const handleSetPassword = async (e) => {
+    e.preventDefault();
+    setError(null);
+    if (newPassword.length < 8) {
+      setError('Password must be at least 8 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const endpoint = otpIntent === 'RESET' ? '/auth/reset-password' : '/auth/set-password';
+      const res = await API.post(endpoint, { password: newPassword });
+      localStorage.setItem('aniidco_user', JSON.stringify(res.data));
+
+      if (!res.data.profile_complete) {
+        setFullName(res.data.full_name === 'Valued Tourist' ? '' : res.data.full_name);
+        setNationality(res.data.nationality || 'INDIAN');
         setStep('PROFILE');
       } else {
-        onLoginSuccess(profileRes.data);
+        onLoginSuccess(res.data);
         onClose();
       }
     } catch (err) {
-      setError(err.response?.data?.detail || 'Authentication failed. Please check OTP.');
+      setError(err.response?.data?.detail || 'Could not set password.');
     } finally {
       setLoading(false);
     }
@@ -116,6 +194,22 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
       setLoading(false);
     }
   };
+
+  const headerTitle = {
+    CREDENTIALS: CONTEXT_COPY[loginContext]?.title,
+    PHONE: otpIntent === 'RESET' ? 'Reset Password' : 'Register / Login with OTP',
+    OTP: otpIntent === 'RESET' ? 'Reset Password' : 'Register / Login with OTP',
+    SET_PASSWORD: otpIntent === 'RESET' ? 'Set a New Password' : 'Create Your Password',
+    PROFILE: 'Complete Tourist Profile',
+  }[step];
+
+  const headerSubtitle = {
+    CREDENTIALS: CONTEXT_COPY[loginContext]?.subtitle,
+    PHONE: 'Verified via One-Time Password (SMS)',
+    OTP: 'Verified via One-Time Password (SMS)',
+    SET_PASSWORD: 'RFP 7.2.1-1: no OTP needed for future logins once this is set',
+    PROFILE: 'Required for port clearance & turnstile pass issuance (RFP 7.2.1)',
+  }[step];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-900/70 backdrop-blur-sm p-4">
@@ -150,19 +244,13 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2.5 bg-cyan-50 text-cyan-700 border border-cyan-200 rounded-xl">
               {(() => {
-                const ContextIcon = CONTEXT_COPY[loginContext]?.icon || ShieldCheck;
+                const ContextIcon = step === 'CREDENTIALS' ? (CONTEXT_COPY[loginContext]?.icon || ShieldCheck) : Lock;
                 return <ContextIcon className="w-6 h-6" />;
               })()}
             </div>
             <div>
-              <h3 className="font-serif text-lg font-bold text-navy-800">
-                {step === 'PROFILE' ? 'Complete Tourist Profile' : CONTEXT_COPY[loginContext]?.title}
-              </h3>
-              <p className="text-xs text-slate-500">
-                {step === 'PROFILE'
-                  ? 'Required for port clearance & turnstile pass issuance (RFP 7.2.1)'
-                  : CONTEXT_COPY[loginContext]?.subtitle}
-              </p>
+              <h3 className="font-serif text-lg font-bold text-navy-800">{headerTitle}</h3>
+              <p className="text-xs text-slate-500">{headerSubtitle}</p>
             </div>
           </div>
 
@@ -173,6 +261,67 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
             </div>
           )}
 
+          {/* STEP 1: Mobile Number + Password (RFP 7.2.1-1 default login) */}
+          {step === 'CREDENTIALS' && (
+            <form onSubmit={handlePasswordLogin} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Mobile Number</label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-2.5 text-xs text-slate-400 font-mono">+91</span>
+                  <input
+                    type="tel"
+                    maxLength="10"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, ''))}
+                    placeholder="Enter 10-digit number"
+                    className="w-full pl-12 pr-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-navy-800 focus:outline-none focus:border-cyan-500 font-mono"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-1.5">
+                  <label className="text-xs font-semibold text-slate-600">Password</label>
+                  <button
+                    type="button"
+                    onClick={() => goToOtpFlow('RESET')}
+                    className="text-[11px] text-cyan-700 hover:underline"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter your password"
+                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-navy-800 focus:outline-none focus:border-cyan-500"
+                    required
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2.5 bg-cyan-700 hover:bg-cyan-600 font-bold rounded-lg text-sm text-white shadow-md transition-all flex items-center justify-center gap-2"
+              >
+                {loading ? 'Signing in...' : 'Login'}
+              </button>
+
+              <p className="text-center text-[11px] text-slate-500">
+                New here?{' '}
+                <button type="button" onClick={() => goToOtpFlow('REGISTER')} className="text-cyan-700 font-semibold hover:underline">
+                  Register / Login with OTP
+                </button>
+              </p>
+            </form>
+          )}
+
+          {/* STEP 2a: Phone entry for the OTP path (registration or forgot-password) */}
           {step === 'PHONE' && (
             <form onSubmit={handleSendOtp} className="space-y-4">
               <div>
@@ -197,9 +346,18 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
               >
                 <Phone className="w-4 h-4" /> Send OTP
               </button>
+
+              <button
+                type="button"
+                onClick={() => setStep('CREDENTIALS')}
+                className="w-full text-center text-[11px] text-slate-500 hover:underline"
+              >
+                ← Back to Login
+              </button>
             </form>
           )}
 
+          {/* STEP 2b: OTP entry */}
           {step === 'OTP' && (
             <form onSubmit={handleVerifyOtp} className="space-y-4">
               <div>
@@ -233,12 +391,55 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
                 disabled={loading}
                 className="w-full py-2.5 bg-emerald-700 hover:bg-emerald-600 font-bold rounded-lg text-sm text-white shadow-md transition-all flex items-center justify-center gap-2"
               >
-                {loading ? 'Verifying...' : 'Confirm & Log In'}
+                {loading ? 'Verifying...' : 'Verify & Continue'}
               </button>
             </form>
           )}
 
-          {/* STEP 3: Profile Completion (RFP Section 7.2.1-1) */}
+          {/* STEP 3: Set/Reset Password (RFP 7.2.1-1) */}
+          {step === 'SET_PASSWORD' && (
+            <form onSubmit={handleSetPassword} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">New Password</label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="At least 8 characters"
+                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-navy-800 focus:outline-none focus:border-cyan-500"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Confirm Password</label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Re-enter password"
+                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-navy-800 focus:outline-none focus:border-cyan-500"
+                    required
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2.5 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-lg text-sm shadow-md flex items-center justify-center gap-2"
+              >
+                {loading ? 'Saving...' : 'Save Password & Continue'} <ArrowRight className="w-4 h-4" />
+              </button>
+            </form>
+          )}
+
+          {/* STEP 4: Profile Completion (RFP Section 7.2.1-1) */}
           {step === 'PROFILE' && (
             <form onSubmit={handleSaveProfile} className="space-y-3">
               <div>

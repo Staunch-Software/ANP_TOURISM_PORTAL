@@ -46,4 +46,9 @@ class OrderItem(Base):
     id_type = Column(String(20), nullable=False)  # AADHAAR, PASSPORT, VOTER_ID
     id_number = Column(String(50), nullable=False)
 
+    # RFP Group Bookings Clause V: flags a booking that matches the
+    # scalper/repeat-booking heuristic so ANIIDCO can review it — does not
+    # block the purchase itself.
+    fraud_flag = Column(String(50), nullable=True)
+
     order = relationship("Order", back_populates="items")

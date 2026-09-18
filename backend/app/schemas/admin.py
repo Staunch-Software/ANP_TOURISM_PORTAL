@@ -105,3 +105,12 @@ class OperatorApplicationSummary(BaseModel):
 
 class OperatorApplicationDecisionRequest(BaseModel):
     reason: Optional[str] = None
+
+
+class AdminAlertSummary(BaseModel):
+    alert_id: str
+    alert_type: str
+    message: str
+    related_order_id: Optional[str] = None
+    is_resolved: bool
+    created_at: str
