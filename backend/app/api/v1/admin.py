@@ -30,7 +30,9 @@ from app.schemas.admin import (
     DirectUserCreateRequest,
     OperatorApplicationSummary,
     OperatorApplicationDecisionRequest,
+    ValidatedTicketReportEntry,
 )
+from datetime import datetime, timedelta
 
 router = APIRouter(prefix="/admin", tags=["Government Admin MIS & Harbor Manifest"])
 
@@ -546,3 +548,82 @@ async def reject_operator_application(
     await db.commit()
     await db.refresh(applicant)
     return _user_to_application_summary(applicant)
+
+
+# -------------------------------------------------------------
+# 8. Daily Validated-Tickets Report (RFP p.29, section 7.2.1.9 item 9)
+# Fleet-wide -- every site's check-ins for a given day. Sourced from the
+# same `tickets` rows every LPU already pushes up in near-real-time via
+# POST /sync/checkins, so this report only ever lags actual gate
+# validation by however long that site was last able to sync, not by a
+# separate batch job.
+# -------------------------------------------------------------
+def _report_day_bounds(date: str | None) -> tuple[datetime, datetime]:
+    if date:
+        try:
+            day_start = datetime.strptime(date, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="date must be in YYYY-MM-DD format")
+    else:
+        day_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    return day_start, day_start + timedelta(days=1)
+
+
+async def _fetch_validated_tickets(db: AsyncSession, date: str | None) -> List[Ticket]:
+    day_start, day_end = _report_day_bounds(date)
+    res = await db.execute(
+        select(Ticket)
+        .where(Ticket.check_in_status == "CHECKED_IN")
+        .where(Ticket.checked_in_at >= day_start)
+        .where(Ticket.checked_in_at < day_end)
+        .order_by(Ticket.checked_in_at.asc())
+    )
+    return res.scalars().all()
+
+
+@router.get("/reports/validated-tickets", response_model=List[ValidatedTicketReportEntry])
+async def get_validated_tickets_report(
+    date: str = None,  # "YYYY-MM-DD", defaults to today (UTC)
+    admin_user: User = Depends(verify_admin_role),
+    db: AsyncSession = Depends(get_db),
+):
+    tickets = await _fetch_validated_tickets(db, date)
+    return [
+        ValidatedTicketReportEntry(
+            ticket_ref=t.ticket_ref,
+            booking_ref=t.booking_ref,
+            title=t.title,
+            item_type=t.item_type,
+            passenger_name=t.passenger_name,
+            site_id=t.site_id,
+            issued_by=t.issued_by or "CLOUD",
+            checked_in_at=t.checked_in_at.isoformat() if t.checked_in_at else None,
+        )
+        for t in tickets
+    ]
+
+
+@router.get("/reports/validated-tickets.csv")
+async def get_validated_tickets_report_csv(
+    date: str = None,
+    admin_user: User = Depends(verify_admin_role),
+    db: AsyncSession = Depends(get_db),
+):
+    """Same data as /reports/validated-tickets, as a CSV -- for handing
+    ANIIDCO a report file directly (RFP p.29's "submit a report... to
+    inform ANIIDCO")."""
+    rows = await get_validated_tickets_report(date=date, admin_user=admin_user, db=db)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["ticket_ref", "booking_ref", "title", "item_type", "passenger_name", "site_id", "issued_by", "checked_in_at"])
+    for r in rows:
+        writer.writerow([r.ticket_ref, r.booking_ref, r.title, r.item_type, r.passenger_name, r.site_id, r.issued_by, r.checked_in_at])
+
+    report_date = date or datetime.utcnow().strftime("%Y-%m-%d")
+    filename = f"ANIIDCO_validated_tickets_{report_date}.csv"
+    return StreamingResponse(
+        io.BytesIO(output.getvalue().encode("utf-8")),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )

@@ -3,7 +3,7 @@ import API from '../api/client';
 import {
   ShieldCheck, TrendingUp, Users, DollarSign, Download,
   Ship, CloudRain, CheckCircle2, FileSpreadsheet, RefreshCw, Sliders,
-  UserPlus, ShieldAlert, MapPin, KeyRound, Trash2, Plus
+  UserPlus, ShieldAlert, MapPin, KeyRound, Trash2, Plus, ClipboardCheck
 } from 'lucide-react';
 
 export function AdminDashboard({ user }) {
@@ -15,6 +15,13 @@ export function AdminDashboard({ user }) {
   const [manifestLoading, setManifestLoading] = useState(false);
   const [downloadingCsv, setDownloadingCsv] = useState(false);
   const [actionMessage, setActionMessage] = useState(null);
+
+  // Daily Validated-Tickets Report (RFP p.29, section 7.2.1.9 item 9) --
+  // fleet-wide, sourced from every LPU's real-time check-in pushes.
+  const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
+  const [reportRows, setReportRows] = useState(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportDownloading, setReportDownloading] = useState(false);
 
   // Slot Management State (RFP Page 30)
   const [attractions, setAttractions] = useState([]);
@@ -70,6 +77,7 @@ export function AdminDashboard({ user }) {
     fetchUsers();
     fetchApplications();
     fetchGates();
+    fetchValidatedTicketsReport(reportDate);
   }, []);
 
   useEffect(() => {
@@ -395,6 +403,42 @@ export function AdminDashboard({ user }) {
     }
   };
 
+  const fetchValidatedTicketsReport = async (date) => {
+    setReportLoading(true);
+    try {
+      const res = await API.get(`/admin/reports/validated-tickets?date=${date}`);
+      setReportRows(res.data);
+    } catch (err) {
+      console.error("Failed to load validated-tickets report", err);
+      setReportRows([]);
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
+  const handleDownloadValidatedTicketsCSV = async () => {
+    setReportDownloading(true);
+    try {
+      const response = await API.get(`/admin/reports/validated-tickets.csv?date=${reportDate}`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `ANIIDCO_validated_tickets_${reportDate}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Validated-tickets CSV download error", err);
+      alert("Failed to export the validated-tickets report.");
+    } finally {
+      setReportDownloading(false);
+    }
+  };
+
   const handleEmergencyHalt = async () => {
     if (!selectedScheduleId) return;
     if (!window.confirm("CONFIRM EMERGENCY WEATHER HALT: This will cancel the selected ferry departure and trigger 100% automated refunds under Force Majeure.")) return;
@@ -607,6 +651,88 @@ export function AdminDashboard({ user }) {
                         {p.check_in_status}
                       </span>
                     </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* 3b. Daily Validated-Tickets Report (RFP p.29, section 7.2.1.9
+          item 9: "submit a report on a timely basis concerning the
+          validated tickets... to inform ANIIDCO"). Fleet-wide, sourced
+          from every LPU's real-time check-in pushes -- not a separate
+          batch job, just a view over data that's already flowing in. */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+          <div>
+            <span className="text-[10px] font-extrabold uppercase tracking-widest text-cyan-700">
+              RFP Clause 7.2.1.9 Compliance
+            </span>
+            <h3 className="font-serif text-lg font-black text-navy-800 flex items-center gap-2">
+              <ClipboardCheck className="w-5 h-5 text-cyan-600" /> Daily Validated-Tickets Report
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Every gate-scan validated across every LPU site on the selected day, with booking reference and site of entry.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              type="date"
+              value={reportDate}
+              onChange={(e) => {
+                setReportDate(e.target.value);
+                fetchValidatedTicketsReport(e.target.value);
+              }}
+              className="px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-navy-800 focus:border-cyan-500 focus:outline-none"
+            />
+            <button
+              type="button"
+              disabled={reportDownloading}
+              onClick={handleDownloadValidatedTicketsCSV}
+              className="px-4 py-2 bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs rounded-lg flex items-center gap-2 shadow-md transition-all disabled:opacity-50"
+            >
+              <Download className="w-4 h-4" /> {reportDownloading ? 'Generating...' : 'Download CSV'}
+            </button>
+          </div>
+        </div>
+
+        {reportLoading ? (
+          <div className="text-center py-12 text-slate-400 text-xs">Loading validated tickets...</div>
+        ) : !reportRows || reportRows.length === 0 ? (
+          <div className="text-center py-12 text-slate-400 text-xs">
+            No tickets were validated at any gate on {reportDate}.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 text-slate-500 font-mono text-[11px] uppercase tracking-wider border-b border-slate-200">
+                <tr>
+                  <th className="p-3">Checked In At</th>
+                  <th className="p-3">Booking Ref</th>
+                  <th className="p-3">Attraction / Route</th>
+                  <th className="p-3">Passenger</th>
+                  <th className="p-3">Site</th>
+                  <th className="p-3">Issued By</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {reportRows.map((r) => (
+                  <tr key={r.ticket_ref} className="hover:bg-slate-50 transition-colors">
+                    <td className="p-3 font-mono text-slate-500">
+                      {r.checked_in_at ? new Date(r.checked_in_at + 'Z').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
+                    </td>
+                    <td className="p-3 font-mono font-bold text-cyan-700">{r.booking_ref || r.ticket_ref}</td>
+                    <td className="p-3 text-navy-800">{r.title}</td>
+                    <td className="p-3 font-bold text-navy-800">{r.passenger_name}</td>
+                    <td className="p-3">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 font-mono">
+                        {r.site_id || 'UNKNOWN'}
+                      </span>
+                    </td>
+                    <td className="p-3 text-slate-500">{r.issued_by}</td>
                   </tr>
                 ))}
               </tbody>
