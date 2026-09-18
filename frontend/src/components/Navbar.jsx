@@ -1,9 +1,48 @@
-import React, { useState } from 'react';
-import { ShieldCheck, ShoppingBag, LogOut, Anchor, Waves, ScanLine } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  ShieldCheck, ShoppingBag, LogOut, Anchor, Waves, ScanLine, Landmark,
+  ChevronDown, User, Building2
+} from 'lucide-react';
+
+const STAFF_TAB_DEFS = [
+  { key: 'ADMIN', label: 'Admin MIS', icon: ShieldCheck, roles: ['ADMIN'] },
+  { key: 'OPERATOR', label: 'Ferry Operator', icon: Anchor, roles: ['OPERATOR', 'ADMIN'] },
+  { key: 'VENDOR', label: 'Activity Vendor', icon: Waves, roles: ['VENDOR', 'ADMIN'] },
+  { key: 'SCANNER', label: 'Gate Scanner', icon: ScanLine, roles: ['OPERATOR', 'VENDOR', 'ADMIN'] },
+];
+
+const ROLE_BADGE = { ADMIN: 'ADM', OPERATOR: 'OPR', VENDOR: 'VND' };
+
+// RFP Section 344: "There shall be 4 types of users for the system —
+// Tourists, Service Providers, Agency, Admin/Regulatory Authority."
+// Each collects different registration details, so login/sign-up is one
+// entry point that routes to the right flow rather than separate buttons
+// per type competing for navbar space.
+const LOGIN_MENU_ITEMS = [
+  {
+    key: 'VISITOR',
+    icon: User,
+    label: 'Visitor / Tourist Login',
+    description: 'Book attractions, ferries & manage your digital passes',
+  },
+  {
+    key: 'STAFF',
+    icon: Landmark,
+    label: 'Service Provider / Staff Login',
+    description: 'For approved Ferry Operators, Activity Vendors & Administrators',
+  },
+  {
+    key: 'REGISTER_PROVIDER',
+    icon: Building2,
+    label: 'Become a Service Provider',
+    description: 'Register your ferry or water sports business for ANIIDCO approval',
+  },
+];
 
 export function Navbar({
   user,
   onOpenLogin,
+  onOpenOperatorRegister,
   onLogout,
   activeTab,
   setActiveTab,
@@ -11,12 +50,41 @@ export function Navbar({
   onOpenCart
 }) {
   const [accessibleMode, setAccessibleMode] = useState(false);
+  const [isStaffMenuOpen, setIsStaffMenuOpen] = useState(false);
+  const [isLoginMenuOpen, setIsLoginMenuOpen] = useState(false);
+  const staffMenuRef = useRef(null);
+  const loginMenuRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (staffMenuRef.current && !staffMenuRef.current.contains(e.target)) {
+        setIsStaffMenuOpen(false);
+      }
+      if (loginMenuRef.current && !loginMenuRef.current.contains(e.target)) {
+        setIsLoginMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleLoginMenuSelect = (key) => {
+    setIsLoginMenuOpen(false);
+    if (key === 'REGISTER_PROVIDER') {
+      onOpenOperatorRegister();
+    } else {
+      onOpenLogin(key);
+    }
+  };
 
   const toggleAccessibleMode = () => {
     const next = !accessibleMode;
     setAccessibleMode(next);
     document.documentElement.classList.toggle('accessible-mode', next);
   };
+
+  const staffTabs = STAFF_TAB_DEFS.filter((tab) => user?.role && tab.roles.includes(user.role));
+  const isStaffTabActive = staffTabs.some((tab) => tab.key === activeTab);
 
   return (
     <header className="sticky top-0 z-40 bg-navy-800 border-b-[3px] border-cyan-600 shadow-lg">
@@ -67,7 +135,7 @@ export function Navbar({
         <nav className="hidden md:flex items-center gap-1 bg-navy-700/60 p-1.5 rounded-xl">
           <button
             onClick={() => setActiveTab('ATTRACTIONS')}
-            className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${
+            className={`px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all ${
               activeTab === 'ATTRACTIONS'
                 ? 'bg-cyan-700 text-white shadow-md'
                 : 'text-slate-200 hover:text-white hover:bg-navy-600'
@@ -78,7 +146,7 @@ export function Navbar({
 
           <button
             onClick={() => setActiveTab('FERRY')}
-            className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${
+            className={`px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all ${
               activeTab === 'FERRY'
                 ? 'bg-cyan-700 text-white shadow-md'
                 : 'text-slate-200 hover:text-white hover:bg-navy-600'
@@ -89,7 +157,7 @@ export function Navbar({
 
           <button
             onClick={() => setActiveTab('PASSES')}
-            className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${
+            className={`px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all ${
               activeTab === 'PASSES'
                 ? 'bg-cyan-700 text-white shadow-md'
                 : 'text-slate-200 hover:text-white hover:bg-navy-600'
@@ -98,56 +166,46 @@ export function Navbar({
             My Passes
           </button>
 
-          {user?.role === 'ADMIN' && (
-            <button
-              onClick={() => setActiveTab('ADMIN')}
-              className={`px-5 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-1.5 ${
-                activeTab === 'ADMIN'
-                  ? 'bg-amber-700 text-white shadow-md'
-                  : 'text-amber-400 hover:text-amber-300 hover:bg-navy-600'
-              }`}
-            >
-              <ShieldCheck className="w-4 h-4" /> Admin MIS
-            </button>
-          )}
+          {/* Staff/Admin tabs collapse into a single dropdown so the bar
+              stays a fixed width no matter how many portals a role (esp.
+              ADMIN, which qualifies for all of them) has access to. */}
+          {staffTabs.length > 0 && (
+            <div className="relative" ref={staffMenuRef}>
+              <button
+                onClick={() => setIsStaffMenuOpen((v) => !v)}
+                className={`px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                  isStaffTabActive
+                    ? 'bg-amber-700 text-white shadow-md'
+                    : 'text-amber-400 hover:text-amber-300 hover:bg-navy-600'
+                }`}
+              >
+                <Landmark className="w-4 h-4" /> Staff Portal
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isStaffMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
 
-          {(user?.role === 'OPERATOR' || user?.role === 'ADMIN') && (
-            <button
-              onClick={() => setActiveTab('OPERATOR')}
-              className={`px-5 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-1.5 ${
-                activeTab === 'OPERATOR'
-                  ? 'bg-cyan-700 text-white shadow-md'
-                  : 'text-cyan-300 hover:text-cyan-200 hover:bg-navy-600'
-              }`}
-            >
-              <Anchor className="w-4 h-4" /> Ferry Operator
-            </button>
-          )}
-
-          {(user?.role === 'VENDOR' || user?.role === 'ADMIN') && (
-            <button
-              onClick={() => setActiveTab('VENDOR')}
-              className={`px-5 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-1.5 ${
-                activeTab === 'VENDOR'
-                  ? 'bg-cyan-700 text-white shadow-md'
-                  : 'text-cyan-300 hover:text-cyan-200 hover:bg-navy-600'
-              }`}
-            >
-              <Waves className="w-4 h-4" /> Activity Vendor
-            </button>
-          )}
-
-          {(user?.role === 'OPERATOR' || user?.role === 'VENDOR' || user?.role === 'ADMIN') && (
-            <button
-              onClick={() => setActiveTab('SCANNER')}
-              className={`px-5 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-1.5 ${
-                activeTab === 'SCANNER'
-                  ? 'bg-emerald-700 text-white shadow-md'
-                  : 'text-emerald-400 hover:text-emerald-300 hover:bg-navy-600'
-              }`}
-            >
-              <ScanLine className="w-4 h-4" /> Gate Scanner
-            </button>
+              {isStaffMenuOpen && (
+                <div className="absolute top-full right-0 mt-2 w-56 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden py-1.5 z-50">
+                  {staffTabs.map((tab) => {
+                    const Icon = tab.icon;
+                    const isActive = activeTab === tab.key;
+                    return (
+                      <button
+                        key={tab.key}
+                        onClick={() => {
+                          setActiveTab(tab.key);
+                          setIsStaffMenuOpen(false);
+                        }}
+                        className={`w-full text-left px-4 py-2.5 text-sm font-semibold flex items-center gap-2.5 transition-colors ${
+                          isActive ? 'bg-cyan-50 text-cyan-700' : 'text-navy-800 hover:bg-slate-50'
+                        }`}
+                      >
+                        <Icon className="w-4 h-4" /> {tab.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           )}
         </nav>
 
@@ -169,7 +227,7 @@ export function Navbar({
           {user ? (
             <div className="flex items-center gap-3 bg-navy-700 border border-navy-600 px-3 py-1.5 rounded-lg">
               <div className="w-8 h-8 rounded-md bg-cyan-600/20 text-cyan-300 border border-cyan-600/40 flex items-center justify-center font-bold text-xs">
-                {user.role === 'ADMIN' ? 'ADM' : user.role === 'OPERATOR' ? 'OPR' : user.role === 'VENDOR' ? 'VND' : 'TR'}
+                {ROLE_BADGE[user.role] || 'TR'}
               </div>
               <div className="hidden lg:block text-left">
                 <div className="text-xs font-bold text-white leading-tight">{user.phone_number}</div>
@@ -184,12 +242,40 @@ export function Navbar({
               </button>
             </div>
           ) : (
-            <button
-              onClick={onOpenLogin}
-              className="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-lg text-sm shadow-md transition-all"
-            >
-              Sign In 
-            </button>
+            <div className="relative" ref={loginMenuRef}>
+              <button
+                onClick={() => setIsLoginMenuOpen((v) => !v)}
+                className="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-lg text-sm shadow-md transition-all flex items-center gap-1.5 whitespace-nowrap"
+              >
+                Login / Sign Up
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isLoginMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {isLoginMenuOpen && (
+                <div className="absolute top-full right-0 mt-2 w-80 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden py-1.5 z-50">
+                  {LOGIN_MENU_ITEMS.map((item, idx) => {
+                    const Icon = item.icon;
+                    return (
+                      <button
+                        key={item.key}
+                        onClick={() => handleLoginMenuSelect(item.key)}
+                        className={`w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-slate-50 transition-colors ${
+                          idx > 0 ? 'border-t border-slate-100' : ''
+                        }`}
+                      >
+                        <div className="w-9 h-9 rounded-lg bg-cyan-50 text-cyan-700 border border-cyan-100 flex items-center justify-center shrink-0 mt-0.5">
+                          <Icon className="w-4.5 h-4.5" />
+                        </div>
+                        <div>
+                          <div className="text-sm font-bold text-navy-800">{item.label}</div>
+                          <div className="text-[11px] text-slate-500 mt-0.5 leading-snug">{item.description}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>

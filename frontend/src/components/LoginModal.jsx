@@ -1,8 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import API from '../api/client';
-import { ShieldCheck, Phone, KeyRound, User, Mail, Globe, ArrowRight, AlertCircle } from 'lucide-react';
+import { ShieldCheck, Landmark, Phone, KeyRound, User, Mail, Globe, ArrowRight, AlertCircle } from 'lucide-react';
 
-export function LoginModal({ isOpen, onClose, onLoginSuccess }) {
+// Purely a presentational split — both contexts hit the exact same
+// /auth/verify-otp flow and the backend decides the real role from the
+// phone number. This just tailors the copy/icon so a tourist never sees
+// government-staff language and staff get an entry point that doesn't
+// look like a generic "sign in" button.
+const CONTEXT_COPY = {
+  VISITOR: {
+    icon: ShieldCheck,
+    title: 'Visitor Authentication (2FA)',
+    subtitle: 'Strict Single-Session Concurrency (RFP 7.1.12)',
+  },
+  STAFF: {
+    icon: Landmark,
+    title: 'Staff & Government Login',
+    subtitle: 'Authorized Ferry Operators, Activity Vendors & Administrators only',
+  },
+};
+
+export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VISITOR' }) {
   const [step, setStep] = useState('PHONE'); // PHONE -> OTP -> PROFILE
   const [phoneNumber, setPhoneNumber] = useState('');
   const [otp, setOtp] = useState('');
@@ -131,16 +149,19 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess }) {
         <div className="p-6">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2.5 bg-cyan-50 text-cyan-700 border border-cyan-200 rounded-xl">
-              <ShieldCheck className="w-6 h-6" />
+              {(() => {
+                const ContextIcon = CONTEXT_COPY[loginContext]?.icon || ShieldCheck;
+                return <ContextIcon className="w-6 h-6" />;
+              })()}
             </div>
             <div>
               <h3 className="font-serif text-lg font-bold text-navy-800">
-                {step === 'PROFILE' ? 'Complete Tourist Profile' : 'Visitor Authentication (2FA)'}
+                {step === 'PROFILE' ? 'Complete Tourist Profile' : CONTEXT_COPY[loginContext]?.title}
               </h3>
               <p className="text-xs text-slate-500">
                 {step === 'PROFILE'
                   ? 'Required for port clearance & turnstile pass issuance (RFP 7.2.1)'
-                  : 'Strict Single-Session Concurrency (RFP 7.1.12)'}
+                  : CONTEXT_COPY[loginContext]?.subtitle}
               </p>
             </div>
           </div>

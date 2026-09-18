@@ -16,6 +16,7 @@ import { Waves } from 'lucide-react';
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const [loginContext, setLoginContext] = useState('VISITOR');
   const [isOperatorRegisterOpen, setIsOperatorRegisterOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('ATTRACTIONS');
   const [cartCount, setCartCount] = useState(0);
@@ -39,6 +40,11 @@ export default function App() {
     }
   };
 
+  const openLogin = (context = 'VISITOR') => {
+    setLoginContext(context);
+    setIsLoginOpen(true);
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('aniidco_token');
     localStorage.removeItem('aniidco_user');
@@ -49,7 +55,8 @@ export default function App() {
     <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col font-sans selection:bg-cyan-600 selection:text-white">
       <Navbar
         user={currentUser}
-        onOpenLogin={() => setIsLoginOpen(true)}
+        onOpenLogin={openLogin}
+        onOpenOperatorRegister={() => setIsOperatorRegisterOpen(true)}
         onLogout={handleLogout}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -127,7 +134,7 @@ export default function App() {
         {activeTab === 'ATTRACTIONS' && (
           <AttractionsExplorer
             onAddToCart={refreshCartCount}
-            onRequireLogin={() => setIsLoginOpen(true)}
+            onRequireLogin={() => openLogin('VISITOR')}
             user={currentUser}
           />
         )}
@@ -135,7 +142,7 @@ export default function App() {
         {activeTab === 'FERRY' && (
           <FerrySearch
             onAddToCart={refreshCartCount}
-            onRequireLogin={() => setIsLoginOpen(true)}
+            onRequireLogin={() => openLogin('VISITOR')}
             user={currentUser}
           />
         )}
@@ -143,7 +150,7 @@ export default function App() {
         {activeTab === 'PASSES' && (
           <DigitalWallet
             user={currentUser}
-            onRequireLogin={() => setIsLoginOpen(true)}
+            onRequireLogin={() => openLogin('VISITOR')}
           />
         )}
 
@@ -192,6 +199,7 @@ export default function App() {
 
       <LoginModal
         isOpen={isLoginOpen}
+        loginContext={loginContext}
         onClose={() => setIsLoginOpen(false)}
         onLoginSuccess={(userData) => {
           setCurrentUser(userData);
