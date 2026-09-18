@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import { Building2, Phone, KeyRound, FileText, Mail, ArrowRight, AlertCircle, CheckCircle2 } from 'lucide-react';
 
-const API_BASE_URL = 'http://localhost:8000/api/v1';
+const API_BASE_URL = 'http://localhost:8001/api/v1';
 
 export function OperatorRegisterModal({ isOpen, onClose }) {
   const [step, setStep] = useState('PHONE'); // PHONE -> OTP -> BUSINESS -> DONE
