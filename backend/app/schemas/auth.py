@@ -24,7 +24,17 @@ class ProfileResponse(BaseModel):
     nationality: str
     role: str
     profile_complete: bool
+    has_password: bool = False  # RFP 7.2.1-1: whether first-time password setup is already done
     approval_status: Optional[str] = None  # PENDING/APPROVED/REJECTED if they applied as a service provider
+
+
+class SetPasswordRequest(BaseModel):
+    password: str
+
+
+class PasswordLoginRequest(BaseModel):
+    phone_number: str
+    password: str
 
 
 class ProfileUpdateRequest(BaseModel):

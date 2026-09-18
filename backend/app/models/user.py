@@ -12,6 +12,7 @@ class User(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     phone_number = Column(String(20), unique=True, index=True, nullable=False)
+    password_hash = Column(String(255), nullable=True)  # NULL until user completes first-time password setup (RFP 7.2.1-1)
     full_name = Column(String(100), default="Valued Tourist")
     email = Column(String(150), nullable=True)
     state_or_country = Column(String(100), nullable=True)

@@ -1,9 +1,10 @@
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import func
 
 from app.core.database import get_db
 from app.core.redis import get_redis
@@ -12,11 +13,50 @@ from app.models.order import Order, OrderItem
 from app.models.attraction import AttractionSlot
 from app.models.ferry import FerrySeat
 from app.models.ticket import Ticket
+from app.models.admin_alert import AdminAlert
 from app.api.v1.auth import get_current_user
 from app.services.crypto_service import sign_ticket_payload
 from app.schemas.payment import PaymentConfirmRequest, PaymentConfirmResponse
 
 router = APIRouter(prefix="/payments", tags=["Payment & Ticket Issuance"])
+
+# RFP Group Bookings Clause V: "alert and report to ANIIDCO regarding
+# multiple bookings from the same ID ... who have reserved the same
+# attractions within a timeframe of 1 to 3 months." We use the shorter
+# end of that window (60 days) and flag rather than block, since the RFP
+# language is "alert and report", not "prevent".
+REPEAT_BOOKING_WINDOW_DAYS = 60
+REPEAT_BOOKING_THRESHOLD = 3
+
+
+async def _check_repeat_booking_fraud(db: AsyncSession, item: OrderItem) -> None:
+    window_start = datetime.utcnow() - timedelta(days=REPEAT_BOOKING_WINDOW_DAYS)
+
+    count_res = await db.execute(
+        select(func.count(OrderItem.id))
+        .join(Order, OrderItem.order_id == Order.id)
+        .where(
+            OrderItem.id_number == item.id_number,
+            OrderItem.title == item.title,
+            Order.status == "CONFIRMED",
+            Order.created_at >= window_start,
+        )
+    )
+    prior_count = int(count_res.scalar() or 0)
+
+    if prior_count >= REPEAT_BOOKING_THRESHOLD:
+        item.fraud_flag = "SUSPICIOUS_REPEAT_BOOKING"
+        db.add(
+            AdminAlert(
+                alert_type="SUSPICIOUS_REPEAT_BOOKING",
+                message=(
+                    f"Govt ID {item.id_type}:{item.id_number[-4:]} has booked "
+                    f"'{item.title}' {prior_count + 1} times in the last "
+                    f"{REPEAT_BOOKING_WINDOW_DAYS} days (passenger: {item.passenger_name})."
+                ),
+                related_order_id=item.order_id,
+            )
+        )
 
 
 @router.post("/confirm", response_model=PaymentConfirmResponse)
@@ -47,6 +87,8 @@ async def confirm_payment_and_issue_tickets(
     order_items = items_res.scalars().all()
 
     for item in order_items:
+        await _check_repeat_booking_fraud(db, item)
+
         if item.item_type == "FERRY" and item.ferry_seat_id:
             seat_res = await db.execute(select(FerrySeat).where(FerrySeat.id == item.ferry_seat_id))
             seat = seat_res.scalars().first()
