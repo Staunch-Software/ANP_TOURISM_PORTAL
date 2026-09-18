@@ -3,7 +3,7 @@ import API from '../api/client';
 import {
   ShieldCheck, TrendingUp, Users, DollarSign, Download,
   Ship, CloudRain, CheckCircle2, FileSpreadsheet, RefreshCw, Sliders,
-  UserPlus, ShieldAlert
+  UserPlus, ShieldAlert, GraduationCap, Eye, X
 } from 'lucide-react';
 
 export function AdminDashboard({ user }) {
@@ -40,13 +40,59 @@ export function AdminDashboard({ user }) {
   const [applicationsLoading, setApplicationsLoading] = useState(false);
   const [decidingApplicationId, setDecidingApplicationId] = useState(null);
 
+  // Group Booking Approval Queue (RFP Page 26)
+  const [groupBookings, setGroupBookings] = useState([]);
+  const [groupBookingsLoading, setGroupBookingsLoading] = useState(false);
+  const [decidingGroupId, setDecidingGroupId] = useState(null);
+  const [rosterPreview, setRosterPreview] = useState(null); // the group booking whose roster is being viewed
+
   useEffect(() => {
     fetchMISData();
     fetchSchedules();
     fetchAttractionsList();
     fetchUsers();
     fetchApplications();
+    fetchGroupBookings();
   }, []);
+
+  const fetchGroupBookings = async () => {
+    setGroupBookingsLoading(true);
+    try {
+      const res = await API.get('/admin/group-bookings?request_status=PENDING_APPROVAL');
+      setGroupBookings(res.data);
+    } catch (err) {
+      console.error("Failed to load group booking requests", err);
+    } finally {
+      setGroupBookingsLoading(false);
+    }
+  };
+
+  const handleApproveGroupBooking = async (requestId) => {
+    setDecidingGroupId(requestId);
+    try {
+      const res = await API.post(`/admin/group-bookings/${requestId}/approve`, { reason: 'Roster and documents verified by Directorate' });
+      alert(`Approved. Order ${res.data.order_ref} created — awaiting payment from the organizer.`);
+      fetchGroupBookings();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to approve group booking');
+    } finally {
+      setDecidingGroupId(null);
+    }
+  };
+
+  const handleRejectGroupBooking = async (requestId) => {
+    const reason = window.prompt('Reason for rejection (shown to the organizer):', 'Roster details could not be verified');
+    if (reason === null) return;
+    setDecidingGroupId(requestId);
+    try {
+      await API.post(`/admin/group-bookings/${requestId}/reject`, { reason });
+      fetchGroupBookings();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to reject group booking');
+    } finally {
+      setDecidingGroupId(null);
+    }
+  };
 
   const fetchApplications = async () => {
     setApplicationsLoading(true);
@@ -815,6 +861,155 @@ export function AdminDashboard({ user }) {
           </div>
         </div>
       </div>
+
+      {/* 7. Group / Institutional Booking Approval Queue (RFP Page 26) */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-extrabold uppercase tracking-widest text-cyan-700">
+              RFP Page 26 · Group Bookings
+            </span>
+            <h3 className="font-serif text-lg font-black text-navy-800 flex items-center gap-2">
+              <GraduationCap className="w-5 h-5 text-cyan-600" /> Group Booking Approval Queue
+            </h3>
+            <p className="text-xs text-slate-500">
+              Schools, colleges, corporates and tour operators submitting a roster-based group application.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+              {groupBookings.length} Pending
+            </span>
+            <button
+              onClick={fetchGroupBookings}
+              className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600"
+              title="Refresh"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {groupBookingsLoading ? (
+          <p className="text-xs text-slate-400 text-center py-6">Loading group booking requests...</p>
+        ) : groupBookings.length === 0 ? (
+          <p className="text-xs text-slate-400 text-center py-6">No pending group booking requests right now.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 text-slate-500 font-mono text-[10px] uppercase border-b border-slate-200">
+                <tr>
+                  <th className="p-2.5">Request Ref</th>
+                  <th className="p-2.5">Organization</th>
+                  <th className="p-2.5">Type</th>
+                  <th className="p-2.5">Attraction / Slot</th>
+                  <th className="p-2.5">Headcount</th>
+                  <th className="p-2.5">Contact</th>
+                  <th className="p-2.5">Roster</th>
+                  <th className="p-2.5">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {groupBookings.map((gb) => {
+                  const isDeciding = decidingGroupId === gb.id;
+                  return (
+                    <tr key={gb.id} className="hover:bg-slate-50 align-top">
+                      <td className="p-2.5 font-mono text-cyan-700 font-bold">{gb.request_ref}</td>
+                      <td className="p-2.5">
+                        <strong className="text-navy-800 block">{gb.organization_name}</strong>
+                      </td>
+                      <td className="p-2.5">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">
+                          {gb.organization_type.replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td className="p-2.5 text-slate-600">
+                        {gb.attraction_title}
+                        <div className="text-[10px] text-slate-400 font-mono">{gb.slot_date} · {gb.start_time}-{gb.end_time}</div>
+                      </td>
+                      <td className="p-2.5 font-mono">
+                        {gb.total_headcount} total
+                        <div className="text-[10px] text-slate-400">{gb.indian_travelers_count} IN / {gb.foreign_travelers_count} FN</div>
+                      </td>
+                      <td className="p-2.5 text-slate-600">
+                        {gb.contact_person}
+                        <div className="text-[10px] text-slate-400">{gb.contact_phone}</div>
+                      </td>
+                      <td className="p-2.5">
+                        <button
+                          onClick={() => setRosterPreview(gb)}
+                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-navy-800 rounded-lg text-[11px] font-bold flex items-center gap-1"
+                        >
+                          <Eye className="w-3.5 h-3.5" /> View
+                        </button>
+                      </td>
+                      <td className="p-2.5">
+                        <div className="flex flex-col gap-1.5 min-w-[110px]">
+                          <button
+                            disabled={isDeciding}
+                            onClick={() => handleApproveGroupBooking(gb.id)}
+                            className="py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg text-[11px] font-bold disabled:opacity-50"
+                          >
+                            {isDeciding ? 'Working...' : 'Approve'}
+                          </button>
+                          <button
+                            disabled={isDeciding}
+                            onClick={() => handleRejectGroupBooking(gb.id)}
+                            className="py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[11px] font-medium disabled:opacity-50"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Roster Preview Modal */}
+      {rosterPreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-900/70 backdrop-blur-sm p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-lg p-6 shadow-2xl relative max-h-[85vh] overflow-y-auto">
+            <button
+              onClick={() => setRosterPreview(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-navy-800 p-1"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <span className="text-[10px] font-bold text-cyan-700 uppercase tracking-widest">{rosterPreview.request_ref}</span>
+            <h3 className="font-serif text-lg font-black text-navy-800 mb-1">{rosterPreview.organization_name} — Passenger Roster</h3>
+            <p className="text-xs text-slate-500 mb-4">
+              {rosterPreview.attraction_title} · {rosterPreview.slot_date} ({rosterPreview.start_time}-{rosterPreview.end_time})
+            </p>
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 text-slate-500 font-mono text-[10px] uppercase border-b border-slate-200">
+                <tr>
+                  <th className="p-2">#</th>
+                  <th className="p-2">Name</th>
+                  <th className="p-2">Age/Gender</th>
+                  <th className="p-2">Nationality</th>
+                  <th className="p-2">Govt ID</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {rosterPreview.roster.map((m, idx) => (
+                  <tr key={idx}>
+                    <td className="p-2 font-mono text-slate-400">{idx + 1}</td>
+                    <td className="p-2 font-bold text-navy-800">{m.full_name}</td>
+                    <td className="p-2 text-slate-600">{m.age} / {m.gender}</td>
+                    <td className="p-2 text-slate-600">{m.nationality}</td>
+                    <td className="p-2 font-mono text-slate-500">{m.id_type}: {m.id_number}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

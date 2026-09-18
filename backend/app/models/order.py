@@ -51,4 +51,10 @@ class OrderItem(Base):
     # block the purchase itself.
     fraud_flag = Column(String(50), nullable=True)
 
+    # RFP Clause 7.2.1-9 / Page 49: each OrderItem is one "entitlement"
+    # within the order's single Unified QR pass — its own gate check-in
+    # state, independent of sibling entitlements in the same order.
+    check_in_status = Column(String(30), default="ISSUED")  # ISSUED, CHECKED_IN, CANCELLED
+    checked_in_at = Column(DateTime, nullable=True)
+
     order = relationship("Order", back_populates="items")

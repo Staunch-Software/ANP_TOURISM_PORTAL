@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import API from '../api/client';
 import {
   ShoppingBag, X, Trash2, Clock, ShieldCheck,
-  CreditCard, QrCode, ArrowRight, CheckCircle2, Building
+  CreditCard, QrCode, ArrowRight, CheckCircle2, Building, Ship, Landmark
 } from 'lucide-react';
+
+const ITEM_TYPE_ICON = { FERRY: Ship, ATTRACTION: Landmark };
 
 export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed }) {
   const [cart, setCart] = useState(null);
@@ -152,14 +154,16 @@ export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed })
               </p>
             </div>
           ) : (
-            cart.items.map((item) => (
+            cart.items.map((item) => {
+              const TypeIcon = ITEM_TYPE_ICON[item.item_type] || ShoppingBag;
+              return (
               <div
                 key={item.cart_item_id}
                 className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2 relative group hover:border-cyan-300 transition-colors"
               >
                 <div className="flex justify-between items-start">
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider bg-white text-cyan-700 border border-cyan-200">
-                    {item.item_type}
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider bg-white text-cyan-700 border border-cyan-200 flex items-center gap-1.5 w-fit">
+                    <TypeIcon className="w-3 h-3" /> {item.item_type}
                   </span>
                   <span className="text-sm font-black text-navy-800">
                     ₹{item.price.toLocaleString('en-IN')}
@@ -176,7 +180,8 @@ export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed })
                   </span>
                 </div>
               </div>
-            ))
+              );
+            })
           )}
         </div>
 
@@ -235,7 +240,7 @@ export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed })
                 </div>
                 <h3 className="font-serif text-xl font-black text-navy-800">Payment Confirmed!</h3>
                 <p className="text-xs text-slate-500 max-w-xs mx-auto">
-                  Your official tamper-proof Ed25519 digital passes have been generated and dispatched.
+                  A single tamper-proof Ed25519 Unified QR pass covering every item in this order has been generated.
                 </p>
                 <div className="font-mono text-xs text-cyan-700 font-bold">
                   Order Ref: {activeOrder.order_ref}

@@ -12,7 +12,7 @@ from app.models.user import User
 from app.models.order import Order, OrderItem
 from app.models.attraction import AttractionSlot
 from app.models.ferry import FerrySeat
-from app.models.ticket import Ticket
+from app.models.order_pass import OrderPass
 from app.models.admin_alert import AdminAlert
 from app.api.v1.auth import get_current_user
 from app.services.crypto_service import sign_ticket_payload
@@ -84,10 +84,9 @@ async def confirm_payment_and_issue_tickets(
     items_res = await db.execute(select(OrderItem).where(OrderItem.order_id == order.id))
     order_items = items_res.scalars().all()
 
-    tickets_to_create = []
-
     for item in order_items:
         await _check_repeat_booking_fraud(db, item)
+        item.check_in_status = "ISSUED"
 
         if item.item_type == "FERRY" and item.ferry_seat_id:
             seat_res = await db.execute(select(FerrySeat).where(FerrySeat.id == item.ferry_seat_id))
@@ -106,42 +105,44 @@ async def confirm_payment_and_issue_tickets(
                 if cur > 0:
                     await r.decr(slot_hold_key)
 
-        ticket_ref = f"AN-2026-TKT-{random.randint(100000, 999999)}"
+    # RFP Clause 7.2.1-9 / Page 49: one Unified QR pass per order, covering
+    # every entitlement (order item) in a single Ed25519 signature. A gate
+    # scans this once and checks off only the entitlement relevant to it —
+    # see /tickets/staff/check-in — leaving the rest of the pass valid.
+    pass_ref = f"AN-2026-PASS-{random.randint(100000, 999999)}"
+    lead_passenger_name = order_items[0].passenger_name if order_items else (current_user.full_name or "Valued Tourist")
 
-        payload_dict = {
-            "ref": ticket_ref,
-            "typ": item.item_type,
-            "ttl": item.title,
-            "sub": item.slot_or_seat_info,
-            "pax": item.passenger_name,
-            "doc": f"{item.id_type}:{item.id_number[-4:]}",
-            "iss": "ANIIDCO_GOVT_AN",
-            "iat": int(datetime.utcnow().timestamp()),
-        }
+    payload_dict = {
+        "ref": pass_ref,
+        "order_ref": order.order_ref,
+        "lead_pax": lead_passenger_name,
+        "iss": "ANIIDCO_GOVT_AN",
+        "iat": int(datetime.utcnow().timestamp()),
+        "entitlements": [
+            {
+                "item_id": str(item.id),
+                "typ": item.item_type,
+                "ttl": item.title,
+                "sub": item.slot_or_seat_info,
+                "pax": item.passenger_name,
+                "doc": f"{item.id_type}:{item.id_number[-4:]}",
+            }
+            for item in order_items
+        ],
+    }
+    compact_json, signature_b64 = sign_ticket_payload(payload_dict)
 
-        compact_json, signature_b64 = sign_ticket_payload(payload_dict)
-
-        ticket = Ticket(
-            ticket_ref=ticket_ref,
-            order_id=order.id,
-            order_item_id=item.id,
-            user_id=current_user.id,
-            item_type=item.item_type,
-            title=item.title,
-            slot_or_seat_info=item.slot_or_seat_info,
-            passenger_name=item.passenger_name,
-            passenger_age=item.passenger_age,
-            passenger_gender=item.passenger_gender,
-            id_type=item.id_type,
-            id_number=item.id_number,
-            qr_payload_json=compact_json,
-            qr_signature_b64=signature_b64,
-            check_in_status="ISSUED",
-        )
-        tickets_to_create.append(ticket)
+    order_pass = OrderPass(
+        pass_ref=pass_ref,
+        order_id=order.id,
+        user_id=current_user.id,
+        lead_passenger_name=lead_passenger_name,
+        qr_payload_json=compact_json,
+        qr_signature_b64=signature_b64,
+    )
 
     order.status = "CONFIRMED"
-    db.add_all(tickets_to_create)
+    db.add(order_pass)
     await db.commit()
 
     await r.delete(f"cart:{str(current_user.id)}")
@@ -149,7 +150,7 @@ async def confirm_payment_and_issue_tickets(
     return PaymentConfirmResponse(
         order_ref=order.order_ref,
         order_status=order.status,
-        tickets_issued_count=len(tickets_to_create),
+        tickets_issued_count=len(order_items),
         total_paid=float(order.net_payable),
-        message="Payment verified successfully. Boarding passes and QR tickets generated!",
+        message="Payment verified successfully. A single Unified QR boarding pass has been generated for this order!",
     )

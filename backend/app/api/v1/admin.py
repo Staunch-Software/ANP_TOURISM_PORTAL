@@ -13,7 +13,7 @@ from app.core.database import get_db
 from app.core.redis import get_redis
 from app.models.user import User
 from app.models.order import Order, OrderItem
-from app.models.ticket import Ticket
+from app.models.order_pass import OrderPass
 from app.models.ferry import FerrySchedule, FerrySeat, Vessel
 from app.models.attraction import AttractionSlot
 from app.models.admin_alert import AdminAlert
@@ -106,30 +106,30 @@ async def get_harbor_manifest(
 
     sched, vessel = row
 
-    tickets_res = await db.execute(
-        select(Ticket, OrderItem, FerrySeat)
-        .join(OrderItem, Ticket.order_item_id == OrderItem.id)
+    items_res = await db.execute(
+        select(OrderItem, FerrySeat, OrderPass)
         .join(FerrySeat, OrderItem.ferry_seat_id == FerrySeat.id)
+        .join(OrderPass, OrderPass.order_id == OrderItem.order_id)
         .where(FerrySeat.schedule_id == sched.id)
         .order_by(FerrySeat.seat_number.asc())
     )
-    pax_rows = tickets_res.all()
+    pax_rows = items_res.all()
 
     manifest_entries = []
-    for idx, (ticket, item, seat) in enumerate(pax_rows, start=1):
+    for idx, (item, seat, order_pass) in enumerate(pax_rows, start=1):
         manifest_entries.append(
             HarborPassengerEntry(
                 serial_no=idx,
                 seat_number=seat.seat_number,
                 cabin_class=seat.cabin_class,
-                passenger_name=ticket.passenger_name,
-                age=ticket.passenger_age,
-                gender=ticket.passenger_gender,
+                passenger_name=item.passenger_name,
+                age=item.passenger_age,
+                gender=item.passenger_gender,
                 nationality="INDIAN",
-                id_type=ticket.id_type,
-                id_masked_number=f"XXXX-XXXX-{ticket.id_number[-4:]}",
-                ticket_ref=ticket.ticket_ref,
-                check_in_status=ticket.check_in_status,
+                id_type=item.id_type,
+                id_masked_number=f"XXXX-XXXX-{item.id_number[-4:]}",
+                ticket_ref=order_pass.pass_ref,
+                check_in_status=item.check_in_status,
             )
         )
 

@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timedelta
 from typing import List, Optional, Tuple
 
@@ -7,15 +8,16 @@ from sqlalchemy.future import select
 
 from app.core.database import get_db
 from app.models.user import User
-from app.models.ticket import Ticket
-from app.models.order import OrderItem
+from app.models.order import Order, OrderItem
+from app.models.order_pass import OrderPass
 from app.models.attraction import AttractionSlot
 from app.models.ferry import FerrySeat, FerrySchedule
 from app.api.v1.auth import get_current_user
 from app.api.v1.admin import verify_staff_role
 from app.services.crypto_service import verify_ticket_offline, get_public_key_hex
 from app.schemas.ticket import (
-    TicketPassResponse,
+    OrderPassResponse,
+    EntitlementResponse,
     OfflineVerificationResponse,
     StaffCheckInRequest,
     StaffCheckInResponse,
@@ -35,15 +37,23 @@ def _format_12h(t) -> str:
     return t.strftime("%I:%M %p").lstrip("0")
 
 
-async def _get_ticket_entry_window(db: AsyncSession, ticket: Ticket) -> Optional[Tuple[datetime, datetime, str, str]]:
-    """Returns (window_start, window_end, slot_start_label, slot_end_label)
-    for the ticket's booked slot/departure, or None if it can't be
-    determined (fails open rather than blocking a valid entry)."""
-    item_res = await db.execute(select(OrderItem).where(OrderItem.id == ticket.order_item_id))
-    item = item_res.scalars().first()
-    if not item:
-        return None
+def _entitlement_to_response(item: OrderItem) -> EntitlementResponse:
+    return EntitlementResponse(
+        order_item_id=str(item.id),
+        item_type=item.item_type,
+        title=item.title,
+        slot_or_seat_info=item.slot_or_seat_info,
+        passenger_name=item.passenger_name,
+        id_type=item.id_type,
+        id_number=item.id_number,
+        check_in_status=item.check_in_status,
+    )
 
+
+async def _get_entry_window(db: AsyncSession, item: OrderItem) -> Optional[Tuple[datetime, datetime, str, str]]:
+    """Returns (window_start, window_end, slot_start_label, slot_end_label)
+    for this entitlement's booked slot/departure, or None if it can't be
+    determined (fails open rather than blocking a valid entry)."""
     if item.attraction_slot_id:
         slot_res = await db.execute(select(AttractionSlot).where(AttractionSlot.id == item.attraction_slot_id))
         slot = slot_res.scalars().first()
@@ -81,36 +91,34 @@ async def _get_ticket_entry_window(db: AsyncSession, ticket: Ticket) -> Optional
     return None
 
 
-# 1. Tourist Wallet: View All My Passes
-@router.get("/my-passes", response_model=List[TicketPassResponse])
+# 1. Tourist Wallet: View All My Unified QR Passes
+@router.get("/my-passes", response_model=List[OrderPassResponse])
 async def get_my_passes(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     res = await db.execute(
-        select(Ticket)
-        .where(Ticket.user_id == current_user.id)
-        .order_by(Ticket.created_at.desc())
+        select(OrderPass, Order)
+        .join(Order, OrderPass.order_id == Order.id)
+        .where(OrderPass.user_id == current_user.id)
+        .order_by(OrderPass.created_at.desc())
     )
-    tickets = res.scalars().all()
+    rows = res.all()
 
     passes = []
-    for t in tickets:
-        qr_combined = f"{t.qr_payload_json}|SIG:{t.qr_signature_b64}"
+    for order_pass, order in rows:
+        items_res = await db.execute(select(OrderItem).where(OrderItem.order_id == order.id))
+        items = items_res.scalars().all()
+        qr_combined = f"{order_pass.qr_payload_json}|SIG:{order_pass.qr_signature_b64}"
         passes.append(
-            TicketPassResponse(
-                ticket_ref=t.ticket_ref,
-                item_type=t.item_type,
-                title=t.title,
-                slot_or_seat_info=t.slot_or_seat_info,
-                passenger_name=t.passenger_name,
-                id_type=t.id_type,
-                id_number=t.id_number,
-                check_in_status=t.check_in_status,
+            OrderPassResponse(
+                pass_ref=order_pass.pass_ref,
+                order_ref=order.order_ref,
+                lead_passenger_name=order_pass.lead_passenger_name,
                 qr_token=qr_combined,
+                entitlements=[_entitlement_to_response(i) for i in items],
             )
         )
-
     return passes
 
 
@@ -124,40 +132,37 @@ async def get_offline_scanner_public_key():
     }
 
 
-# 3. The Offline Gate Proof Endpoint (Simulates what happens at the turnstile)
-@router.get("/{ticket_ref}/verify-offline", response_model=OfflineVerificationResponse)
+# 3. The Offline Gate Proof Endpoint (Simulates what happens at the turnstile) —
+# read-only: verifies the pass signature and reports each entitlement's live
+# status, without changing anything. The actual admit/deny state change
+# happens at /staff/check-in.
+@router.get("/{pass_ref}/verify-offline", response_model=OfflineVerificationResponse)
 async def simulate_offline_gate_scan(
-    ticket_ref: str,
+    pass_ref: str,
     db: AsyncSession = Depends(get_db),
 ):
-    res = await db.execute(select(Ticket).where(Ticket.ticket_ref == ticket_ref))
-    ticket = res.scalars().first()
-    if not ticket:
-        raise HTTPException(status_code=404, detail="Ticket reference not found")
+    res = await db.execute(select(OrderPass).where(OrderPass.pass_ref == pass_ref))
+    order_pass = res.scalars().first()
+    if not order_pass:
+        raise HTTPException(status_code=404, detail="Pass reference not found")
 
-    is_valid = verify_ticket_offline(ticket.qr_payload_json, ticket.qr_signature_b64)
+    is_valid = verify_ticket_offline(order_pass.qr_payload_json, order_pass.qr_signature_b64)
 
-    gate_decision = "GREEN LIGHT - ENTRY GRANTED" if is_valid else "RED LIGHT - INVALID SIGNATURE"
-    if is_valid:
-        entry_window = await _get_ticket_entry_window(db, ticket)
-        if entry_window:
-            window_start, window_end, start_label, end_label = entry_window
-            now = datetime.utcnow()
-            if now < window_start:
-                gate_decision = f"RED LIGHT - TOO EARLY (slot begins {start_label})"
-            elif now > window_end:
-                gate_decision = f"RED LIGHT - EXPIRED (slot ended {end_label})"
+    items_res = await db.execute(select(OrderItem).where(OrderItem.order_id == order_pass.order_id))
+    items = items_res.scalars().all()
 
     return OfflineVerificationResponse(
-        ticket_ref=ticket.ticket_ref,
-        passenger_name=ticket.passenger_name,
+        pass_ref=order_pass.pass_ref,
+        lead_passenger_name=order_pass.lead_passenger_name,
         is_signature_valid=is_valid,
         verification_mode="100% OFFLINE MATHEMATICAL PROOF (Ed25519)",
-        gate_decision=gate_decision,
+        entitlements=[_entitlement_to_response(i) for i in items],
     )
 
 
-# 4. Staff Gate/Turnstile Check-In (Ferry Operator, Vendor, or Admin)
+# 4. Staff Gate/Turnstile Check-In (Ferry Operator, Vendor, or Admin) —
+# consumes exactly ONE entitlement within the Unified QR pass, leaving the
+# rest of the pass valid for the other gates/attractions in the same order.
 @router.post("/staff/check-in", response_model=StaffCheckInResponse)
 async def staff_check_in_ticket(
     payload: StaffCheckInRequest,
@@ -165,53 +170,73 @@ async def staff_check_in_ticket(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    RFP Page 28-29: Ground-staff entry validation. Cryptographically
-    verifies the Ed25519 signature, then transitions the ticket from
-    ISSUED to CHECKED_IN in Postgres — this is the durable state change
-    that prevents passback fraud (a ticket cannot be validated twice).
+    RFP Page 28-29 & 49: Ground-staff entry validation against the
+    Unified QR pass. Cryptographically verifies the Ed25519 signature over
+    the whole pass, then transitions just the named entitlement (OrderItem)
+    from ISSUED to CHECKED_IN — this per-entitlement state is what prevents
+    passback fraud on that specific attraction/seat, while every other
+    entitlement in the same pass stays untouched.
     """
-    res = await db.execute(select(Ticket).where(Ticket.ticket_ref == payload.ticket_ref))
-    ticket = res.scalars().first()
-    if not ticket:
-        raise HTTPException(status_code=404, detail="Ticket reference not found")
+    res = await db.execute(select(OrderPass).where(OrderPass.pass_ref == payload.pass_ref))
+    order_pass = res.scalars().first()
+    if not order_pass:
+        raise HTTPException(status_code=404, detail="Pass reference not found")
 
-    if not verify_ticket_offline(ticket.qr_payload_json, ticket.qr_signature_b64):
+    if not verify_ticket_offline(order_pass.qr_payload_json, order_pass.qr_signature_b64):
         raise HTTPException(status_code=400, detail="INVALID SIGNATURE: This QR code failed cryptographic verification.")
 
-    if ticket.check_in_status == "CHECKED_IN":
+    try:
+        item_uuid = uuid.UUID(payload.order_item_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid entitlement (order_item_id) reference.")
+
+    item_res = await db.execute(
+        select(OrderItem).where(OrderItem.id == item_uuid, OrderItem.order_id == order_pass.order_id)
+    )
+    item = item_res.scalars().first()
+    if not item:
+        raise HTTPException(status_code=404, detail="This entitlement does not belong to the scanned pass.")
+
+    if item.check_in_status == "CHECKED_IN":
         raise HTTPException(
             status_code=400,
-            detail=f"PASSBACK ERROR: Ticket already checked in at {ticket.checked_in_at}.",
+            detail=f"PASSBACK ERROR: This entitlement was already checked in at {item.checked_in_at}.",
         )
 
-    if ticket.check_in_status == "CANCELLED":
-        raise HTTPException(status_code=400, detail="INVALID PASS: This ticket was cancelled and refunded.")
+    if item.check_in_status == "CANCELLED":
+        raise HTTPException(status_code=400, detail="INVALID PASS: This entitlement was cancelled and refunded.")
 
-    entry_window = await _get_ticket_entry_window(db, ticket)
+    entry_window = await _get_entry_window(db, item)
     if entry_window:
         window_start, window_end, start_label, end_label = entry_window
         now = datetime.utcnow()
         if now < window_start:
             raise HTTPException(
                 status_code=400,
-                detail=f"TOO EARLY: Your slot begins at {start_label} (entry allowed from {_format_12h(window_start.time())}).",
+                detail=f"TOO EARLY: This entitlement's slot begins at {start_label} (entry allowed from {_format_12h(window_start.time())}).",
             )
         if now > window_end:
             raise HTTPException(
                 status_code=400,
-                detail=f"EXPIRED: Your slot ended at {end_label}. Ticket no longer valid.",
+                detail=f"EXPIRED: This entitlement's slot ended at {end_label}. No longer valid.",
             )
 
-    ticket.check_in_status = "CHECKED_IN"
-    ticket.checked_in_at = datetime.utcnow()
+    item.check_in_status = "CHECKED_IN"
+    item.checked_in_at = datetime.utcnow()
     await db.commit()
-    await db.refresh(ticket)
+    await db.refresh(item)
+
+    siblings_res = await db.execute(select(OrderItem).where(OrderItem.order_id == order_pass.order_id))
+    siblings = siblings_res.scalars().all()
 
     return StaffCheckInResponse(
-        check_in_status=ticket.check_in_status,
-        ticket_ref=ticket.ticket_ref,
-        passenger_name=ticket.passenger_name,
-        item_type=ticket.item_type,
-        slot_or_seat_info=ticket.slot_or_seat_info,
-        message="Valid ticket verified. Entry granted.",
+        check_in_status=item.check_in_status,
+        pass_ref=order_pass.pass_ref,
+        order_item_id=str(item.id),
+        passenger_name=item.passenger_name,
+        item_type=item.item_type,
+        title=item.title,
+        slot_or_seat_info=item.slot_or_seat_info,
+        message="Valid entitlement verified. Entry granted.",
+        remaining_entitlements=[_entitlement_to_response(i) for i in siblings],
     )

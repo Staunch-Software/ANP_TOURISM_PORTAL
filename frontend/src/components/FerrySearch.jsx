@@ -1,12 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import API from '../api/client';
-import { Ship, Calendar, Clock, MapPin, Armchair, AlertCircle } from 'lucide-react';
+import { Ship, Calendar, Clock, MapPin, Armchair, AlertCircle, ArrowLeftRight } from 'lucide-react';
 
 const PORTS = [
   { id: 'PORT_BLAIR', name: 'Port Blair (Phoenix Bay Jetty)' },
   { id: 'HAVELOCK', name: 'Havelock (Swaraj Dweep Jetty)' },
   { id: 'NEIL', name: 'Neil (Shaheed Dweep Jetty)' }
 ];
+
+const PORT_SHORT_NAME = {
+  PORT_BLAIR: 'Port Blair',
+  HAVELOCK: 'Havelock',
+  NEIL: 'Neil',
+};
 
 export function FerrySearch({ onAddToCart, onRequireLogin, user }) {
   const [sourcePort, setSourcePort] = useState('PORT_BLAIR');
@@ -39,6 +45,11 @@ export function FerrySearch({ onAddToCart, onRequireLogin, user }) {
     }, 1000);
     return () => clearInterval(interval);
   }, [holdCountdown]);
+
+  const handleSwapPorts = () => {
+    setSourcePort(destinationPort);
+    setDestinationPort(sourcePort);
+  };
 
   const handleSearch = async (e) => {
     if (e) e.preventDefault();
@@ -165,7 +176,7 @@ export function FerrySearch({ onAddToCart, onRequireLogin, user }) {
     <div className="space-y-8">
       {/* 1. Route Search Controls */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-        <form onSubmit={handleSearch} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+        <form onSubmit={handleSearch} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_auto_1fr_auto_auto] gap-4 items-end">
           {/* Origin Port */}
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1.5 flex items-center gap-1.5">
@@ -181,6 +192,16 @@ export function FerrySearch({ onAddToCart, onRequireLogin, user }) {
               ))}
             </select>
           </div>
+
+          {/* Swap Button */}
+          <button
+            type="button"
+            onClick={handleSwapPorts}
+            title="Swap origin & destination"
+            className="hidden lg:flex w-9 h-9 items-center justify-center rounded-full bg-slate-100 hover:bg-cyan-100 text-slate-500 hover:text-cyan-700 border border-slate-200 transition-all"
+          >
+            <ArrowLeftRight className="w-4 h-4" />
+          </button>
 
           {/* Destination Port */}
           <div>
@@ -266,7 +287,7 @@ export function FerrySearch({ onAddToCart, onRequireLogin, user }) {
                 </span>
                 <span className="text-slate-300">•</span>
                 <span className="text-slate-500">
-                  {trip.source_port.replace('_', ' ')} → {trip.destination_port.replace('_', ' ')}
+                  {PORT_SHORT_NAME[trip.source_port] || trip.source_port} → {PORT_SHORT_NAME[trip.destination_port] || trip.destination_port}
                 </span>
               </div>
             </div>
@@ -314,7 +335,7 @@ export function FerrySearch({ onAddToCart, onRequireLogin, user }) {
                   <Ship className="w-5 h-5 text-cyan-600" /> {activeSchedule.vessel_name}
                 </h3>
                 <p className="text-xs text-slate-500">
-                  {activeSchedule.source_port.replace('_', ' ')} → {activeSchedule.destination_port.replace('_', ' ')} • {activeSchedule.departure_time} hrs
+                  {PORT_SHORT_NAME[activeSchedule.source_port] || activeSchedule.source_port} → {PORT_SHORT_NAME[activeSchedule.destination_port] || activeSchedule.destination_port} • {activeSchedule.departure_time} hrs
                 </p>
               </div>
               <button
