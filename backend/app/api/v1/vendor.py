@@ -9,7 +9,7 @@ from sqlalchemy import func
 from app.core.database import get_db
 from app.models.user import User
 from app.models.order import Order, OrderItem
-from app.models.order_pass import OrderPass
+from app.models.ticket import Ticket
 from app.models.attraction import Attraction, AttractionSlot
 from app.api.v1.admin import verify_admin_or_vendor_role
 from app.schemas.vendor import VendorRevenueSummary, ActivityManifestResponse, ActivityManifestEntry
@@ -95,30 +95,30 @@ async def get_activity_manifest(
         raise HTTPException(status_code=404, detail="Attraction slot not found")
     slot, attraction = row
 
-    items_res = await db.execute(
-        select(OrderItem, OrderPass)
-        .join(OrderPass, OrderPass.order_id == OrderItem.order_id)
+    tickets_res = await db.execute(
+        select(Ticket)
+        .join(OrderItem, Ticket.order_item_id == OrderItem.id)
         .where(OrderItem.attraction_slot_id == slot.id)
-        .order_by(OrderPass.created_at.asc())
+        .order_by(Ticket.created_at.asc())
     )
-    pax_rows = items_res.all()
+    tickets = tickets_res.scalars().all()
 
     manifest_entries = []
-    for idx, (item, order_pass) in enumerate(pax_rows, start=1):
+    for idx, ticket in enumerate(tickets, start=1):
         manifest_entries.append(
             ActivityManifestEntry(
                 serial_no=idx,
-                ticket_ref=order_pass.pass_ref,
-                passenger_name=item.passenger_name,
-                age=item.passenger_age,
-                gender=item.passenger_gender,
-                id_type=item.id_type,
+                ticket_ref=ticket.booking_ref or ticket.ticket_ref,
+                passenger_name=ticket.passenger_name,
+                age=ticket.passenger_age,
+                gender=ticket.passenger_gender,
+                id_type=ticket.id_type,
                 id_masked_number=(
-                    f"XXXX-XXXX-{item.id_number[-4:]}"
-                    if item.id_number and len(item.id_number) >= 4
+                    f"XXXX-XXXX-{ticket.id_number[-4:]}"
+                    if ticket.id_number and len(ticket.id_number) >= 4
                     else "XXXX"
                 ),
-                check_in_status=item.check_in_status,
+                check_in_status=ticket.check_in_status,
             )
         )
 

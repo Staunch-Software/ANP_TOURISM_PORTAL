@@ -3,7 +3,8 @@ import API from '../api/client';
 import {
   ShieldCheck, TrendingUp, Users, DollarSign, Download,
   Ship, CloudRain, CheckCircle2, FileSpreadsheet, RefreshCw, Sliders,
-  UserPlus, ShieldAlert, GraduationCap, Eye, X
+  UserPlus, ShieldAlert, MapPin, KeyRound, Trash2, Plus, ClipboardCheck,
+  GraduationCap, Eye, X
 } from 'lucide-react';
 
 export function AdminDashboard({ user }) {
@@ -15,6 +16,13 @@ export function AdminDashboard({ user }) {
   const [manifestLoading, setManifestLoading] = useState(false);
   const [downloadingCsv, setDownloadingCsv] = useState(false);
   const [actionMessage, setActionMessage] = useState(null);
+
+  // Daily Validated-Tickets Report (RFP p.29, section 7.2.1.9 item 9) --
+  // fleet-wide, sourced from every LPU's real-time check-in pushes.
+  const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
+  const [reportRows, setReportRows] = useState(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportDownloading, setReportDownloading] = useState(false);
 
   // Slot Management State (RFP Page 30)
   const [attractions, setAttractions] = useState([]);
@@ -45,15 +53,6 @@ export function AdminDashboard({ user }) {
   const [groupBookingsLoading, setGroupBookingsLoading] = useState(false);
   const [decidingGroupId, setDecidingGroupId] = useState(null);
   const [rosterPreview, setRosterPreview] = useState(null); // the group booking whose roster is being viewed
-
-  useEffect(() => {
-    fetchMISData();
-    fetchSchedules();
-    fetchAttractionsList();
-    fetchUsers();
-    fetchApplications();
-    fetchGroupBookings();
-  }, []);
 
   const fetchGroupBookings = async () => {
     setGroupBookingsLoading(true);
@@ -93,6 +92,151 @@ export function AdminDashboard({ user }) {
       setDecidingGroupId(null);
     }
   };
+
+  // Gate / LPU Site Provisioning -- select a site first, everything below
+  // (services it serves, staff who can log into that LPU) is scoped to it.
+  const [gates, setGates] = useState([]);
+  const [gatesLoading, setGatesLoading] = useState(false);
+  const [selectedSiteId, setSelectedSiteId] = useState('');
+
+  const [newGateSiteId, setNewGateSiteId] = useState('');
+  const [newGateName, setNewGateName] = useState('');
+  const [creatingGate, setCreatingGate] = useState(false);
+  const [gateMessage, setGateMessage] = useState(null);
+
+  const [newServiceTitle, setNewServiceTitle] = useState('');
+  const [newServiceAttractionId, setNewServiceAttractionId] = useState('');
+  const [assigningService, setAssigningService] = useState(false);
+
+  const [newStaffUsername, setNewStaffUsername] = useState('');
+  const [newStaffPassword, setNewStaffPassword] = useState('');
+  const [newStaffFullName, setNewStaffFullName] = useState('');
+  const [newStaffRole, setNewStaffRole] = useState('GATEKEEPER');
+  const [creatingStaff, setCreatingStaff] = useState(false);
+  const [staffList, setStaffList] = useState([]);
+  const [staffLoading, setStaffLoading] = useState(false);
+
+  useEffect(() => {
+    fetchMISData();
+    fetchSchedules();
+    fetchAttractionsList();
+    fetchUsers();
+    fetchApplications();
+    fetchGates();
+    fetchValidatedTicketsReport(reportDate);
+    fetchGroupBookings();
+  }, []);
+
+  useEffect(() => {
+    if (selectedSiteId) fetchStaffForGate(selectedSiteId);
+    else setStaffList([]);
+  }, [selectedSiteId]);
+
+  const fetchGates = async () => {
+    setGatesLoading(true);
+    try {
+      const res = await API.get('/admin/gates');
+      setGates(res.data);
+      if (!selectedSiteId && res.data.length > 0) setSelectedSiteId(res.data[0].site_id);
+    } catch (err) {
+      console.error('Failed to load gates', err);
+    } finally {
+      setGatesLoading(false);
+    }
+  };
+
+  const fetchStaffForGate = async (siteId) => {
+    setStaffLoading(true);
+    try {
+      const res = await API.get(`/admin/gates/${siteId}/staff`);
+      setStaffList(res.data);
+    } catch (err) {
+      console.error('Failed to load staff', err);
+    } finally {
+      setStaffLoading(false);
+    }
+  };
+
+  const handleCreateGate = async (e) => {
+    e.preventDefault();
+    setCreatingGate(true);
+    setGateMessage(null);
+    try {
+      const res = await API.post('/admin/gates', { site_id: newGateSiteId.trim(), name: newGateName.trim() });
+      setGateMessage({ type: 'SUCCESS', text: `Gate '${res.data.site_id}' provisioned. Put SITE_ID=${res.data.site_id} in that LPU device's .env before starting it.` });
+      setNewGateSiteId('');
+      setNewGateName('');
+      await fetchGates();
+      setSelectedSiteId(res.data.site_id);
+    } catch (err) {
+      setGateMessage({ type: 'ERROR', text: err.response?.data?.detail || 'Failed to create gate' });
+    } finally {
+      setCreatingGate(false);
+    }
+  };
+
+  const handleAssignService = async (e) => {
+    e.preventDefault();
+    if (!selectedSiteId) return;
+    setAssigningService(true);
+    try {
+      const res = await API.post(`/admin/gates/${selectedSiteId}/services`, {
+        title: newServiceTitle.trim(),
+        attraction_id: newServiceAttractionId || null,
+      });
+      setGates((prev) => prev.map((g) => (g.site_id === selectedSiteId ? res.data : g)));
+      setNewServiceTitle('');
+      setNewServiceAttractionId('');
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to assign service');
+    } finally {
+      setAssigningService(false);
+    }
+  };
+
+  const handleUnassignService = async (serviceId) => {
+    try {
+      const res = await API.delete(`/admin/gates/${selectedSiteId}/services/${serviceId}`);
+      setGates((prev) => prev.map((g) => (g.site_id === selectedSiteId ? res.data : g)));
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to remove service');
+    }
+  };
+
+  const handleCreateStaff = async (e) => {
+    e.preventDefault();
+    if (!selectedSiteId) return;
+    setCreatingStaff(true);
+    try {
+      await API.post(`/admin/gates/${selectedSiteId}/staff`, {
+        username: newStaffUsername.trim(),
+        password: newStaffPassword,
+        full_name: newStaffFullName.trim(),
+        role: newStaffRole,
+      });
+      setNewStaffUsername('');
+      setNewStaffPassword('');
+      setNewStaffFullName('');
+      setNewStaffRole('GATEKEEPER');
+      fetchStaffForGate(selectedSiteId);
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to create staff account');
+    } finally {
+      setCreatingStaff(false);
+    }
+  };
+
+  const handleDeleteStaff = async (staffId, username) => {
+    if (!window.confirm(`Remove '${username}'? They'll be deleted from the LPU on its next sync.`)) return;
+    try {
+      await API.delete(`/admin/gates/${selectedSiteId}/staff/${staffId}`);
+      fetchStaffForGate(selectedSiteId);
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to remove staff account');
+    }
+  };
+
+  const selectedGate = gates.find((g) => g.site_id === selectedSiteId) || null;
 
   const fetchApplications = async () => {
     setApplicationsLoading(true);
@@ -303,6 +447,42 @@ export function AdminDashboard({ user }) {
       alert("Failed to export PMB CSV. Check if you are logged in as Admin.");
     } finally {
       setDownloadingCsv(false);
+    }
+  };
+
+  const fetchValidatedTicketsReport = async (date) => {
+    setReportLoading(true);
+    try {
+      const res = await API.get(`/admin/reports/validated-tickets?date=${date}`);
+      setReportRows(res.data);
+    } catch (err) {
+      console.error("Failed to load validated-tickets report", err);
+      setReportRows([]);
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
+  const handleDownloadValidatedTicketsCSV = async () => {
+    setReportDownloading(true);
+    try {
+      const response = await API.get(`/admin/reports/validated-tickets.csv?date=${reportDate}`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `ANIIDCO_validated_tickets_${reportDate}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Validated-tickets CSV download error", err);
+      alert("Failed to export the validated-tickets report.");
+    } finally {
+      setReportDownloading(false);
     }
   };
 
@@ -518,6 +698,88 @@ export function AdminDashboard({ user }) {
                         {p.check_in_status}
                       </span>
                     </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* 3b. Daily Validated-Tickets Report (RFP p.29, section 7.2.1.9
+          item 9: "submit a report on a timely basis concerning the
+          validated tickets... to inform ANIIDCO"). Fleet-wide, sourced
+          from every LPU's real-time check-in pushes -- not a separate
+          batch job, just a view over data that's already flowing in. */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+          <div>
+            <span className="text-[10px] font-extrabold uppercase tracking-widest text-cyan-700">
+              RFP Clause 7.2.1.9 Compliance
+            </span>
+            <h3 className="font-serif text-lg font-black text-navy-800 flex items-center gap-2">
+              <ClipboardCheck className="w-5 h-5 text-cyan-600" /> Daily Validated-Tickets Report
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Every gate-scan validated across every LPU site on the selected day, with booking reference and site of entry.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              type="date"
+              value={reportDate}
+              onChange={(e) => {
+                setReportDate(e.target.value);
+                fetchValidatedTicketsReport(e.target.value);
+              }}
+              className="px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-navy-800 focus:border-cyan-500 focus:outline-none"
+            />
+            <button
+              type="button"
+              disabled={reportDownloading}
+              onClick={handleDownloadValidatedTicketsCSV}
+              className="px-4 py-2 bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs rounded-lg flex items-center gap-2 shadow-md transition-all disabled:opacity-50"
+            >
+              <Download className="w-4 h-4" /> {reportDownloading ? 'Generating...' : 'Download CSV'}
+            </button>
+          </div>
+        </div>
+
+        {reportLoading ? (
+          <div className="text-center py-12 text-slate-400 text-xs">Loading validated tickets...</div>
+        ) : !reportRows || reportRows.length === 0 ? (
+          <div className="text-center py-12 text-slate-400 text-xs">
+            No tickets were validated at any gate on {reportDate}.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 text-slate-500 font-mono text-[11px] uppercase tracking-wider border-b border-slate-200">
+                <tr>
+                  <th className="p-3">Checked In At</th>
+                  <th className="p-3">Booking Ref</th>
+                  <th className="p-3">Attraction / Route</th>
+                  <th className="p-3">Passenger</th>
+                  <th className="p-3">Site</th>
+                  <th className="p-3">Issued By</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {reportRows.map((r) => (
+                  <tr key={r.ticket_ref} className="hover:bg-slate-50 transition-colors">
+                    <td className="p-3 font-mono text-slate-500">
+                      {r.checked_in_at ? new Date(r.checked_in_at + 'Z').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
+                    </td>
+                    <td className="p-3 font-mono font-bold text-cyan-700">{r.booking_ref || r.ticket_ref}</td>
+                    <td className="p-3 text-navy-800">{r.title}</td>
+                    <td className="p-3 font-bold text-navy-800">{r.passenger_name}</td>
+                    <td className="p-3">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 font-mono">
+                        {r.site_id || 'UNKNOWN'}
+                      </span>
+                    </td>
+                    <td className="p-3 text-slate-500">{r.issued_by}</td>
                   </tr>
                 ))}
               </tbody>
@@ -862,7 +1124,227 @@ export function AdminDashboard({ user }) {
         </div>
       </div>
 
-      {/* 7. Group / Institutional Booking Approval Queue (RFP Page 26) */}
+      {/* 7. Gate / LPU Site Provisioning -- select a site first; the
+          services it serves and the staff who can log into that LPU are
+          both scoped to whichever site is picked below. */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div>
+            <span className="text-[10px] font-extrabold uppercase tracking-widest text-cyan-700">
+              Local Processing Unit (LPU) Fleet
+            </span>
+            <h3 className="font-serif text-lg font-black text-navy-800 flex items-center gap-2">
+              <MapPin className="w-5 h-5 text-cyan-600" /> Gate / Site Provisioning
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Every physical gate/counter device syncs only what's provisioned here for its site_id -- nothing syncs to an unprovisioned site.
+            </p>
+          </div>
+          <button
+            onClick={fetchGates}
+            disabled={gatesLoading}
+            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg text-xs font-bold text-navy-800 flex items-center gap-2 self-start sm:self-auto"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${gatesLoading ? 'animate-spin' : ''}`} /> Refresh
+          </button>
+        </div>
+
+        {gateMessage && (
+          <div className={`p-2.5 rounded-lg text-[11px] font-medium ${
+            gateMessage.type === 'SUCCESS' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'
+          }`}>
+            {gateMessage.text}
+          </div>
+        )}
+
+        {/* Create a new gate */}
+        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5">
+          <h4 className="text-sm font-bold text-navy-800 flex items-center gap-1.5 mb-3">
+            <Plus className="w-4 h-4 text-cyan-600" /> Provision a New Site
+          </h4>
+          <form onSubmit={handleCreateGate} className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+            <div>
+              <label className="text-[11px] text-slate-500 block mb-1">site_id (must match that device's .env exactly)</label>
+              <input
+                type="text"
+                placeholder="HAVELOCK_GATE1"
+                value={newGateSiteId}
+                onChange={(e) => setNewGateSiteId(e.target.value.toUpperCase().replace(/\s+/g, '_'))}
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800 font-mono"
+                required
+              />
+            </div>
+            <div>
+              <label className="text-[11px] text-slate-500 block mb-1">Display Name</label>
+              <input
+                type="text"
+                placeholder="Havelock Radhanagar Gate 1"
+                value={newGateName}
+                onChange={(e) => setNewGateName(e.target.value)}
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={creatingGate}
+              className="py-2.5 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-lg text-xs shadow-md disabled:opacity-50"
+            >
+              {creatingGate ? 'Provisioning...' : 'Create Gate'}
+            </button>
+          </form>
+        </div>
+
+        {/* Select a site -- everything below is scoped to this */}
+        <div>
+          <label className="text-[11px] text-slate-500 block mb-1">Select Site</label>
+          <select
+            value={selectedSiteId}
+            onChange={(e) => setSelectedSiteId(e.target.value)}
+            className="w-full sm:w-96 px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-navy-800 font-mono focus:border-cyan-500 focus:outline-none"
+          >
+            {gates.length === 0 && <option value="">No gates provisioned yet</option>}
+            {gates.map((g) => (
+              <option key={g.site_id} value={g.site_id}>{g.site_id} -- {g.name} ({g.services.length} service{g.services.length === 1 ? '' : 's'})</option>
+            ))}
+          </select>
+        </div>
+
+        {selectedGate && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Services this site serves */}
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
+              <h4 className="text-sm font-bold text-navy-800">Attractions/Routes served by {selectedGate.site_id}</h4>
+
+              {selectedGate.services.length === 0 ? (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+                  No services assigned -- this LPU's ticket sync will return nothing until at least one is added.
+                </p>
+              ) : (
+                <div className="space-y-1.5">
+                  {selectedGate.services.map((s) => (
+                    <div key={s.id} className="flex items-center justify-between px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs">
+                      <span className="text-navy-800 font-medium">{s.title}</span>
+                      <button onClick={() => handleUnassignService(s.id)} className="text-red-600 hover:text-red-700" title="Remove">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <form onSubmit={handleAssignService} className="flex gap-2 pt-2 border-t border-slate-200">
+                <select
+                  value={newServiceAttractionId}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    setNewServiceAttractionId(id);
+                    const a = attractions.find((x) => x.id === id);
+                    if (a) setNewServiceTitle(a.title);
+                  }}
+                  className="flex-1 px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-[11px] text-navy-800"
+                >
+                  <option value="">Pick an attraction (or type a ferry route below)</option>
+                  {attractions.map((a) => (
+                    <option key={a.id} value={a.id}>{a.title}</option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  placeholder="Exact title to serve"
+                  value={newServiceTitle}
+                  onChange={(e) => setNewServiceTitle(e.target.value)}
+                  className="flex-1 px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-[11px] text-navy-800"
+                  required
+                />
+                <button
+                  type="submit"
+                  disabled={assigningService}
+                  className="px-3 py-1.5 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-lg text-[11px] disabled:opacity-50"
+                >
+                  Add
+                </button>
+              </form>
+            </div>
+
+            {/* Staff (COUNTER/GATEKEEPER) accounts for this site */}
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
+              <h4 className="text-sm font-bold text-navy-800 flex items-center gap-1.5">
+                <KeyRound className="w-4 h-4 text-cyan-600" /> Gate/Counter Staff Logins for {selectedGate.site_id}
+              </h4>
+
+              {staffLoading ? (
+                <p className="text-xs text-slate-400 text-center py-4">Loading staff...</p>
+              ) : staffList.length === 0 ? (
+                <p className="text-xs text-slate-400 text-center py-2">No staff accounts yet for this site.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {staffList.map((s) => (
+                    <div key={s.id} className="flex items-center justify-between px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs">
+                      <div>
+                        <span className="text-navy-800 font-bold font-mono">{s.username}</span>
+                        <span className="text-slate-400 ml-2">{s.full_name}</span>
+                        <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">{s.role}</span>
+                      </div>
+                      <button onClick={() => handleDeleteStaff(s.id, s.username)} className="text-red-600 hover:text-red-700" title="Remove">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <form onSubmit={handleCreateStaff} className="space-y-2 pt-2 border-t border-slate-200">
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    placeholder="username"
+                    value={newStaffUsername}
+                    onChange={(e) => setNewStaffUsername(e.target.value)}
+                    className="px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-[11px] text-navy-800 font-mono"
+                    required
+                  />
+                  <input
+                    type="password"
+                    placeholder="password"
+                    value={newStaffPassword}
+                    onChange={(e) => setNewStaffPassword(e.target.value)}
+                    className="px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-[11px] text-navy-800"
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    placeholder="Full name"
+                    value={newStaffFullName}
+                    onChange={(e) => setNewStaffFullName(e.target.value)}
+                    className="px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-[11px] text-navy-800"
+                    required
+                  />
+                  <select
+                    value={newStaffRole}
+                    onChange={(e) => setNewStaffRole(e.target.value)}
+                    className="px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-[11px] text-navy-800"
+                  >
+                    <option value="GATEKEEPER">Gatekeeper</option>
+                    <option value="COUNTER">Counter</option>
+                  </select>
+                </div>
+                <button
+                  type="submit"
+                  disabled={creatingStaff}
+                  className="w-full py-2 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-lg text-[11px] disabled:opacity-50"
+                >
+                  {creatingStaff ? 'Creating...' : 'Create Staff Login'}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Group / Institutional Booking Approval Queue (RFP Page 26) */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
         <div className="flex items-center justify-between">
           <div>

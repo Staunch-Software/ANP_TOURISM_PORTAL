@@ -102,7 +102,7 @@ export function DigitalWallet({ user, onRequireLogin }) {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {passes.map((pass) => (
             <div
-              key={pass.pass_ref}
+              key={pass.booking_ref}
               className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between relative group hover:border-cyan-400 transition-all"
             >
               {/* Official Pass Header */}
@@ -117,7 +117,7 @@ export function DigitalWallet({ user, onRequireLogin }) {
 
                 <div className="text-right">
                   <span className="text-[10px] font-mono text-slate-400 uppercase block">Pass Ref</span>
-                  <span className="font-mono text-xs font-black text-cyan-700">{pass.pass_ref}</span>
+                  <span className="font-mono text-xs font-black text-cyan-700">{pass.booking_ref}</span>
                 </div>
               </div>
 
@@ -141,7 +141,7 @@ export function DigitalWallet({ user, onRequireLogin }) {
                     const TypeIcon = ITEM_TYPE_ICON[ent.item_type] || Ticket;
                     const isCheckedIn = ent.check_in_status === 'CHECKED_IN';
                     return (
-                      <div key={ent.order_item_id} className="flex items-center justify-between gap-2 text-xs border-b border-slate-100 pb-2 last:border-0 last:pb-0">
+                      <div key={ent.ticket_ref} className="flex items-center justify-between gap-2 text-xs border-b border-slate-100 pb-2 last:border-0 last:pb-0">
                         <div className="flex items-center gap-2 min-w-0">
                           <TypeIcon className="w-3.5 h-3.5 text-cyan-600 shrink-0" />
                           <div className="min-w-0">
@@ -174,7 +174,7 @@ export function DigitalWallet({ user, onRequireLogin }) {
                 <button
                   type="button"
                   disabled={verifying}
-                  onClick={() => handleSimulateTurnstileScan(pass.pass_ref)}
+                  onClick={() => handleSimulateTurnstileScan(pass.booking_ref)}
                   className="px-4 py-2 bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs rounded-lg shadow-md flex items-center gap-2 transition-all"
                 >
                   <ShieldCheck className="w-4 h-4" /> Simulate Turnstile Scan
@@ -216,7 +216,7 @@ export function DigitalWallet({ user, onRequireLogin }) {
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 my-4 text-left space-y-2 text-xs">
               <div className="flex justify-between">
                 <span className="text-slate-500">Pass Reference:</span>
-                <span className="font-mono text-cyan-700 font-bold">{activeVerification.pass_ref}</span>
+                <span className="font-mono text-cyan-700 font-bold">{activeVerification.booking_ref}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Lead Passenger:</span>
@@ -224,7 +224,7 @@ export function DigitalWallet({ user, onRequireLogin }) {
               </div>
               <div className="pt-2 border-t border-slate-200 space-y-1.5">
                 {activeVerification.entitlements.map((ent) => (
-                  <div key={ent.order_item_id} className="flex justify-between">
+                  <div key={ent.ticket_ref} className="flex justify-between">
                     <span className="text-slate-500 truncate pr-2">{ent.title}</span>
                     <span className={`font-bold shrink-0 ${ent.check_in_status === 'CHECKED_IN' ? 'text-emerald-700' : 'text-slate-500'}`}>
                       {ent.check_in_status}

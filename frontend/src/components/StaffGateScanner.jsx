@@ -33,21 +33,20 @@ export function StaffGateScanner({ user }) {
   };
 
   const handleCheckIn = async (entitlement) => {
-    setCheckInLoading(entitlement.order_item_id);
+    setCheckInLoading(entitlement.ticket_ref);
     setResult(null);
     try {
       const res = await API.post('/tickets/staff/check-in', {
-        pass_ref: pass.pass_ref,
-        order_item_id: entitlement.order_item_id,
+        ticket_ref: entitlement.ticket_ref,
       });
-      setResult({ ok: true, data: res.data, order_item_id: entitlement.order_item_id });
+      setResult({ ok: true, data: res.data, ticket_ref: entitlement.ticket_ref });
       // Refresh the local entitlement list from the response's authoritative sibling list
       setPass((prev) => ({ ...prev, entitlements: res.data.remaining_entitlements }));
     } catch (err) {
       setResult({
         ok: false,
         message: err.response?.data?.detail || 'Verification failed.',
-        order_item_id: entitlement.order_item_id,
+        ticket_ref: entitlement.ticket_ref,
       });
     } finally {
       setCheckInLoading(null);
@@ -112,7 +111,7 @@ export function StaffGateScanner({ user }) {
           <div className={`p-4 flex items-center justify-between ${pass.is_signature_valid ? 'bg-emerald-50 border-b border-emerald-100' : 'bg-red-50 border-b border-red-100'}`}>
             <div>
               <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block">Pass Reference</span>
-              <span className="font-mono text-sm font-black text-navy-800">{pass.pass_ref}</span>
+              <span className="font-mono text-sm font-black text-navy-800">{pass.booking_ref}</span>
             </div>
             <div className="text-right">
               <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block">Signature</span>
@@ -129,11 +128,11 @@ export function StaffGateScanner({ user }) {
 
             {pass.entitlements.map((ent) => {
               const Icon = ITEM_TYPE_ICON[ent.item_type] || Landmark;
-              const entResult = result && result.order_item_id === ent.order_item_id ? result : null;
+              const entResult = result && result.ticket_ref === ent.ticket_ref ? result : null;
               const isCheckedIn = ent.check_in_status === 'CHECKED_IN';
 
               return (
-                <div key={ent.order_item_id} className="border border-slate-200 rounded-xl p-3.5 space-y-2">
+                <div key={ent.ticket_ref} className="border border-slate-200 rounded-xl p-3.5 space-y-2">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div className="w-8 h-8 rounded-lg bg-cyan-50 text-cyan-700 border border-cyan-100 flex items-center justify-center shrink-0">
@@ -152,10 +151,10 @@ export function StaffGateScanner({ user }) {
                     ) : (
                       <button
                         onClick={() => handleCheckIn(ent)}
-                        disabled={checkInLoading === ent.order_item_id}
+                        disabled={checkInLoading === ent.ticket_ref}
                         className="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs rounded-lg shrink-0 disabled:opacity-50"
                       >
-                        {checkInLoading === ent.order_item_id ? 'Checking...' : 'Check In'}
+                        {checkInLoading === ent.ticket_ref ? 'Checking...' : 'Check In'}
                       </button>
                     )}
                   </div>

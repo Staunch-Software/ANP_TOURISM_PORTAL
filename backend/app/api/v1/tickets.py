@@ -1,4 +1,3 @@
-import uuid
 from datetime import datetime, timedelta
 from typing import List, Optional, Tuple
 
@@ -7,9 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.core.database import get_db
+from app.core.config import settings
 from app.models.user import User
-from app.models.order import Order, OrderItem
-from app.models.order_pass import OrderPass
+from app.models.order import OrderItem
+from app.models.ticket import Ticket
 from app.models.attraction import AttractionSlot
 from app.models.ferry import FerrySeat, FerrySchedule
 from app.api.v1.auth import get_current_user
@@ -32,28 +32,38 @@ router = APIRouter(prefix="/tickets", tags=["Digital Pass Wallet & Offline Verif
 ENTRY_GRACE_BEFORE_MINUTES = 30
 ENTRY_GRACE_AFTER_MINUTES = 15
 
+# Distinguishes a check-in performed through this web console from one
+# an LPU pushed via POST /sync/checkins (which records the LPU's own real
+# site_id) — see Ticket.site_id.
+WEB_CONSOLE_SITE_ID = "WEB-CONSOLE"
+
 
 def _format_12h(t) -> str:
     return t.strftime("%I:%M %p").lstrip("0")
 
 
-def _entitlement_to_response(item: OrderItem) -> EntitlementResponse:
+def _entitlement_to_response(ticket: Ticket) -> EntitlementResponse:
     return EntitlementResponse(
-        order_item_id=str(item.id),
-        item_type=item.item_type,
-        title=item.title,
-        slot_or_seat_info=item.slot_or_seat_info,
-        passenger_name=item.passenger_name,
-        id_type=item.id_type,
-        id_number=item.id_number,
-        check_in_status=item.check_in_status,
+        ticket_ref=ticket.ticket_ref,
+        item_type=ticket.item_type,
+        title=ticket.title,
+        slot_or_seat_info=ticket.slot_or_seat_info,
+        passenger_name=ticket.passenger_name,
+        id_type=ticket.id_type,
+        id_number=ticket.id_number,
+        check_in_status=ticket.check_in_status,
     )
 
 
-async def _get_entry_window(db: AsyncSession, item: OrderItem) -> Optional[Tuple[datetime, datetime, str, str]]:
+async def _get_entry_window(db: AsyncSession, ticket: Ticket) -> Optional[Tuple[datetime, datetime, str, str]]:
     """Returns (window_start, window_end, slot_start_label, slot_end_label)
-    for this entitlement's booked slot/departure, or None if it can't be
+    for this ticket's booked slot/departure, or None if it can't be
     determined (fails open rather than blocking a valid entry)."""
+    item_res = await db.execute(select(OrderItem).where(OrderItem.id == ticket.order_item_id))
+    item = item_res.scalars().first()
+    if not item:
+        return None
+
     if item.attraction_slot_id:
         slot_res = await db.execute(select(AttractionSlot).where(AttractionSlot.id == item.attraction_slot_id))
         slot = slot_res.scalars().first()
@@ -98,25 +108,29 @@ async def get_my_passes(
     db: AsyncSession = Depends(get_db),
 ):
     res = await db.execute(
-        select(OrderPass, Order)
-        .join(Order, OrderPass.order_id == Order.id)
-        .where(OrderPass.user_id == current_user.id)
-        .order_by(OrderPass.created_at.desc())
+        select(Ticket)
+        .where(Ticket.user_id == current_user.id)
+        .order_by(Ticket.created_at.desc(), Ticket.item_index.asc())
     )
-    rows = res.all()
+    tickets = res.scalars().all()
+
+    bookings: dict[str, list[Ticket]] = {}
+    order_refs: dict[str, str] = {}
+    for t in tickets:
+        key = t.booking_ref or t.ticket_ref
+        bookings.setdefault(key, []).append(t)
 
     passes = []
-    for order_pass, order in rows:
-        items_res = await db.execute(select(OrderItem).where(OrderItem.order_id == order.id))
-        items = items_res.scalars().all()
-        qr_combined = f"{order_pass.qr_payload_json}|SIG:{order_pass.qr_signature_b64}"
+    for booking_ref, legs in bookings.items():
+        head = legs[0]
+        qr_combined = f"{head.qr_payload_json}|SIG:{head.qr_signature_b64}"
         passes.append(
             OrderPassResponse(
-                pass_ref=order_pass.pass_ref,
-                order_ref=order.order_ref,
-                lead_passenger_name=order_pass.lead_passenger_name,
+                booking_ref=booking_ref,
+                order_ref=booking_ref,
+                lead_passenger_name=head.passenger_name,
                 qr_token=qr_combined,
-                entitlements=[_entitlement_to_response(i) for i in items],
+                entitlements=[_entitlement_to_response(t) for t in legs],
             )
         )
     return passes
@@ -128,85 +142,74 @@ async def get_offline_scanner_public_key():
     return {
         "algorithm": "Ed25519",
         "public_key_hex": get_public_key_hex(),
-        "description": "Bake this public key into Android scanners & turnstiles for 100% offline verification",
+        "lpu_fleet_public_key_hex": settings.LPU_ED25519_PUBLIC_KEY_HEX or None,
+        "description": (
+            "Bake public_key_hex into Android scanners & turnstiles for 100% offline "
+            "verification of web/app-issued tickets. lpu_fleet_public_key_hex additionally "
+            "verifies tickets issued offline at an LPU counter, signed with the LPU fleet's "
+            "own key -- both are needed to accept every valid ticket at a gate."
+        ),
     }
 
 
 # 3. The Offline Gate Proof Endpoint (Simulates what happens at the turnstile) —
-# read-only: verifies the pass signature and reports each entitlement's live
-# status, without changing anything. The actual admit/deny state change
-# happens at /staff/check-in.
-@router.get("/{pass_ref}/verify-offline", response_model=OfflineVerificationResponse)
+# read-only: verifies the booking's shared signature and reports each
+# entitlement's live status, without changing anything. The actual
+# admit/deny state change happens at /staff/check-in.
+@router.get("/{booking_ref}/verify-offline", response_model=OfflineVerificationResponse)
 async def simulate_offline_gate_scan(
-    pass_ref: str,
+    booking_ref: str,
     db: AsyncSession = Depends(get_db),
 ):
-    res = await db.execute(select(OrderPass).where(OrderPass.pass_ref == pass_ref))
-    order_pass = res.scalars().first()
-    if not order_pass:
-        raise HTTPException(status_code=404, detail="Pass reference not found")
+    res = await db.execute(
+        select(Ticket).where(Ticket.booking_ref == booking_ref).order_by(Ticket.item_index.asc())
+    )
+    legs = res.scalars().all()
+    if not legs:
+        raise HTTPException(status_code=404, detail="Booking reference not found")
 
-    is_valid = verify_ticket_offline(order_pass.qr_payload_json, order_pass.qr_signature_b64)
-
-    items_res = await db.execute(select(OrderItem).where(OrderItem.order_id == order_pass.order_id))
-    items = items_res.scalars().all()
+    head = legs[0]
+    is_valid = verify_ticket_offline(head.qr_payload_json, head.qr_signature_b64)
 
     return OfflineVerificationResponse(
-        pass_ref=order_pass.pass_ref,
-        lead_passenger_name=order_pass.lead_passenger_name,
+        booking_ref=booking_ref,
+        lead_passenger_name=head.passenger_name,
         is_signature_valid=is_valid,
         verification_mode="100% OFFLINE MATHEMATICAL PROOF (Ed25519)",
-        entitlements=[_entitlement_to_response(i) for i in items],
+        entitlements=[_entitlement_to_response(t) for t in legs],
     )
 
 
 # 4. Staff Gate/Turnstile Check-In (Ferry Operator, Vendor, or Admin) —
-# consumes exactly ONE entitlement within the Unified QR pass, leaving the
-# rest of the pass valid for the other gates/attractions in the same order.
+# consumes exactly ONE leg (Ticket row) within the Unified QR booking,
+# leaving every other leg in the same booking_ref valid. This is the web
+# console's equivalent of an LPU's POST /sync/checkins push -- used when
+# staff check someone in directly through the browser rather than a
+# physical LPU-connected scanner.
 @router.post("/staff/check-in", response_model=StaffCheckInResponse)
 async def staff_check_in_ticket(
     payload: StaffCheckInRequest,
     staff_user: User = Depends(verify_staff_role),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    RFP Page 28-29 & 49: Ground-staff entry validation against the
-    Unified QR pass. Cryptographically verifies the Ed25519 signature over
-    the whole pass, then transitions just the named entitlement (OrderItem)
-    from ISSUED to CHECKED_IN — this per-entitlement state is what prevents
-    passback fraud on that specific attraction/seat, while every other
-    entitlement in the same pass stays untouched.
-    """
-    res = await db.execute(select(OrderPass).where(OrderPass.pass_ref == payload.pass_ref))
-    order_pass = res.scalars().first()
-    if not order_pass:
-        raise HTTPException(status_code=404, detail="Pass reference not found")
+    res = await db.execute(select(Ticket).where(Ticket.ticket_ref == payload.ticket_ref))
+    ticket = res.scalars().first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket reference not found")
 
-    if not verify_ticket_offline(order_pass.qr_payload_json, order_pass.qr_signature_b64):
+    if not verify_ticket_offline(ticket.qr_payload_json, ticket.qr_signature_b64):
         raise HTTPException(status_code=400, detail="INVALID SIGNATURE: This QR code failed cryptographic verification.")
 
-    try:
-        item_uuid = uuid.UUID(payload.order_item_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid entitlement (order_item_id) reference.")
-
-    item_res = await db.execute(
-        select(OrderItem).where(OrderItem.id == item_uuid, OrderItem.order_id == order_pass.order_id)
-    )
-    item = item_res.scalars().first()
-    if not item:
-        raise HTTPException(status_code=404, detail="This entitlement does not belong to the scanned pass.")
-
-    if item.check_in_status == "CHECKED_IN":
+    if ticket.check_in_status == "CHECKED_IN":
         raise HTTPException(
             status_code=400,
-            detail=f"PASSBACK ERROR: This entitlement was already checked in at {item.checked_in_at}.",
+            detail=f"PASSBACK ERROR: This entitlement was already checked in at {ticket.checked_in_at}.",
         )
 
-    if item.check_in_status == "CANCELLED":
+    if ticket.check_in_status == "CANCELLED":
         raise HTTPException(status_code=400, detail="INVALID PASS: This entitlement was cancelled and refunded.")
 
-    entry_window = await _get_entry_window(db, item)
+    entry_window = await _get_entry_window(db, ticket)
     if entry_window:
         window_start, window_end, start_label, end_label = entry_window
         now = datetime.utcnow()
@@ -221,22 +224,26 @@ async def staff_check_in_ticket(
                 detail=f"EXPIRED: This entitlement's slot ended at {end_label}. No longer valid.",
             )
 
-    item.check_in_status = "CHECKED_IN"
-    item.checked_in_at = datetime.utcnow()
+    ticket.check_in_status = "CHECKED_IN"
+    ticket.checked_in_at = datetime.utcnow()
+    ticket.site_id = WEB_CONSOLE_SITE_ID
+    ticket.version = (ticket.version or 1) + 1
     await db.commit()
-    await db.refresh(item)
+    await db.refresh(ticket)
 
-    siblings_res = await db.execute(select(OrderItem).where(OrderItem.order_id == order_pass.order_id))
+    siblings_res = await db.execute(
+        select(Ticket).where(Ticket.booking_ref == ticket.booking_ref).order_by(Ticket.item_index.asc())
+    )
     siblings = siblings_res.scalars().all()
 
     return StaffCheckInResponse(
-        check_in_status=item.check_in_status,
-        pass_ref=order_pass.pass_ref,
-        order_item_id=str(item.id),
-        passenger_name=item.passenger_name,
-        item_type=item.item_type,
-        title=item.title,
-        slot_or_seat_info=item.slot_or_seat_info,
+        check_in_status=ticket.check_in_status,
+        booking_ref=ticket.booking_ref,
+        ticket_ref=ticket.ticket_ref,
+        passenger_name=ticket.passenger_name,
+        item_type=ticket.item_type,
+        title=ticket.title,
+        slot_or_seat_info=ticket.slot_or_seat_info,
         message="Valid entitlement verified. Entry granted.",
-        remaining_entitlements=[_entitlement_to_response(i) for i in siblings],
+        remaining_entitlements=[_entitlement_to_response(t) for t in siblings],
     )

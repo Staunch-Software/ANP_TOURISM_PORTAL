@@ -107,6 +107,25 @@ class OperatorApplicationDecisionRequest(BaseModel):
     reason: Optional[str] = None
 
 
+# -------------------------------------------------------------
+# Daily Validated-Tickets Report (RFP p.29, section 7.2.1.9 item 9:
+# "submit a report on a timely basis concerning the validated tickets,
+# including their unique booking ID or Transaction ID, to inform
+# ANIIDCO"). Fleet-wide -- every site's check-ins, not one LPU's own
+# local view (see LPU_backend's /scan/report for the per-site equivalent
+# a gatekeeper can pull directly at the gate when offline).
+# -------------------------------------------------------------
+class ValidatedTicketReportEntry(BaseModel):
+    ticket_ref: str
+    booking_ref: Optional[str] = None
+    title: str
+    item_type: str
+    passenger_name: str
+    site_id: Optional[str] = None
+    issued_by: str
+    checked_in_at: Optional[str] = None
+
+
 class AdminAlertSummary(BaseModel):
     alert_id: str
     alert_type: str

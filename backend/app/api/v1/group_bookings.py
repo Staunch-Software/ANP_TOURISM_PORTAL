@@ -15,6 +15,7 @@ from app.core.database import get_db
 from app.models.user import User
 from app.models.attraction import Attraction, AttractionSlot
 from app.models.order import Order, OrderItem
+from app.models.ticket import Ticket
 from app.models.group_booking import GroupBookingRequest
 from app.api.v1.auth import get_current_user
 from app.api.v1.admin import verify_admin_role
@@ -225,11 +226,12 @@ async def approve_group_booking(
 
     gross_amount = 0.0
     order_items = []
-    for member in roster:
+    for position, member in enumerate(roster):
         unit_price = float(attraction.base_price_inr) if member["nationality"] == "INDIAN" else float(attraction.foreign_price_inr)
         gross_amount += unit_price
         order_items.append(
             OrderItem(
+                position=position,
                 item_type="ATTRACTION",
                 attraction_slot_id=slot.id,
                 title=attraction.title,
@@ -242,7 +244,6 @@ async def approve_group_booking(
                 passenger_gender=member.get("gender"),
                 id_type=member["id_type"],
                 id_number=member["id_number"],
-                check_in_status="ISSUED",
             )
         )
 
@@ -357,9 +358,11 @@ async def cancel_group_booking(
         order = order_res.scalars().first()
         if order:
             order.status = "CANCELLED"
-            items_res = await db.execute(select(OrderItem).where(OrderItem.order_id == order.id))
-            for item in items_res.scalars().all():
-                item.check_in_status = "CANCELLED"
+            # Tickets only exist once the group's organizer has paid (see
+            # payments.py); an approved-but-unpaid request has none yet.
+            tickets_res = await db.execute(select(Ticket).where(Ticket.order_id == order.id))
+            for ticket in tickets_res.scalars().all():
+                ticket.check_in_status = "CANCELLED"
 
     gb.status = "CANCELLED"
     gb.admin_notes = payload.reason

@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.database import engine, Base
-from app.api.v1 import auth, attractions, ferry, cart, payments, tickets, admin, operator, vendor, group_bookings
+from app.api.v1 import auth, attractions, ferry, cart, payments, tickets, admin, sync, operator, gates, vendor, group_bookings
 
 
 @asynccontextmanager
@@ -38,7 +38,9 @@ app.include_router(cart.router, prefix=settings.API_V1_STR)
 app.include_router(payments.router, prefix=settings.API_V1_STR)
 app.include_router(tickets.router, prefix=settings.API_V1_STR)
 app.include_router(admin.router, prefix=settings.API_V1_STR)
+app.include_router(sync.router, prefix=settings.API_V1_STR)
 app.include_router(operator.router, prefix=settings.API_V1_STR)
+app.include_router(gates.router, prefix=settings.API_V1_STR)
 app.include_router(vendor.router, prefix=settings.API_V1_STR)
 app.include_router(group_bookings.router, prefix=settings.API_V1_STR)
 app.include_router(group_bookings.admin_router, prefix=settings.API_V1_STR)

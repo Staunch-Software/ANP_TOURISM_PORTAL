@@ -30,14 +30,29 @@ def sign_ticket_payload(payload_dict: dict) -> tuple[str, str]:
     return compact_json, signature_b64
 
 
+def _try_verify(verify_key_hex: str, payload_json: str, signature_b64: str) -> bool:
+    if not verify_key_hex:
+        return False
+    try:
+        from nacl.signing import VerifyKey
+        verify_key = VerifyKey(bytes.fromhex(verify_key_hex))
+        sig_bytes = base64.urlsafe_b64decode(signature_b64.encode('utf-8'))
+        verify_key.verify(payload_json.encode('utf-8'), sig_bytes)
+        return True
+    except (BadSignatureError, ValueError, Exception):
+        return False
+
+
 def verify_ticket_offline(payload_json: str, signature_b64: str) -> bool:
     """
-    Simulates the exact verification that runs on the Android scanner with 0 internet
+    Simulates the exact verification that runs on the Android scanner with 0
+    internet. A ticket may have been signed by this server (web/app
+    checkout) OR, if it was issued offline at an LPU counter and later
+    synced up (see api/v1/sync.py's push_counter_ticket), by the LPU
+    fleet's own key -- both must verify clean here too.
     """
-    try:
-        sig_bytes = base64.urlsafe_b64decode(signature_b64.encode('utf-8'))
-        msg_bytes = payload_json.encode('utf-8')
-        SERVER_VERIFY_KEY.verify(msg_bytes, sig_bytes)
+    if _try_verify(get_public_key_hex(), payload_json, signature_b64):
         return True
-    except (BadSignatureError, Exception):
-        return False
+    if settings.LPU_ED25519_PUBLIC_KEY_HEX and _try_verify(settings.LPU_ED25519_PUBLIC_KEY_HEX, payload_json, signature_b64):
+        return True
+    return False

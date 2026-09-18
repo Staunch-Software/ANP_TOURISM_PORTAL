@@ -4,7 +4,7 @@ from pydantic import BaseModel
 
 
 class EntitlementResponse(BaseModel):
-    order_item_id: str
+    ticket_ref: str
     item_type: str
     title: str
     slot_or_seat_info: str
@@ -15,15 +15,15 @@ class EntitlementResponse(BaseModel):
 
 
 class OrderPassResponse(BaseModel):
-    pass_ref: str
+    booking_ref: str
     order_ref: str
     lead_passenger_name: str
-    qr_token: str  # Combined JSON payload + signature, encoded once for the whole order
+    qr_token: str  # Combined JSON payload + signature, shared by every Ticket row under this booking_ref
     entitlements: List[EntitlementResponse]
 
 
 class OfflineVerificationResponse(BaseModel):
-    pass_ref: str
+    booking_ref: str
     lead_passenger_name: str
     is_signature_valid: bool
     verification_mode: str
@@ -31,14 +31,13 @@ class OfflineVerificationResponse(BaseModel):
 
 
 class StaffCheckInRequest(BaseModel):
-    pass_ref: str
-    order_item_id: str
+    ticket_ref: str
 
 
 class StaffCheckInResponse(BaseModel):
     check_in_status: str
-    pass_ref: str
-    order_item_id: str
+    booking_ref: Optional[str] = None
+    ticket_ref: str
     passenger_name: str
     item_type: str
     title: str

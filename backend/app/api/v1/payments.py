@@ -12,7 +12,7 @@ from app.models.user import User
 from app.models.order import Order, OrderItem
 from app.models.attraction import AttractionSlot
 from app.models.ferry import FerrySeat
-from app.models.order_pass import OrderPass
+from app.models.ticket import Ticket
 from app.models.admin_alert import AdminAlert
 from app.api.v1.auth import get_current_user
 from app.services.crypto_service import sign_ticket_payload
@@ -81,12 +81,13 @@ async def confirm_payment_and_issue_tickets(
         await db.commit()
         raise HTTPException(status_code=400, detail="Payment declined by bank")
 
-    items_res = await db.execute(select(OrderItem).where(OrderItem.order_id == order.id))
+    items_res = await db.execute(
+        select(OrderItem).where(OrderItem.order_id == order.id).order_by(OrderItem.position)
+    )
     order_items = items_res.scalars().all()
 
     for item in order_items:
         await _check_repeat_booking_fraud(db, item)
-        item.check_in_status = "ISSUED"
 
         if item.item_type == "FERRY" and item.ferry_seat_id:
             seat_res = await db.execute(select(FerrySeat).where(FerrySeat.id == item.ferry_seat_id))
@@ -105,44 +106,56 @@ async def confirm_payment_and_issue_tickets(
                 if cur > 0:
                     await r.decr(slot_hold_key)
 
-    # RFP Clause 7.2.1-9 / Page 49: one Unified QR pass per order, covering
-    # every entitlement (order item) in a single Ed25519 signature. A gate
-    # scans this once and checks off only the entitlement relevant to it —
-    # see /tickets/staff/check-in — leaving the rest of the pass valid.
-    pass_ref = f"AN-2026-PASS-{random.randint(100000, 999999)}"
-    lead_passenger_name = order_items[0].passenger_name if order_items else (current_user.full_name or "Valued Tourist")
+    # One booking -> one signed QR covering every attraction in the order
+    # (RFP p.28: "A Unified QR code can be utilized for a single booking
+    # transaction across multiple attractions"), instead of a separate QR
+    # per attraction. All passengers in a multi-item booking share one QR
+    # scanned once per attraction, so the payload is keyed on the FIRST
+    # passenger for "pax"/"doc" -- individual passenger details per leg
+    # still live on each Ticket row for the wallet/admin views.
+    booking_ref = order.order_ref
+    head_item = order_items[0]
 
     payload_dict = {
-        "ref": pass_ref,
-        "order_ref": order.order_ref,
-        "lead_pax": lead_passenger_name,
-        "iss": "ANIIDCO_GOVT_AN",
-        "iat": int(datetime.utcnow().timestamp()),
-        "entitlements": [
-            {
-                "item_id": str(item.id),
-                "typ": item.item_type,
-                "ttl": item.title,
-                "sub": item.slot_or_seat_info,
-                "pax": item.passenger_name,
-                "doc": f"{item.id_type}:{item.id_number[-4:]}",
-            }
+        "ref": booking_ref,
+        "items": [
+            {"typ": item.item_type, "ttl": item.title, "sub": item.slot_or_seat_info}
             for item in order_items
         ],
+        "pax": head_item.passenger_name,
+        "doc": f"{head_item.id_type}:{head_item.id_number[-4:]}",
+        "iss": "ANIIDCO_GOVT_AN",
+        "iat": int(datetime.utcnow().timestamp()),
     }
     compact_json, signature_b64 = sign_ticket_payload(payload_dict)
 
-    order_pass = OrderPass(
-        pass_ref=pass_ref,
-        order_id=order.id,
-        user_id=current_user.id,
-        lead_passenger_name=lead_passenger_name,
-        qr_payload_json=compact_json,
-        qr_signature_b64=signature_b64,
-    )
+    tickets_to_create = []
+    for item_index, item in enumerate(order_items):
+        ticket_ref = f"AN-2026-TKT-{random.randint(100000, 999999)}"
+        ticket = Ticket(
+            ticket_ref=ticket_ref,
+            booking_ref=booking_ref,
+            item_index=item_index,
+            order_id=order.id,
+            order_item_id=item.id,
+            user_id=current_user.id,
+            item_type=item.item_type,
+            title=item.title,
+            slot_or_seat_info=item.slot_or_seat_info,
+            passenger_name=item.passenger_name,
+            passenger_age=item.passenger_age,
+            passenger_gender=item.passenger_gender,
+            id_type=item.id_type,
+            id_number=item.id_number,
+            qr_payload_json=compact_json,
+            qr_signature_b64=signature_b64,
+            check_in_status="ISSUED",
+            issued_by="CLOUD",
+        )
+        tickets_to_create.append(ticket)
 
     order.status = "CONFIRMED"
-    db.add(order_pass)
+    db.add_all(tickets_to_create)
     await db.commit()
 
     await r.delete(f"cart:{str(current_user.id)}")
@@ -150,7 +163,7 @@ async def confirm_payment_and_issue_tickets(
     return PaymentConfirmResponse(
         order_ref=order.order_ref,
         order_status=order.status,
-        tickets_issued_count=len(order_items),
+        tickets_issued_count=len(tickets_to_create),
         total_paid=float(order.net_payable),
         message="Payment verified successfully. A single Unified QR boarding pass has been generated for this order!",
     )

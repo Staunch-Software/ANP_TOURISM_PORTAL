@@ -29,6 +29,11 @@ class OrderItem(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     order_id = Column(UUID(as_uuid=True), ForeignKey("orders.id"), nullable=False)
+    # Position within the order/cart -- UUID primary keys don't preserve
+    # insertion order, but a multi-attraction booking's Ticket rows need a
+    # stable item_index (see payments.py) that matches the order an LPU
+    # will store its local legs in, so this has to be explicit.
+    position = Column(Integer, default=0)
     item_type = Column(String(30), nullable=False)  # "ATTRACTION" or "FERRY"
 
     attraction_slot_id = Column(UUID(as_uuid=True), ForeignKey("attraction_slots.id"), nullable=True)
@@ -50,11 +55,5 @@ class OrderItem(Base):
     # scalper/repeat-booking heuristic so ANIIDCO can review it — does not
     # block the purchase itself.
     fraud_flag = Column(String(50), nullable=True)
-
-    # RFP Clause 7.2.1-9 / Page 49: each OrderItem is one "entitlement"
-    # within the order's single Unified QR pass — its own gate check-in
-    # state, independent of sibling entitlements in the same order.
-    check_in_status = Column(String(30), default="ISSUED")  # ISSUED, CHECKED_IN, CANCELLED
-    checked_in_at = Column(DateTime, nullable=True)
 
     order = relationship("Order", back_populates="items")
