@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     # public half ever lives here; the private half stays on LPU devices.
     LPU_ED25519_PUBLIC_KEY_HEX: str = ""
 
+    # --- Google Sign-In (Tourist login) ---
+    # OAuth Client ID from Google Cloud Console (APIs & Services >
+    # Credentials). Empty by default so the app still runs without it --
+    # the frontend hides "Continue with Google" until this is configured.
+    GOOGLE_CLIENT_ID: str = ""
+
     class Config:
         env_file = ".env"
 

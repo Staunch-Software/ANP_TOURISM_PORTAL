@@ -2,13 +2,19 @@ import React, { useState, useEffect } from 'react';
 import API from '../api/client';
 import {
   Ship, Users, DollarSign, Clock,
-  Printer, CheckCircle2, RefreshCw, Anchor, Layers, FileSpreadsheet
+  Printer, CheckCircle2, RefreshCw, Anchor, Layers, FileSpreadsheet,
+  LayoutDashboard, ClipboardList
 } from 'lucide-react';
 
 const ROUTE_PAIRS = [
   ['PORT_BLAIR', 'HAVELOCK'],
   ['HAVELOCK', 'NEIL'],
   ['NEIL', 'PORT_BLAIR'],
+];
+
+const OPERATOR_SECTIONS = [
+  { key: 'OVERVIEW', label: 'Revenue & Settlement', icon: LayoutDashboard },
+  { key: 'FLEET', label: 'Vessel Manifest & Occupancy', icon: ClipboardList },
 ];
 
 const CABIN_LABELS = {
@@ -27,6 +33,7 @@ export function OperatorDashboard({ user }) {
   const [loading, setLoading] = useState(false);
   const [settlementPending, setSettlementPending] = useState(false);
   const [settlementSuccess, setSettlementSuccess] = useState(false);
+  const [activeSection, setActiveSection] = useState('OVERVIEW');
 
   useEffect(() => {
     fetchFleetData();
@@ -152,6 +159,34 @@ export function OperatorDashboard({ user }) {
         </button>
       </div>
 
+      {/* Section Navigation (sidebar) + Content — one bordered shell instead
+          of two separate floating cards, separating revenue/settlement from
+          live vessel operations so the dashboard reads as two distinct jobs,
+          not one long scroll. */}
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col lg:flex-row items-stretch">
+        <aside className="shrink-0 lg:w-[240px] p-2.5 border-b lg:border-b-0 lg:border-r border-slate-200 bg-slate-50/60 rounded-t-2xl lg:rounded-l-2xl lg:rounded-tr-none flex lg:flex-col gap-0.5 overflow-x-auto lg:overflow-visible lg:sticky lg:top-24 lg:self-start">
+          {OPERATOR_SECTIONS.map((section) => {
+            const SectionIcon = section.icon;
+            return (
+              <button
+                key={section.key}
+                onClick={() => setActiveSection(section.key)}
+                className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2.5 whitespace-nowrap transition-all ${
+                  activeSection === section.key
+                    ? 'bg-navy-800 text-white shadow-sm'
+                    : 'text-slate-500 hover:text-navy-800 hover:bg-white'
+                }`}
+              >
+                <SectionIcon className="w-4 h-4 shrink-0" /> {section.label}
+              </button>
+            );
+          })}
+        </aside>
+
+        <div className="flex-1 min-w-0 p-6 space-y-8">
+
+      {activeSection === 'OVERVIEW' && (
+      <>
       {/* 2. Top Operator Metrics (real, computed from confirmed bookings today) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-2">
@@ -204,7 +239,11 @@ export function OperatorDashboard({ user }) {
           <p className="text-[11px] text-slate-500 font-medium">{revenue?.active_vessels_today ?? 0} vessel(s) sailing today</p>
         </div>
       </div>
+      </>
+      )}
 
+      {activeSection === 'FLEET' && (
+      <>
       {/* 3. Vessel Schedule & Live Deck Occupancy */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left: Schedule Picker */}
@@ -340,6 +379,11 @@ export function OperatorDashboard({ user }) {
               </div>
             )}
           </div>
+        </div>
+      </div>
+      </>
+      )}
+
         </div>
       </div>
     </div>

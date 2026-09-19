@@ -4,10 +4,27 @@ import {
   ShieldCheck, TrendingUp, Users, DollarSign, Download,
   Ship, CloudRain, CheckCircle2, FileSpreadsheet, RefreshCw, Sliders,
   UserPlus, ShieldAlert, MapPin, KeyRound, Trash2, Plus, ClipboardCheck,
-  GraduationCap, Eye, X
+  GraduationCap, Eye, X, LayoutDashboard, ClipboardList
 } from 'lucide-react';
 
+// Each admin function lives on its own screen instead of one long
+// scrolling page — an admin working on, say, slot capacity shouldn't
+// have to scroll past gate provisioning and group-booking rosters to
+// get there, and shouldn't be shown all of it just because they logged
+// in as ADMIN.
+const ADMIN_SECTIONS = [
+  { key: 'OVERVIEW', label: 'Overview', icon: LayoutDashboard },
+  { key: 'MANIFEST', label: 'Harbor Manifest', icon: FileSpreadsheet },
+  { key: 'REPORTS', label: 'Validated Tickets', icon: ClipboardList },
+  { key: 'CAPACITY', label: 'Crowd & Capacity', icon: Sliders },
+  { key: 'USERS', label: 'User Management', icon: Users },
+  { key: 'APPROVALS', label: 'Service Providers', icon: UserPlus },
+  { key: 'GROUPS', label: 'Group Bookings', icon: GraduationCap },
+  { key: 'GATES', label: 'Gate / LPU Sites', icon: MapPin },
+];
+
 export function AdminDashboard({ user }) {
+  const [activeSection, setActiveSection] = useState('OVERVIEW');
   const [revenueData, setRevenueData] = useState(null);
   const [schedules, setSchedules] = useState([]);
   const [selectedScheduleId, setSelectedScheduleId] = useState('');
@@ -544,13 +561,33 @@ export function AdminDashboard({ user }) {
         </button>
       </div>
 
-      {actionMessage && (
-        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center gap-3 text-xs text-emerald-800">
-          <CheckCircle2 className="w-5 h-5 flex-shrink-0 text-emerald-600" />
-          <span>{actionMessage.text}</span>
-        </div>
-      )}
+      {/* Section Navigation (sidebar) + Content — one bordered shell instead
+          of two separate floating cards, so the dashboard reads as a single
+          cohesive tool rather than mismatched pieces. */}
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col lg:flex-row items-stretch">
+        <aside className="shrink-0 lg:w-[240px] p-2.5 border-b lg:border-b-0 lg:border-r border-slate-200 bg-slate-50/60 rounded-t-2xl lg:rounded-l-2xl lg:rounded-tr-none flex lg:flex-col gap-0.5 overflow-x-auto lg:overflow-visible lg:sticky lg:top-24 lg:self-start">
+          {ADMIN_SECTIONS.map((section) => {
+            const SectionIcon = section.icon;
+            return (
+              <button
+                key={section.key}
+                onClick={() => setActiveSection(section.key)}
+                className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2.5 whitespace-nowrap transition-all ${
+                  activeSection === section.key
+                    ? 'bg-navy-800 text-white shadow-sm'
+                    : 'text-slate-500 hover:text-navy-800 hover:bg-white'
+                }`}
+              >
+                <SectionIcon className="w-4 h-4 shrink-0" /> {section.label}
+              </button>
+            );
+          })}
+        </aside>
 
+        <div className="flex-1 min-w-0 p-6 space-y-8">
+
+      {activeSection === 'OVERVIEW' && (
+      <>
       {/* 2. Top Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-2">
@@ -605,6 +642,17 @@ export function AdminDashboard({ user }) {
           <p className="text-[11px] text-slate-500 font-medium">Inter-island catamarans</p>
         </div>
       </div>
+      </>
+      )}
+
+      {activeSection === 'MANIFEST' && (
+      <>
+      {actionMessage && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center gap-3 text-xs text-emerald-800">
+          <CheckCircle2 className="w-5 h-5 flex-shrink-0 text-emerald-600" />
+          <span>{actionMessage.text}</span>
+        </div>
+      )}
 
       {/* 3. Harbor Passenger Manifest Section */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
@@ -661,8 +709,11 @@ export function AdminDashboard({ user }) {
         {manifestLoading ? (
           <div className="text-center py-12 text-slate-400 text-xs">Loading passenger manifest...</div>
         ) : !manifestData || manifestData.manifest.length === 0 ? (
-          <div className="text-center py-12 text-slate-400 text-xs">
-            No passengers booked on this voyage yet. Book seats in the Ferries tab to populate the manifest.
+          <div className="text-center py-14 flex flex-col items-center gap-2">
+            <FileSpreadsheet className="w-9 h-9 text-slate-300" />
+            <p className="text-xs text-slate-400 max-w-xs">
+              No passengers booked on this voyage yet. New ferry bookings will appear here automatically.
+            </p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -705,7 +756,11 @@ export function AdminDashboard({ user }) {
           </div>
         )}
       </div>
+      </>
+      )}
 
+      {activeSection === 'REPORTS' && (
+      <>
       {/* 3b. Daily Validated-Tickets Report (RFP p.29, section 7.2.1.9
           item 9: "submit a report on a timely basis concerning the
           validated tickets... to inform ANIIDCO"). Fleet-wide, sourced
@@ -749,8 +804,9 @@ export function AdminDashboard({ user }) {
         {reportLoading ? (
           <div className="text-center py-12 text-slate-400 text-xs">Loading validated tickets...</div>
         ) : !reportRows || reportRows.length === 0 ? (
-          <div className="text-center py-12 text-slate-400 text-xs">
-            No tickets were validated at any gate on {reportDate}.
+          <div className="text-center py-14 flex flex-col items-center gap-2">
+            <ClipboardList className="w-9 h-9 text-slate-300" />
+            <p className="text-xs text-slate-400">No tickets were validated at any gate on {reportDate}.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -787,7 +843,11 @@ export function AdminDashboard({ user }) {
           </div>
         )}
       </div>
+      </>
+      )}
 
+      {activeSection === 'CAPACITY' && (
+      <>
       {/* 4. Live Slot Quota Expansion & Carrying Capacity (RFP Page 30) */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
@@ -874,7 +934,11 @@ export function AdminDashboard({ user }) {
           })}
         </div>
       </div>
+      </>
+      )}
 
+      {activeSection === 'USERS' && (
+      <>
       {/* 5. User Management & Role Control (RFP Clause 7.2.1-III, Page 30) */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
@@ -972,7 +1036,11 @@ export function AdminDashboard({ user }) {
           </div>
         )}
       </div>
+      </>
+      )}
 
+      {activeSection === 'APPROVALS' && (
+      <>
       {/* 6. Stakeholder Governance & Service Provider Onboarding
           (RFP Clauses 7.2.1-1, 7.2.1-7, 7.2.1-III/IV, Pages 24, 28, 30-31) */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
@@ -1123,7 +1191,11 @@ export function AdminDashboard({ user }) {
           </div>
         </div>
       </div>
+      </>
+      )}
 
+      {activeSection === 'GATES' && (
+      <>
       {/* 7. Gate / LPU Site Provisioning -- select a site first; the
           services it serves and the staff who can log into that LPU are
           both scoped to whichever site is picked below. */}
@@ -1343,7 +1415,11 @@ export function AdminDashboard({ user }) {
           </div>
         )}
       </div>
+      </>
+      )}
 
+      {activeSection === 'GROUPS' && (
+      <>
       {/* Group / Institutional Booking Approval Queue (RFP Page 26) */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
         <div className="flex items-center justify-between">
@@ -1451,8 +1527,13 @@ export function AdminDashboard({ user }) {
           </div>
         )}
       </div>
+      </>
+      )}
 
-      {/* Roster Preview Modal */}
+        </div>
+      </div>
+
+      {/* Roster Preview Modal — a global overlay, not tied to any one section */}
       {rosterPreview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-900/70 backdrop-blur-sm p-4">
           <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-lg p-6 shadow-2xl relative max-h-[85vh] overflow-y-auto">

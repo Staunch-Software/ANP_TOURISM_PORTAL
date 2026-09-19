@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import API from '../api/client';
 import {
   ShieldCheck, Landmark, Phone, KeyRound, User, Mail, Globe, ArrowRight,
   AlertCircle, Lock,
 } from 'lucide-react';
+
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
 // Purely a presentational split — both contexts hit the exact same auth
 // endpoints and the backend decides the real role from the phone number.
@@ -23,7 +25,7 @@ const CONTEXT_COPY = {
   },
 };
 
-export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VISITOR' }) {
+export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VISITOR', onSwitchContext, onOpenOperatorRegister }) {
   // CREDENTIALS: phone + password (RFP 7.2.1-1 default subsequent login)
   // PHONE -> OTP: first-time registration, or the "Login with OTP" /
   //   "Forgot Password" fallback (otpIntent distinguishes the two)
@@ -47,6 +49,10 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
   const [email, setEmail] = useState('');
   const [nationality, setNationality] = useState('INDIAN');
   const [stateOrCountry, setStateOrCountry] = useState('');
+  const [profilePhone, setProfilePhone] = useState('');
+  const [needsPhone, setNeedsPhone] = useState(false);
+
+  const googleButtonRef = useRef(null);
 
   // Reset to a fresh sign-in flow every time the modal is (re)opened —
   // otherwise it re-mounts hidden and remembers whatever step/error state
@@ -65,8 +71,38 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
       setEmail('');
       setNationality('INDIAN');
       setStateOrCountry('');
+      setProfilePhone('');
+      setNeedsPhone(false);
     }
   }, [isOpen]);
+
+  // Google Identity Services is only needed on the tourist login screen —
+  // load the script lazily rather than on every app page load, and only
+  // once a Client ID has actually been configured (frontend/.env).
+  useEffect(() => {
+    if (!isOpen || step !== 'CREDENTIALS' || loginContext !== 'VISITOR' || !GOOGLE_CLIENT_ID) return;
+
+    const renderButton = () => {
+      if (!window.google || !googleButtonRef.current) return;
+      window.google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleGoogleCredential,
+      });
+      window.google.accounts.id.renderButton(googleButtonRef.current, {
+        theme: 'outline', size: 'large', width: 336, text: 'continue_with',
+      });
+    };
+
+    if (window.google?.accounts?.id) {
+      renderButton();
+    } else {
+      const script = document.createElement('script');
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.onload = renderButton;
+      document.body.appendChild(script);
+    }
+  }, [isOpen, step, loginContext]);
 
   if (!isOpen) return null;
 
@@ -77,16 +113,41 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
       setStep('SET_PASSWORD');
       return;
     }
-    // RFP Section 7.2.1-1: registration must capture full legal name,
-    // email, nationality, and state/country before a booking can proceed.
+    goToProfileOrFinish(profile);
+  };
+
+  // RFP Section 7.2.1-1: registration must capture full legal name, email,
+  // nationality, and a contact number before a booking can proceed.
+  const goToProfileOrFinish = (profile) => {
     if (!profile.profile_complete) {
       setFullName(profile.full_name === 'Valued Tourist' ? '' : profile.full_name);
+      setEmail(profile.email || '');
       setNationality(profile.nationality || 'INDIAN');
+      setNeedsPhone(!profile.phone_number);
       setStep('PROFILE');
       return;
     }
     onLoginSuccess(profile);
     onClose();
+  };
+
+  // Google already proved who this person is, so there's no password step
+  // to force — straight to profile completion (if anything's missing) or
+  // straight into the portal.
+  const handleGoogleCredential = async (response) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await API.post('/auth/google', { credential: response.credential });
+      localStorage.setItem('aniidco_token', res.data.access_token);
+      const profileRes = await API.get('/auth/me');
+      localStorage.setItem('aniidco_user', JSON.stringify(profileRes.data));
+      goToProfileOrFinish(profileRes.data);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Google sign-in failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handlePasswordLogin = async (e) => {
@@ -175,6 +236,10 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
 
   const handleSaveProfile = async (e) => {
     e.preventDefault();
+    if (needsPhone && (!profilePhone || profilePhone.length < 10)) {
+      setError('Please enter a valid 10-digit mobile number.');
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -183,6 +248,7 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
         email: email,
         nationality: nationality,
         state_or_country: stateOrCountry,
+        phone_number: needsPhone ? profilePhone : undefined,
       });
 
       localStorage.setItem('aniidco_user', JSON.stringify(res.data));
@@ -240,8 +306,8 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
           ✕
         </button>
 
-        <div className="p-6">
-          <div className="flex items-center gap-3 mb-4">
+        <div className="p-7">
+          <div className="flex items-center gap-3 mb-5">
             <div className="p-2.5 bg-cyan-50 text-cyan-700 border border-cyan-200 rounded-xl">
               {(() => {
                 const ContextIcon = step === 'CREDENTIALS' ? (CONTEXT_COPY[loginContext]?.icon || ShieldCheck) : Lock;
@@ -263,62 +329,99 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
 
           {/* STEP 1: Mobile Number + Password (RFP 7.2.1-1 default login) */}
           {step === 'CREDENTIALS' && (
-            <form onSubmit={handlePasswordLogin} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Mobile Number</label>
-                <div className="relative">
-                  <span className="absolute left-3.5 top-2.5 text-xs text-slate-400 font-mono">+91</span>
-                  <input
-                    type="tel"
-                    maxLength="10"
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, ''))}
-                    placeholder="Enter 10-digit number"
-                    className="w-full pl-12 pr-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-navy-800 focus:outline-none focus:border-cyan-500 font-mono"
-                    required
-                  />
-                </div>
-              </div>
+            <div className="space-y-5">
+              {loginContext === 'VISITOR' && GOOGLE_CLIENT_ID && (
+                <>
+                  <div ref={googleButtonRef} className="flex justify-center [&>div]:!w-full"></div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-px bg-slate-200"></div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Or</span>
+                    <div className="flex-1 h-px bg-slate-200"></div>
+                  </div>
+                </>
+              )}
 
-              <div>
-                <div className="flex justify-between items-center mb-1.5">
-                  <label className="text-xs font-semibold text-slate-600">Password</label>
-                  <button
-                    type="button"
-                    onClick={() => goToOtpFlow('RESET')}
-                    className="text-[11px] text-cyan-700 hover:underline"
-                  >
-                    Forgot password?
-                  </button>
-                </div>
-                <div className="relative">
-                  <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter your password"
-                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-navy-800 focus:outline-none focus:border-cyan-500"
-                    required
-                  />
-                </div>
-              </div>
+              <form onSubmit={handlePasswordLogin} className="space-y-4">
+                <div className="space-y-3">
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-mono">+91</span>
+                    <input
+                      type="tel"
+                      maxLength="10"
+                      value={phoneNumber}
+                      onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, ''))}
+                      placeholder="Mobile Number"
+                      className="w-full pl-12 pr-4 py-3 bg-white border border-slate-300 rounded-full text-sm text-navy-800 focus:outline-none focus:border-cyan-500 font-mono"
+                      required
+                    />
+                  </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-2.5 bg-cyan-700 hover:bg-cyan-600 font-bold rounded-lg text-sm text-white shadow-md transition-all flex items-center justify-center gap-2"
-              >
-                {loading ? 'Signing in...' : 'Login'}
-              </button>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Password"
+                      className="w-full pl-11 pr-4 py-3 bg-white border border-slate-300 rounded-full text-sm text-navy-800 focus:outline-none focus:border-cyan-500"
+                      required
+                    />
+                  </div>
+                  <div className="text-right -mt-1">
+                    <button
+                      type="button"
+                      onClick={() => goToOtpFlow('RESET')}
+                      className="text-[11px] text-slate-400 hover:text-cyan-700 hover:underline"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                </div>
 
-              <p className="text-center text-[11px] text-slate-500">
-                New here?{' '}
-                <button type="button" onClick={() => goToOtpFlow('REGISTER')} className="text-cyan-700 font-semibold hover:underline">
-                  Register / Login with OTP
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3 bg-cyan-700 hover:bg-cyan-600 font-bold rounded-full text-sm text-white shadow-md transition-all flex items-center justify-center gap-2"
+                >
+                  {loading ? 'Signing in...' : 'Login'}
                 </button>
-              </p>
-            </form>
+
+                <p className="text-center text-xs text-slate-500">
+                  New here?{' '}
+                  <button type="button" onClick={() => goToOtpFlow('REGISTER')} className="text-cyan-700 font-bold hover:underline">
+                    Register with OTP
+                  </button>
+                </p>
+              </form>
+
+              {onSwitchContext && (
+                <div className="text-center text-[11px] text-slate-400 pt-4 border-t border-slate-100">
+                  {loginContext === 'VISITOR' ? (
+                    <>
+                      Ferry Operator, Activity Vendor or ANIIDCO Staff?{' '}
+                      <button type="button" onClick={() => onSwitchContext('STAFF')} className="text-navy-700 font-semibold hover:underline">
+                        Login here
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      Tourist looking to book a trip?{' '}
+                      <button type="button" onClick={() => onSwitchContext('VISITOR')} className="text-cyan-700 font-semibold hover:underline">
+                        Login here
+                      </button>
+                      {onOpenOperatorRegister && (
+                        <>
+                          {' '}·{' '}
+                          <button type="button" onClick={onOpenOperatorRegister} className="text-cyan-700 font-semibold hover:underline">
+                            Become a Service Provider
+                          </button>
+                        </>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           )}
 
           {/* STEP 2a: Phone entry for the OTP path (registration or forgot-password) */}
@@ -469,6 +572,26 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
                   required
                 />
               </div>
+
+              {needsPhone && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1 flex items-center gap-1">
+                    <Phone className="w-3.5 h-3.5 text-cyan-600" /> Mobile Number (For Booking Alerts)
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2 text-[11px] text-slate-400 font-mono">+91</span>
+                    <input
+                      type="tel"
+                      maxLength="10"
+                      placeholder="Enter 10-digit number"
+                      value={profilePhone}
+                      onChange={(e) => setProfilePhone(e.target.value.replace(/\D/g, ''))}
+                      className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800 font-mono"
+                      required
+                    />
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-2">
                 <div>

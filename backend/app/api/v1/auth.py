@@ -2,9 +2,12 @@ import uuid
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from jose import jwt
+from google.oauth2 import id_token as google_id_token
+from google.auth.transport import requests as google_requests
 
 from app.core.config import settings
 from app.core.database import get_db
@@ -20,7 +23,16 @@ from app.schemas.auth import (
     OperatorRegistrationResponse,
     SetPasswordRequest,
     PasswordLoginRequest,
+    GoogleLoginRequest,
 )
+
+# RFP 7.2.1-1 requires full name, email, nationality AND a contact number
+# before a booking can proceed. A phone-first (OTP) signup already has the
+# phone and collects the rest here; a Google signup already has the email
+# and name from Google and collects the phone (plus nationality) here --
+# either way "complete" means all four are present.
+def _is_profile_complete(user: User) -> bool:
+    return bool(user.email and user.phone_number)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -65,6 +77,53 @@ async def verify_otp(req: OTPRequest, db: AsyncSession = Depends(get_db), r=Depe
         db.add(user)
         await db.commit()
         await db.refresh(user)
+
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="This account has been suspended. Contact ANIIDCO support for assistance.")
+
+    return await _issue_session_token(user, r)
+
+
+@router.post("/google", response_model=TokenResponse)
+async def login_with_google(req: GoogleLoginRequest, db: AsyncSession = Depends(get_db), r=Depends(get_redis)):
+    """
+    "Continue with Google" — the easy sign-in path for tourists. Verifies
+    the ID token Google Identity Services handed the frontend, then finds
+    or creates the matching account. A first-time Google user has no
+    phone number yet; that (plus nationality) is collected right after,
+    via the same PROFILE step an OTP-first signup already goes through.
+    """
+    if not settings.GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=503, detail="Google Sign-In is not configured on this server yet.")
+
+    try:
+        payload = google_id_token.verify_oauth2_token(
+            req.credential, google_requests.Request(), settings.GOOGLE_CLIENT_ID
+        )
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid or expired Google credential.")
+
+    google_sub = payload["sub"]
+    email = payload.get("email")
+    full_name = payload.get("name") or "Valued Tourist"
+
+    res = await db.execute(select(User).where(User.google_sub == google_sub))
+    user = res.scalars().first()
+
+    if not user and email:
+        # An existing phone/OTP account with the same email gets linked
+        # instead of creating a confusing duplicate account.
+        res = await db.execute(select(User).where(User.email == email))
+        user = res.scalars().first()
+
+    if not user:
+        user = User(google_sub=google_sub, email=email, full_name=full_name)
+        db.add(user)
+    elif not user.google_sub:
+        user.google_sub = google_sub
+
+    await db.commit()
+    await db.refresh(user)
 
     if not user.is_active:
         raise HTTPException(status_code=403, detail="This account has been suspended. Contact ANIIDCO support for assistance.")
@@ -144,7 +203,7 @@ async def get_my_profile(current_user: User = Depends(get_current_user)):
         state_or_country=current_user.state_or_country,
         nationality=current_user.nationality,
         role=current_user.user_type,
-        profile_complete=bool(current_user.email),
+        profile_complete=_is_profile_complete(current_user),
         has_password=bool(current_user.password_hash),
         approval_status=current_user.approval_status,
     )
@@ -181,7 +240,7 @@ async def set_password(
         state_or_country=current_user.state_or_country,
         nationality=current_user.nationality,
         role=current_user.user_type,
-        profile_complete=bool(current_user.email),
+        profile_complete=_is_profile_complete(current_user),
         has_password=bool(current_user.password_hash),
         approval_status=current_user.approval_status,
     )
@@ -214,7 +273,7 @@ async def reset_password(
         state_or_country=current_user.state_or_country,
         nationality=current_user.nationality,
         role=current_user.user_type,
-        profile_complete=bool(current_user.email),
+        profile_complete=_is_profile_complete(current_user),
         has_password=bool(current_user.password_hash),
         approval_status=current_user.approval_status,
     )
@@ -230,7 +289,17 @@ async def update_my_profile(
     current_user.email = req.email
     current_user.nationality = req.nationality
     current_user.state_or_country = req.state_or_country
-    await db.commit()
+    # Only a Google-signup account (no phone yet) needs to set this here --
+    # an OTP account's phone_number is already its verified identity and
+    # this endpoint shouldn't let it be silently swapped.
+    if req.phone_number and not current_user.phone_number:
+        current_user.phone_number = req.phone_number
+
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="That mobile number is already registered to another account.")
     await db.refresh(current_user)
 
     return ProfileResponse(
@@ -241,7 +310,7 @@ async def update_my_profile(
         state_or_country=current_user.state_or_country,
         nationality=current_user.nationality,
         role=current_user.user_type,
-        profile_complete=bool(current_user.email),
+        profile_complete=_is_profile_complete(current_user),
         has_password=bool(current_user.password_hash),
         approval_status=current_user.approval_status,
     )

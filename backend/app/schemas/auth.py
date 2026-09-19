@@ -12,12 +12,12 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str
     user_id: str
-    phone: str
+    phone: Optional[str] = None
 
 
 class ProfileResponse(BaseModel):
     user_id: str
-    phone_number: str
+    phone_number: Optional[str] = None
     full_name: str
     email: Optional[str] = None
     state_or_country: Optional[str] = None
@@ -37,11 +37,16 @@ class PasswordLoginRequest(BaseModel):
     password: str
 
 
+class GoogleLoginRequest(BaseModel):
+    credential: str  # Google ID token (JWT) from Google Identity Services
+
+
 class ProfileUpdateRequest(BaseModel):
     full_name: str
     email: str
     nationality: str
     state_or_country: str
+    phone_number: Optional[str] = None
 
 
 class OperatorRegistrationRequest(BaseModel):
