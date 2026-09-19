@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   ShieldCheck, ShoppingBag, LogOut, Anchor, Waves, ScanLine, Landmark,
-  ChevronDown
+  ChevronDown, Menu, X
 } from 'lucide-react';
 
 // RFP 344: Admin/Regulatory Authority is a distinct user type from Service
@@ -29,6 +29,7 @@ export function Navbar({
 }) {
   const [accessibleMode, setAccessibleMode] = useState(false);
   const [isStaffMenuOpen, setIsStaffMenuOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const staffMenuRef = useRef(null);
 
   useEffect(() => {
@@ -89,7 +90,7 @@ export function Navbar({
         {/* Brand */}
         <div
           className="flex items-center gap-3 cursor-pointer group shrink-0"
-          onClick={() => setActiveTab(homeTab)}
+          onClick={() => { setActiveTab(homeTab); setIsMobileMenuOpen(false); }}
         >
           <img src="/images/govt-seal.png" alt="Emblem" className="w-11 h-11 object-contain bg-white rounded-lg p-1 shadow-md" />
           <div>
@@ -205,6 +206,15 @@ export function Navbar({
 
         {/* Right Section: Cart + Account */}
         <div className="flex items-center gap-3 shrink-0">
+          <button
+            onClick={() => setIsMobileMenuOpen((v) => !v)}
+            className="md:hidden p-2.5 rounded-lg text-white hover:bg-navy-700 transition-colors"
+            aria-label={isMobileMenuOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={isMobileMenuOpen}
+          >
+            {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+
           {!isStaffUser && (
             <button
               onClick={onOpenCart}
@@ -251,6 +261,120 @@ export function Navbar({
           )}
         </div>
       </div>
+
+      {/* Mobile menu — the center nav above is `hidden md:flex`, so this is
+          the only way to reach Attractions/Ferries/Passes (or a staff
+          user's own portals) on a phone or narrow tablet. */}
+      {isMobileMenuOpen && (
+        <div className="md:hidden border-t border-navy-700 bg-navy-800">
+          <nav className="px-4 py-3 space-y-1">
+            {!isStaffUser && (
+              <>
+                <button
+                  onClick={() => { setActiveTab('ATTRACTIONS'); setIsMobileMenuOpen(false); }}
+                  className={`w-full text-left px-4 py-3 rounded-lg text-sm font-bold transition-all ${
+                    activeTab === 'ATTRACTIONS' ? 'bg-cyan-700 text-white' : 'text-slate-200 hover:bg-navy-700'
+                  }`}
+                >
+                  Attractions
+                </button>
+                <button
+                  onClick={() => { setActiveTab('FERRY'); setIsMobileMenuOpen(false); }}
+                  className={`w-full text-left px-4 py-3 rounded-lg text-sm font-bold transition-all ${
+                    activeTab === 'FERRY' ? 'bg-cyan-700 text-white' : 'text-slate-200 hover:bg-navy-700'
+                  }`}
+                >
+                  Ferries
+                </button>
+                <button
+                  onClick={() => { setActiveTab('PASSES'); setIsMobileMenuOpen(false); }}
+                  className={`w-full text-left px-4 py-3 rounded-lg text-sm font-bold transition-all ${
+                    activeTab === 'PASSES' ? 'bg-cyan-700 text-white' : 'text-slate-200 hover:bg-navy-700'
+                  }`}
+                >
+                  My Passes
+                </button>
+              </>
+            )}
+
+            {isStaffUser && staffTabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => { setActiveTab(tab.key); setIsMobileMenuOpen(false); }}
+                  className={`w-full text-left px-4 py-3 rounded-lg text-sm font-bold flex items-center gap-2.5 transition-all ${
+                    isActive ? 'bg-amber-700 text-white' : 'text-amber-400 hover:bg-navy-700'
+                  }`}
+                >
+                  <Icon className="w-4 h-4" /> {tab.label}
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="border-t border-navy-700 px-4 py-3 flex items-center gap-5 text-xs text-slate-300">
+            <button
+              onClick={toggleAccessibleMode}
+              className="underline underline-offset-2 hover:text-white transition-colors"
+            >
+              Screen Reader
+            </button>
+            <button
+              onClick={() => alert('हिन्दी इंटरफ़ेस जल्द उपलब्ध होगा (Hindi interface coming soon).')}
+              className="underline underline-offset-2 hover:text-white transition-colors"
+            >
+              हिन्दी
+            </button>
+          </div>
+
+          <div className="border-t border-navy-700 px-4 py-4 space-y-3">
+            {!isStaffUser && (
+              <button
+                onClick={() => { onOpenCart(); setIsMobileMenuOpen(false); }}
+                className="w-full relative px-4 py-3 bg-transparent border border-navy-600 rounded-lg text-sm font-bold flex items-center justify-center gap-2 text-white"
+              >
+                <ShoppingBag className="w-4 h-4 text-cyan-300" />
+                Trip Cart
+                {cartCount > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full bg-cyan-600 text-white text-[11px] font-extrabold leading-none">
+                    {cartCount}
+                  </span>
+                )}
+              </button>
+            )}
+
+            {user ? (
+              <div className="flex items-center justify-between gap-3 bg-navy-700 border border-navy-600 px-3 py-2.5 rounded-lg">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-md bg-cyan-600/20 text-cyan-300 border border-cyan-600/40 flex items-center justify-center font-bold text-xs shrink-0">
+                    {ROLE_BADGE[user.role] || 'TR'}
+                  </div>
+                  <div className="text-left">
+                    <div className="text-xs font-bold text-white leading-tight">{user.phone_number}</div>
+                    <div className="text-[10px] text-emerald-400 font-medium">Verified Visitor</div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => { onLogout(); setIsMobileMenuOpen(false); }}
+                  title="Log Out"
+                  className="text-slate-300 hover:text-red-400 p-1.5 rounded-lg hover:bg-navy-600 transition-colors shrink-0"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => { onOpenLogin('VISITOR'); setIsMobileMenuOpen(false); }}
+                className="w-full px-5 py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-lg text-sm shadow-md"
+              >
+                Login / Sign Up
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </header>
   );
 }

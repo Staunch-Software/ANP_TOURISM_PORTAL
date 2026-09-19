@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import API from './api/client';
 import { Navbar } from './components/Navbar';
 import { LoginModal } from './components/LoginModal';
-import { AttractionsExplorer, ATTRACTION_IMAGES, FALLBACK_IMAGE, ISLAND_LABELS } from './components/AttractionsExplorer';
+import { AttractionsExplorer } from './components/AttractionsExplorer';
 import { FerrySearch } from './components/FerrySearch';
 import { CartDrawer } from './components/CartDrawer';
 import { DigitalWallet } from './components/DigitalWallet';
@@ -14,7 +14,7 @@ import { OperatorRegisterModal } from './components/OperatorRegisterModal';
 import { GroupBookingModal } from './components/GroupBookingModal';
 import {
   Waves, ArrowUpRight, Users2, MapPin, Search, ShieldCheck,
-  Landmark, Clock3, Ship, ArrowRight
+  Landmark, Clock3, Ship
 } from 'lucide-react';
 
 // Editorial hero carousel — every image here is a verified, real Andaman
@@ -77,7 +77,6 @@ export default function App() {
   const [quickSearchType, setQuickSearchType] = useState('ATTRACTIONS');
   const [quickSearchIsland, setQuickSearchIsland] = useState('ALL');
   const [quickSearchDate, setQuickSearchDate] = useState(new Date().toISOString().split('T')[0]);
-  const [popularAttractions, setPopularAttractions] = useState([]);
 
   useEffect(() => {
     const savedUser = localStorage.getItem('aniidco_user');
@@ -90,13 +89,6 @@ export default function App() {
       }
     }
     refreshCartCount();
-
-    // A homepage preview of real, bookable attractions with their actual
-    // prices — no fabricated ratings or discounts, since this is a
-    // government portal and invented numbers here would be misleading.
-    API.get('/attractions')
-      .then((res) => setPopularAttractions(res.data.slice(0, 4)))
-      .catch(() => setPopularAttractions([]));
   }, []);
 
   useEffect(() => {
@@ -145,12 +137,6 @@ export default function App() {
   const handleDiscoverCardClick = (card) => {
     setActiveTab('ATTRACTIONS');
     setFocusRequest({ token: Date.now(), island: card.island, attractionTitle: card.attractionTitle });
-    scrollToBrowseSection();
-  };
-
-  const handleAttractionCardClick = (attraction) => {
-    setActiveTab('ATTRACTIONS');
-    setFocusRequest({ token: Date.now(), island: attraction.island, attractionTitle: attraction.title });
     scrollToBrowseSection();
   };
 
@@ -320,53 +306,6 @@ export default function App() {
           ))}
         </div>
       </div>
-
-      {/* Popular Attractions — real, bookable listings with live prices */}
-      {popularAttractions.length > 0 && (
-        <div className="bg-white py-10 border-b border-slate-200">
-          <div className="max-w-7xl mx-auto px-4">
-            <div className="flex items-end justify-between mb-5">
-              <div>
-                <span className="text-[10px] font-extrabold uppercase tracking-widest text-cyan-700">Book Directly</span>
-                <h2 className="font-serif text-xl md:text-2xl font-black text-navy-800">Popular Attractions</h2>
-              </div>
-              <button
-                onClick={() => { setActiveTab('ATTRACTIONS'); scrollToBrowseSection(); }}
-                className="text-xs font-bold text-cyan-700 hover:underline flex items-center gap-1 whitespace-nowrap"
-              >
-                View All <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              {popularAttractions.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => handleAttractionCardClick(item)}
-                  className="text-left bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-lg hover:border-cyan-300 transition-all group"
-                >
-                  <div className="h-32 overflow-hidden">
-                    <img
-                      src={ATTRACTION_IMAGES[item.title] || FALLBACK_IMAGE}
-                      alt={item.title}
-                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                    />
-                  </div>
-                  <div className="p-3.5 space-y-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide flex items-center gap-1">
-                      <MapPin className="w-3 h-3" /> {ISLAND_LABELS[item.island] || item.island}
-                    </span>
-                    <h3 className="text-sm font-bold text-navy-800 leading-snug line-clamp-2">{item.title}</h3>
-                    <div className="text-sm font-black text-cyan-700 font-mono pt-0.5">
-                      ₹{item.base_price_inr?.toLocaleString('en-IN')} <span className="text-[10px] font-medium text-slate-400">onwards</span>
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Discover the Islands — editorial gallery of real Andaman landmarks */}
       <div className="bg-slate-100 py-10 border-b border-slate-200">

@@ -4,7 +4,7 @@ import {
   MapPin, Users, ArrowRight, Calendar, Landmark, Sparkles, Waves, SearchX
 } from 'lucide-react';
 
-export const ATTRACTION_IMAGES = {
+const ATTRACTION_IMAGES = {
   "Cellular Jail National Memorial": "/images/cellular-jail.jpg",
   "Cellular Jail Light & Sound Show": "/images/cellular-jail-corridor.jpg",
   "Ross Island (Netaji Subhash Chandra Bose Dweep)": "/images/ross-island-church-ruins.jpg",
@@ -18,13 +18,13 @@ const CATEGORY_STYLE = {
   WATER_SPORT: { icon: Waves, label: 'Water Sport' },
 };
 
-export const ISLAND_LABELS = {
+const ISLAND_LABELS = {
   PORT_BLAIR: 'Port Blair',
   HAVELOCK: 'Havelock (Swaraj Dweep)',
   NEIL: 'Neil (Shaheed Dweep)',
 };
 
-export const FALLBACK_IMAGE = "/images/hero-lagoon.jpg";
+const FALLBACK_IMAGE = "/images/hero-lagoon.jpg";
 
 export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRequest }) {
   const [attractions, setAttractions] = useState([]);
