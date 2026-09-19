@@ -1,22 +1,22 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
-  ShieldCheck, ShoppingBag, LogOut, Anchor, Waves, ScanLine, Landmark,
-  ChevronDown, Menu, X
+  ShieldCheck, ShoppingBag, LogOut, Anchor, Waves, Menu, X
 } from 'lucide-react';
 
 // RFP 344: Admin/Regulatory Authority is a distinct user type from Service
-// Providers, but retains oversight access into every operational console
-// (Ferry Operator, Activity Vendor, Gate Scanner) alongside its own Admin
-// MIS — so Admin keeps all four tabs; only OPERATOR/VENDOR are scoped to
-// their own dedicated portal.
-const STAFF_TAB_DEFS = [
+// Providers. Each role now has exactly one destination — Gate Scanner is a
+// section inside that dashboard's own sidebar (not a separate portal to
+// switch into), and Admin oversees Ferry/Vendor operations through Admin
+// MIS's own sections rather than opening their live operational dashboards.
+export const STAFF_TAB_DEFS = [
   { key: 'ADMIN', label: 'Admin MIS', icon: ShieldCheck, roles: ['ADMIN'] },
-  { key: 'OPERATOR', label: 'Ferry Operator', icon: Anchor, roles: ['OPERATOR', 'ADMIN'] },
-  { key: 'VENDOR', label: 'Activity Vendor', icon: Waves, roles: ['VENDOR', 'ADMIN'] },
-  { key: 'SCANNER', label: 'Gate Scanner', icon: ScanLine, roles: ['OPERATOR', 'VENDOR', 'ADMIN'] },
+  { key: 'OPERATOR', label: 'Ferry Operator', icon: Anchor, roles: ['OPERATOR'] },
+  { key: 'VENDOR', label: 'Activity Vendor', icon: Waves, roles: ['VENDOR'] },
 ];
 
-const ROLE_BADGE = { ADMIN: 'ADM', OPERATOR: 'OPR', VENDOR: 'VND' };
+export const ROLE_BADGE = { ADMIN: 'ADM', OPERATOR: 'OPR', VENDOR: 'VND' };
+
+export const isStaffRole = (role) => ['ADMIN', 'OPERATOR', 'VENDOR'].includes(role);
 
 export function Navbar({
   user,
@@ -28,19 +28,7 @@ export function Navbar({
   onOpenCart
 }) {
   const [accessibleMode, setAccessibleMode] = useState(false);
-  const [isStaffMenuOpen, setIsStaffMenuOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const staffMenuRef = useRef(null);
-
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (staffMenuRef.current && !staffMenuRef.current.contains(e.target)) {
-        setIsStaffMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
   const toggleAccessibleMode = () => {
     const next = !accessibleMode;
@@ -49,11 +37,12 @@ export function Navbar({
   };
 
   const staffTabs = STAFF_TAB_DEFS.filter((tab) => user?.role && tab.roles.includes(user.role));
-  const isStaffTabActive = staffTabs.some((tab) => tab.key === activeTab);
   // A signed-in Service Provider / Admin has no tourist booking journey to
   // resume — RFP 344 treats them as a distinct user type, so their nav
   // shows only their own dedicated portal, never Attractions/Ferries/Passes.
-  const isStaffUser = user?.role && ['ADMIN', 'OPERATOR', 'VENDOR'].includes(user.role);
+  // At desktop width their portal navigation lives in the persistent
+  // each dashboard's own sidebar (DashboardSidebar) instead of this top bar.
+  const isStaffUser = isStaffRole(user?.role);
   const homeTab = isStaffUser ? (staffTabs[0]?.key || 'ADMIN') : 'ATTRACTIONS';
 
   return (
@@ -87,122 +76,61 @@ export function Navbar({
 
       {/* Main Nav Strip */}
       <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between gap-6">
-        {/* Brand */}
+        {/* Brand — min-w-0 + truncate so this shrinks instead of forcing
+            the header into horizontal overflow on narrow phones, where it
+            has to share the row with the hamburger/cart/account buttons. */}
         <div
-          className="flex items-center gap-3 cursor-pointer group shrink-0"
+          className="flex items-center gap-3 cursor-pointer group min-w-0"
           onClick={() => { setActiveTab(homeTab); setIsMobileMenuOpen(false); }}
         >
-          <img src="/images/govt-seal.png" alt="Emblem" className="w-11 h-11 object-contain bg-white rounded-lg p-1 shadow-md" />
-          <div>
-            <div className="font-serif font-black text-xl tracking-tight text-white leading-tight">ANIIDCO Tourism &amp; Ferry Portal</div>
-            <span className="text-[10px] text-cyan-200 tracking-wider uppercase font-semibold block">
+          <img src="/images/govt-seal.png" alt="Emblem" className="w-11 h-11 object-contain bg-white rounded-lg p-1 shadow-md shrink-0" />
+          <div className="min-w-0">
+            <div className="font-serif font-black text-base sm:text-xl tracking-tight text-white leading-tight truncate">ANIIDCO Tourism &amp; Ferry Portal</div>
+            <span className="text-[10px] text-cyan-200 tracking-wider uppercase font-semibold hidden sm:block truncate">
               Official Single-Window Ticketing · A&amp;N Islands
             </span>
           </div>
         </div>
 
-        {/* Center Nav Links */}
-        <nav className="hidden md:flex items-center gap-1 bg-navy-700/60 p-1.5 rounded-xl">
-          {!isStaffUser && (
-            <>
-              <button
-                onClick={() => setActiveTab('ATTRACTIONS')}
-                className={`px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all ${
-                  activeTab === 'ATTRACTIONS'
-                    ? 'bg-cyan-700 text-white shadow-md'
-                    : 'text-slate-200 hover:text-white hover:bg-navy-600'
-                }`}
-              >
-                Attractions
-              </button>
+        {/* Center Nav Links — tourist-only; a signed-in staff user navigates
+            via each dashboard's own persistent sidebar at desktop width, and
+            via the mobile drawer below on small screens. */}
+        {!isStaffUser && (
+          <nav className="hidden md:flex items-center gap-1 bg-navy-700/60 p-1.5 rounded-xl">
+            <button
+              onClick={() => setActiveTab('ATTRACTIONS')}
+              className={`px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all ${
+                activeTab === 'ATTRACTIONS'
+                  ? 'bg-cyan-700 text-white shadow-md'
+                  : 'text-slate-200 hover:text-white hover:bg-navy-600'
+              }`}
+            >
+              Attractions
+            </button>
 
-              <button
-                onClick={() => setActiveTab('FERRY')}
-                className={`px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all ${
-                  activeTab === 'FERRY'
-                    ? 'bg-cyan-700 text-white shadow-md'
-                    : 'text-slate-200 hover:text-white hover:bg-navy-600'
-                }`}
-              >
-                Ferries
-              </button>
+            <button
+              onClick={() => setActiveTab('FERRY')}
+              className={`px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all ${
+                activeTab === 'FERRY'
+                  ? 'bg-cyan-700 text-white shadow-md'
+                  : 'text-slate-200 hover:text-white hover:bg-navy-600'
+              }`}
+            >
+              Ferries
+            </button>
 
-              <button
-                onClick={() => setActiveTab('PASSES')}
-                className={`px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all ${
-                  activeTab === 'PASSES'
-                    ? 'bg-cyan-700 text-white shadow-md'
-                    : 'text-slate-200 hover:text-white hover:bg-navy-600'
-                }`}
-              >
-                My Passes
-              </button>
-            </>
-          )}
-
-          {/* A staff/admin user has no tourist tabs alongside it, so its
-              dedicated portals get their own direct nav buttons instead of
-              hiding behind a "Staff Portal" dropdown — each is a first-class
-              destination, not an accessory to the tourist site. */}
-          {isStaffUser ? (
-            staffTabs.map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.key;
-              return (
-                <button
-                  key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
-                  className={`px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                    isActive
-                      ? 'bg-amber-700 text-white shadow-md'
-                      : 'text-amber-400 hover:text-amber-300 hover:bg-navy-600'
-                  }`}
-                >
-                  <Icon className="w-4 h-4" /> {tab.label}
-                </button>
-              );
-            })
-          ) : (
-            staffTabs.length > 0 && (
-              <div className="relative" ref={staffMenuRef}>
-                <button
-                  onClick={() => setIsStaffMenuOpen((v) => !v)}
-                  className={`px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                    isStaffTabActive
-                      ? 'bg-amber-700 text-white shadow-md'
-                      : 'text-amber-400 hover:text-amber-300 hover:bg-navy-600'
-                  }`}
-                >
-                  <Landmark className="w-4 h-4" /> Staff Portal
-                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isStaffMenuOpen ? 'rotate-180' : ''}`} />
-                </button>
-
-                {isStaffMenuOpen && (
-                  <div className="absolute top-full right-0 mt-2 w-56 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden py-1.5 z-50">
-                    {staffTabs.map((tab) => {
-                      const Icon = tab.icon;
-                      const isActive = activeTab === tab.key;
-                      return (
-                        <button
-                          key={tab.key}
-                          onClick={() => {
-                            setActiveTab(tab.key);
-                            setIsStaffMenuOpen(false);
-                          }}
-                          className={`w-full text-left px-4 py-2.5 text-sm font-semibold flex items-center gap-2.5 transition-colors ${
-                            isActive ? 'bg-cyan-50 text-cyan-700' : 'text-navy-800 hover:bg-slate-50'
-                          }`}
-                        >
-                          <Icon className="w-4 h-4" /> {tab.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )
-          )}
-        </nav>
+            <button
+              onClick={() => setActiveTab('PASSES')}
+              className={`px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all ${
+                activeTab === 'PASSES'
+                  ? 'bg-cyan-700 text-white shadow-md'
+                  : 'text-slate-200 hover:text-white hover:bg-navy-600'
+              }`}
+            >
+              My Passes
+            </button>
+          </nav>
+        )}
 
         {/* Right Section: Cart + Account */}
         <div className="flex items-center gap-3 shrink-0">

@@ -2,10 +2,30 @@ import React, { useState, useEffect } from 'react';
 import API from '../api/client';
 import {
   Waves, Users, DollarSign, Clock,
-  CheckCircle2, RefreshCw, Layers, FileSpreadsheet, MapPin
+  CheckCircle2, RefreshCw, Layers, FileSpreadsheet, MapPin,
+  LayoutDashboard, ClipboardList, ScanLine
 } from 'lucide-react';
+import { DashboardSidebar } from './DashboardSidebar';
+import { StaffGateScanner } from './StaffGateScanner';
 
-export function VendorDashboard({ user }) {
+const VENDOR_SECTION_GROUPS = [
+  {
+    label: 'Overview',
+    items: [
+      { key: 'OVERVIEW', label: 'Revenue & Settlement', icon: LayoutDashboard },
+    ],
+  },
+  {
+    label: 'Operations',
+    items: [
+      { key: 'ACTIVITIES', label: 'Activity Manifest & Occupancy', icon: ClipboardList },
+      { key: 'GATE_SCANNER', label: 'Gate Scanner', icon: ScanLine },
+    ],
+  },
+];
+
+export function VendorDashboard({ user, onLogout }) {
+  const [activeSection, setActiveSection] = useState('OVERVIEW');
   const [attractions, setAttractions] = useState([]);
   const [selectedAttractionId, setSelectedAttractionId] = useState('');
   const [slots, setSlots] = useState([]);
@@ -112,7 +132,18 @@ export function VendorDashboard({ user }) {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="w-full">
+      <DashboardSidebar
+        portalLabel="Activity Vendor"
+        portalIcon={Waves}
+        groups={VENDOR_SECTION_GROUPS}
+        activeSection={activeSection}
+        onSelectSection={setActiveSection}
+        user={user}
+        onLogout={onLogout}
+      />
+
+      <div className="md:ml-64 min-w-0 p-4 md:p-6 space-y-8 max-w-7xl">
       {/* 1. Header Strip */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -134,6 +165,8 @@ export function VendorDashboard({ user }) {
         </button>
       </div>
 
+      {activeSection === 'OVERVIEW' && (
+      <>
       {/* 2. Top Vendor Metrics (real, computed from confirmed bookings today) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-2">
@@ -186,7 +219,11 @@ export function VendorDashboard({ user }) {
           <p className="text-[11px] text-slate-500 font-medium">{revenue?.active_attractions_today ?? 0} activity/activities live today</p>
         </div>
       </div>
+      </>
+      )}
 
+      {activeSection === 'ACTIVITIES' && (
+      <>
       {/* 3. Attraction Picker & Slot Occupancy */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left: Attraction & Slot Picker */}
@@ -348,6 +385,14 @@ export function VendorDashboard({ user }) {
           </div>
         </div>
       </div>
-    </div>
+      </>
+      )}
+
+      {activeSection === 'GATE_SCANNER' && (
+        <StaffGateScanner user={user} />
+      )}
+
+        </div>
+      </div>
   );
 }

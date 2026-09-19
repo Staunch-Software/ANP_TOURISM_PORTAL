@@ -342,6 +342,13 @@ async def register_operator(
     if current_user.approval_status == "PENDING":
         raise HTTPException(status_code=400, detail="An application is already pending review for this account.")
 
+    # Defense in depth: even though the frontend now checks this before
+    # ever showing the form, an already-approved provider resubmitting
+    # here must never silently overwrite their status back to PENDING --
+    # that would deactivate a live operator/vendor account.
+    if current_user.approval_status == "APPROVED":
+        raise HTTPException(status_code=400, detail="This account is already an approved service provider. Please use Staff Login instead.")
+
     current_user.business_name = req.business_name
     current_user.gstin = req.gstin
     current_user.trade_license_number = req.trade_license_number

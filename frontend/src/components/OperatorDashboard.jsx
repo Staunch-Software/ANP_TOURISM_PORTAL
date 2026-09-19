@@ -3,8 +3,10 @@ import API from '../api/client';
 import {
   Ship, Users, DollarSign, Clock,
   Printer, CheckCircle2, RefreshCw, Anchor, Layers, FileSpreadsheet,
-  LayoutDashboard, ClipboardList
+  LayoutDashboard, ClipboardList, ScanLine
 } from 'lucide-react';
+import { DashboardSidebar } from './DashboardSidebar';
+import { StaffGateScanner } from './StaffGateScanner';
 
 const ROUTE_PAIRS = [
   ['PORT_BLAIR', 'HAVELOCK'],
@@ -12,9 +14,20 @@ const ROUTE_PAIRS = [
   ['NEIL', 'PORT_BLAIR'],
 ];
 
-const OPERATOR_SECTIONS = [
-  { key: 'OVERVIEW', label: 'Revenue & Settlement', icon: LayoutDashboard },
-  { key: 'FLEET', label: 'Vessel Manifest & Occupancy', icon: ClipboardList },
+const OPERATOR_SECTION_GROUPS = [
+  {
+    label: 'Overview',
+    items: [
+      { key: 'OVERVIEW', label: 'Revenue & Settlement', icon: LayoutDashboard },
+    ],
+  },
+  {
+    label: 'Operations',
+    items: [
+      { key: 'FLEET', label: 'Vessel Manifest & Occupancy', icon: ClipboardList },
+      { key: 'GATE_SCANNER', label: 'Gate Scanner', icon: ScanLine },
+    ],
+  },
 ];
 
 const CABIN_LABELS = {
@@ -23,7 +36,7 @@ const CABIN_LABELS = {
   ROYAL: { deck: 'Upper Bridge', name: 'Royal VIP Cabin' },
 };
 
-export function OperatorDashboard({ user }) {
+export function OperatorDashboard({ user, onLogout }) {
   const [schedules, setSchedules] = useState([]);
   const [selectedScheduleId, setSelectedScheduleId] = useState('');
   const [selectedSchedule, setSelectedSchedule] = useState(null);
@@ -137,7 +150,18 @@ export function OperatorDashboard({ user }) {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="w-full">
+      <DashboardSidebar
+        portalLabel="Ferry Operator"
+        portalIcon={Anchor}
+        groups={OPERATOR_SECTION_GROUPS}
+        activeSection={activeSection}
+        onSelectSection={setActiveSection}
+        user={user}
+        onLogout={onLogout}
+      />
+
+      <div className="md:ml-64 min-w-0 p-4 md:p-6 space-y-8 max-w-7xl">
       {/* 1. Header Strip */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -159,31 +183,6 @@ export function OperatorDashboard({ user }) {
         </button>
       </div>
 
-      {/* Section Navigation (sidebar) + Content — one bordered shell instead
-          of two separate floating cards, separating revenue/settlement from
-          live vessel operations so the dashboard reads as two distinct jobs,
-          not one long scroll. */}
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col lg:flex-row items-stretch">
-        <aside className="shrink-0 lg:w-[240px] p-2.5 border-b lg:border-b-0 lg:border-r border-slate-200 bg-slate-50/60 rounded-t-2xl lg:rounded-l-2xl lg:rounded-tr-none flex lg:flex-col gap-0.5 overflow-x-auto lg:overflow-visible lg:sticky lg:top-24 lg:self-start">
-          {OPERATOR_SECTIONS.map((section) => {
-            const SectionIcon = section.icon;
-            return (
-              <button
-                key={section.key}
-                onClick={() => setActiveSection(section.key)}
-                className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2.5 whitespace-nowrap transition-all ${
-                  activeSection === section.key
-                    ? 'bg-navy-800 text-white shadow-sm'
-                    : 'text-slate-500 hover:text-navy-800 hover:bg-white'
-                }`}
-              >
-                <SectionIcon className="w-4 h-4 shrink-0" /> {section.label}
-              </button>
-            );
-          })}
-        </aside>
-
-        <div className="flex-1 min-w-0 p-6 space-y-8">
 
       {activeSection === 'OVERVIEW' && (
       <>
@@ -384,8 +383,11 @@ export function OperatorDashboard({ user }) {
       </>
       )}
 
+      {activeSection === 'GATE_SCANNER' && (
+        <StaffGateScanner user={user} />
+      )}
+
         </div>
       </div>
-    </div>
   );
 }

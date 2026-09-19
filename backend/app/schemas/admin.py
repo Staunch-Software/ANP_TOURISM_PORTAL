@@ -133,3 +133,42 @@ class AdminAlertSummary(BaseModel):
     related_order_id: Optional[str] = None
     is_resolved: bool
     created_at: str
+
+
+# -------------------------------------------------------------
+# Ferry Roster System (RFP Page 21, Section 6: "Roaster system of Ferry
+# Management System (Boat services)") — the daily vessel duty roster and
+# its voyage lifecycle, distinct from a tourist's own seat-booking search.
+# -------------------------------------------------------------
+class FerryRosterEntry(BaseModel):
+    schedule_id: str
+    vessel_name: str
+    operator_name: str
+    captain_name: Optional[str] = None
+    source_port: str
+    destination_port: str
+    departure_date: str
+    departure_time: str
+    status: str
+    total_seats: int
+    booked_seats: int
+
+
+class RosterStatusUpdateRequest(BaseModel):
+    status: str  # BOARDING, CAST_OFF, BERTHED, CANCELLED_WEATHER
+
+
+class RosterAssignRequest(BaseModel):
+    vessel_id: str
+    source_port: str
+    destination_port: str
+    departure_date: str  # YYYY-MM-DD
+    departure_time: str  # HH:MM
+    captain_name: Optional[str] = None
+
+
+class VesselSummary(BaseModel):
+    vessel_id: str
+    name: str
+    operator_name: str
+    total_capacity: int

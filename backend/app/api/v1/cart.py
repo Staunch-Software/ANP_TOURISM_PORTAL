@@ -113,6 +113,9 @@ async def add_ferry_to_cart(
 
     seat, schedule, vessel = row
 
+    if schedule.status != "SCHEDULED":
+        raise HTTPException(status_code=400, detail=f"This voyage is no longer accepting bookings (status: {schedule.status})")
+
     if seat.is_booked:
         raise HTTPException(status_code=409, detail=f"Seat {req.seat_number} is already booked")
 

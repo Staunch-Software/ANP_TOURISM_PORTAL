@@ -33,8 +33,12 @@ from app.schemas.admin import (
     OperatorApplicationDecisionRequest,
     ValidatedTicketReportEntry,
     AdminAlertSummary,
+    FerryRosterEntry,
+    RosterStatusUpdateRequest,
+    RosterAssignRequest,
+    VesselSummary,
 )
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date as date_type, time as time_type
 
 router = APIRouter(prefix="/admin", tags=["Government Admin MIS & Harbor Manifest"])
 
@@ -296,6 +300,210 @@ async def emergency_weather_throttle(
             )
 
     raise HTTPException(status_code=400, detail="Must provide either schedule_id or slot_id")
+
+
+# -------------------------------------------------------------
+# 4b. Ferry Roster System (RFP Page 21, Section 6 Item 2) — the daily
+# vessel duty roster, its voyage lifecycle, and admin's ability to assign
+# a new sailing. Distinct from GET /ferry/schedules, which is a tourist's
+# route+date search scoped to SCHEDULED (bookable) voyages only.
+# -------------------------------------------------------------
+ROSTER_STATUS_FLOW = {
+    "SCHEDULED": {"BOARDING", "CANCELLED_WEATHER"},
+    "BOARDING": {"CAST_OFF", "CANCELLED_WEATHER"},
+    "CAST_OFF": {"BERTHED"},
+    "BERTHED": set(),
+    "CANCELLED_WEATHER": set(),
+}
+
+
+@router.get("/vessels", response_model=List[VesselSummary])
+async def list_vessels(
+    admin_user: User = Depends(verify_admin_role),
+    db: AsyncSession = Depends(get_db),
+):
+    """Fleet registry for the roster-assignment form's vessel picker."""
+    res = await db.execute(select(Vessel).order_by(Vessel.name.asc()))
+    vessels = res.scalars().all()
+    return [
+        VesselSummary(vessel_id=str(v.id), name=v.name, operator_name=v.operator_name, total_capacity=v.total_capacity)
+        for v in vessels
+    ]
+
+
+@router.get("/ferry-roster", response_model=List[FerryRosterEntry])
+async def get_ferry_roster(
+    roster_date: str,
+    admin_user: User = Depends(verify_admin_role),
+    db: AsyncSession = Depends(get_db),
+):
+    """Every sailing on the given day across all routes and every status
+    (not just SCHEDULED) — the Harbor Master's full duty roster view."""
+    try:
+        parsed_date = date_type.fromisoformat(roster_date)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="roster_date must be YYYY-MM-DD")
+
+    res = await db.execute(
+        select(FerrySchedule, Vessel)
+        .join(Vessel, FerrySchedule.vessel_id == Vessel.id)
+        .where(FerrySchedule.departure_date == parsed_date)
+        .order_by(FerrySchedule.departure_time.asc())
+    )
+    rows = res.all()
+
+    entries = []
+    for sched, vessel in rows:
+        seats_res = await db.execute(select(FerrySeat).where(FerrySeat.schedule_id == sched.id))
+        seats = seats_res.scalars().all()
+        entries.append(
+            FerryRosterEntry(
+                schedule_id=str(sched.id),
+                vessel_name=vessel.name,
+                operator_name=vessel.operator_name,
+                captain_name=sched.captain_name,
+                source_port=sched.source_port,
+                destination_port=sched.destination_port,
+                departure_date=str(sched.departure_date),
+                departure_time=sched.departure_time.strftime("%H:%M"),
+                status=sched.status,
+                total_seats=len(seats),
+                booked_seats=sum(1 for s in seats if s.is_booked),
+            )
+        )
+    return entries
+
+
+@router.patch("/ferry-roster/{schedule_id}/status", response_model=FerryRosterEntry)
+async def update_roster_status(
+    schedule_id: str,
+    req: RosterStatusUpdateRequest,
+    admin_user: User = Depends(verify_admin_role),
+    db: AsyncSession = Depends(get_db),
+):
+    """Transitions a sailing through its voyage lifecycle. Moving off
+    SCHEDULED automatically closes ticket sales for it, since
+    GET /ferry/schedules (tourist search) and POST /cart/add-ferry both
+    only accept bookings while status == SCHEDULED."""
+    try:
+        s_uuid = uuid.UUID(schedule_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid Schedule UUID")
+
+    res = await db.execute(select(FerrySchedule).where(FerrySchedule.id == s_uuid))
+    sched = res.scalars().first()
+    if not sched:
+        raise HTTPException(status_code=404, detail="Ferry schedule not found")
+
+    allowed_next = ROSTER_STATUS_FLOW.get(sched.status, set())
+    if req.status not in allowed_next:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot move from {sched.status} to {req.status}. Allowed next states: {sorted(allowed_next) or 'none (voyage complete)'}",
+        )
+
+    sched.status = req.status
+    await db.commit()
+    await db.refresh(sched)
+
+    vessel_res = await db.execute(select(Vessel).where(Vessel.id == sched.vessel_id))
+    vessel = vessel_res.scalars().first()
+    seats_res = await db.execute(select(FerrySeat).where(FerrySeat.schedule_id == sched.id))
+    seats = seats_res.scalars().all()
+
+    return FerryRosterEntry(
+        schedule_id=str(sched.id),
+        vessel_name=vessel.name,
+        operator_name=vessel.operator_name,
+        captain_name=sched.captain_name,
+        source_port=sched.source_port,
+        destination_port=sched.destination_port,
+        departure_date=str(sched.departure_date),
+        departure_time=sched.departure_time.strftime("%H:%M"),
+        status=sched.status,
+        total_seats=len(seats),
+        booked_seats=sum(1 for s in seats if s.is_booked),
+    )
+
+
+# The seat layout every sailing gets when admin assigns a new one to the
+# roster — mirrors seed_ferries.py's own template (24 Economy, 16 Deluxe,
+# 8 Royal) so a freshly-assigned sailing looks like every other vessel's
+# cabin map instead of admin having to price out 48 seats by hand.
+_DEFAULT_CABIN_TEMPLATE = [
+    ("ECONOMY", "E", range(1, 7), 1200.00),
+    ("DELUXE", "D", range(1, 5), 1600.00),
+    ("ROYAL", "R", range(1, 3), 2500.00),
+]
+
+
+@router.post("/ferry-roster/assign", response_model=FerryRosterEntry)
+async def assign_ferry_roster(
+    req: RosterAssignRequest,
+    admin_user: User = Depends(verify_admin_role),
+    db: AsyncSession = Depends(get_db),
+):
+    """Adds a new sailing to the daily roster — assigns a vessel to a
+    route and departure slot, per RFP Page 21's "Roaster system of Ferry
+    Management System"."""
+    try:
+        vessel_uuid = uuid.UUID(req.vessel_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid Vessel UUID")
+
+    vessel_res = await db.execute(select(Vessel).where(Vessel.id == vessel_uuid))
+    vessel = vessel_res.scalars().first()
+    if not vessel:
+        raise HTTPException(status_code=404, detail="Vessel not found")
+
+    try:
+        parsed_date = date_type.fromisoformat(req.departure_date)
+        parsed_time = time_type.fromisoformat(req.departure_time)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="departure_date must be YYYY-MM-DD and departure_time HH:MM")
+
+    sched = FerrySchedule(
+        vessel_id=vessel.id,
+        source_port=req.source_port.upper(),
+        destination_port=req.destination_port.upper(),
+        departure_date=parsed_date,
+        departure_time=parsed_time,
+        status="SCHEDULED",
+        captain_name=req.captain_name,
+    )
+    db.add(sched)
+    await db.commit()
+    await db.refresh(sched)
+
+    seats_to_add = []
+    for cabin_class, prefix, rows, price in _DEFAULT_CABIN_TEMPLATE:
+        for row in rows:
+            for col in ["A", "B", "C", "D"]:
+                seats_to_add.append(
+                    FerrySeat(
+                        schedule_id=sched.id,
+                        seat_number=f"{prefix}{row}{col}",
+                        cabin_class=cabin_class,
+                        price_inr=price,
+                        is_booked=False,
+                    )
+                )
+    db.add_all(seats_to_add)
+    await db.commit()
+
+    return FerryRosterEntry(
+        schedule_id=str(sched.id),
+        vessel_name=vessel.name,
+        operator_name=vessel.operator_name,
+        captain_name=sched.captain_name,
+        source_port=sched.source_port,
+        destination_port=sched.destination_port,
+        departure_date=str(sched.departure_date),
+        departure_time=sched.departure_time.strftime("%H:%M"),
+        status=sched.status,
+        total_seats=len(seats_to_add),
+        booked_seats=0,
+    )
 
 
 # -------------------------------------------------------------

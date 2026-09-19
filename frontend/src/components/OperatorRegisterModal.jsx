@@ -6,6 +6,9 @@ const API_BASE_URL = 'http://localhost:8010/api/v1';
 
 export function OperatorRegisterModal({ isOpen, onClose }) {
   const [step, setStep] = useState('PHONE'); // PHONE -> OTP -> BUSINESS -> DONE
+  // ALREADY_APPROVED / ALREADY_PENDING short-circuit the form for a
+  // returning provider instead of asking them to re-submit business
+  // details that were already reviewed.
   const [phoneNumber, setPhoneNumber] = useState('');
   const [otp, setOtp] = useState('');
   const [token, setToken] = useState(null);
@@ -56,7 +59,21 @@ export function OperatorRegisterModal({ isOpen, onClose }) {
       // session — that could belong to a completely different account.
       const res = await axios.post(`${API_BASE_URL}/auth/verify-otp`, { phone_number: phoneNumber, otp });
       setToken(res.data.access_token);
-      setStep('BUSINESS');
+
+      // Check whether this phone number is already a registered service
+      // provider before showing the business-details form — a returning
+      // approved operator/vendor should be pointed to Staff Login, not
+      // asked to resubmit (and risk their APPROVED status being touched).
+      const me = await axios.get(`${API_BASE_URL}/auth/me`, {
+        headers: { Authorization: `Bearer ${res.data.access_token}` },
+      });
+      if (me.data.approval_status === 'APPROVED') {
+        setStep('ALREADY_APPROVED');
+      } else if (me.data.approval_status === 'PENDING') {
+        setStep('ALREADY_PENDING');
+      } else {
+        setStep('BUSINESS');
+      }
     } catch (err) {
       setError(err.response?.data?.detail || 'Authentication failed. Please check OTP.');
     } finally {
@@ -167,6 +184,42 @@ export function OperatorRegisterModal({ isOpen, onClose }) {
                 {loading ? 'Verifying...' : 'Verify & Continue'}
               </button>
             </form>
+          )}
+
+          {step === 'ALREADY_APPROVED' && (
+            <div className="text-center py-6 space-y-3">
+              <div className="w-14 h-14 rounded-full bg-cyan-50 text-cyan-700 border border-cyan-200 flex items-center justify-center mx-auto">
+                <CheckCircle2 className="w-7 h-7" />
+              </div>
+              <h3 className="font-serif text-lg font-black text-navy-800">Already an Approved Provider</h3>
+              <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                This mobile number is already registered and approved as an ANIIDCO service provider. Please use <strong>Staff &amp; Government Login</strong> to access your dashboard.
+              </p>
+              <button
+                onClick={resetAndClose}
+                className="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-navy-800 font-bold rounded-lg text-xs"
+              >
+                Close
+              </button>
+            </div>
+          )}
+
+          {step === 'ALREADY_PENDING' && (
+            <div className="text-center py-6 space-y-3">
+              <div className="w-14 h-14 rounded-full bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center mx-auto">
+                <AlertCircle className="w-7 h-7" />
+              </div>
+              <h3 className="font-serif text-lg font-black text-navy-800">Application Already Pending</h3>
+              <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                A registration for this mobile number is already awaiting ANIIDCO's review. You'll be notified by SMS/email once it's approved.
+              </p>
+              <button
+                onClick={resetAndClose}
+                className="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-navy-800 font-bold rounded-lg text-xs"
+              >
+                Close
+              </button>
+            </div>
           )}
 
           {step === 'BUSINESS' && (

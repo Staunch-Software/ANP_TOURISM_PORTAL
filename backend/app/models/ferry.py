@@ -24,7 +24,12 @@ class FerrySchedule(Base):
     destination_port = Column(String(50), nullable=False)  # "HAVELOCK"
     departure_date = Column(Date, nullable=False)
     departure_time = Column(Time, nullable=False)
-    status = Column(String(20), default="SCHEDULED")  # SCHEDULED, SAILED, CANCELLED_WEATHER
+    # RFP Page 21, Section 6.2: Ferry Roster System — the voyage lifecycle a
+    # Harbor Master/Captain steps a sailing through: SCHEDULED (open for
+    # booking) -> BOARDING -> CAST_OFF (sailed; booking closes) -> BERTHED
+    # (arrived), or CANCELLED_WEATHER at any point before CAST_OFF.
+    status = Column(String(20), default="SCHEDULED")
+    captain_name = Column(String(100), nullable=True)  # Master/Captain of record for this sailing
 
 
 class FerrySeat(Base):

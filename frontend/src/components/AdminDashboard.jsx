@@ -4,26 +4,46 @@ import {
   ShieldCheck, TrendingUp, Users, DollarSign, Download,
   Ship, CloudRain, CheckCircle2, FileSpreadsheet, RefreshCw, Sliders,
   UserPlus, ShieldAlert, MapPin, KeyRound, Trash2, Plus, ClipboardCheck,
-  GraduationCap, Eye, X, LayoutDashboard, ClipboardList
+  GraduationCap, Eye, X, LayoutDashboard, ClipboardList, ScanLine, Anchor, UserCog
 } from 'lucide-react';
+import { DashboardSidebar } from './DashboardSidebar';
+import { StaffGateScanner } from './StaffGateScanner';
 
 // Each admin function lives on its own screen instead of one long
 // scrolling page — an admin working on, say, slot capacity shouldn't
 // have to scroll past gate provisioning and group-booking rosters to
 // get there, and shouldn't be shown all of it just because they logged
-// in as ADMIN.
-const ADMIN_SECTIONS = [
-  { key: 'OVERVIEW', label: 'Overview', icon: LayoutDashboard },
-  { key: 'MANIFEST', label: 'Harbor Manifest', icon: FileSpreadsheet },
-  { key: 'REPORTS', label: 'Validated Tickets', icon: ClipboardList },
-  { key: 'CAPACITY', label: 'Crowd & Capacity', icon: Sliders },
-  { key: 'USERS', label: 'User Management', icon: Users },
-  { key: 'APPROVALS', label: 'Service Providers', icon: UserPlus },
-  { key: 'GROUPS', label: 'Group Bookings', icon: GraduationCap },
-  { key: 'GATES', label: 'Gate / LPU Sites', icon: MapPin },
+// in as ADMIN. Grouped to match the single unified sidebar shell shared
+// with the Ferry Operator/Activity Vendor dashboards.
+const ADMIN_SECTION_GROUPS = [
+  {
+    label: 'Overview',
+    items: [
+      { key: 'OVERVIEW', label: 'Overview', icon: LayoutDashboard },
+    ],
+  },
+  {
+    label: 'Operations',
+    items: [
+      { key: 'ROSTER', label: 'Ferry Roster', icon: Anchor },
+      { key: 'MANIFEST', label: 'Harbor Manifest', icon: FileSpreadsheet },
+      { key: 'REPORTS', label: 'Validated Tickets', icon: ClipboardList },
+      { key: 'CAPACITY', label: 'Crowd & Capacity', icon: Sliders },
+      { key: 'GATE_SCANNER', label: 'Gate Scanner', icon: ScanLine },
+      { key: 'GATES', label: 'Gate / LPU Sites', icon: MapPin },
+    ],
+  },
+  {
+    label: 'Management',
+    items: [
+      { key: 'USERS', label: 'User Management', icon: Users },
+      { key: 'APPROVALS', label: 'Service Providers', icon: UserPlus },
+      { key: 'GROUPS', label: 'Group Bookings', icon: GraduationCap },
+    ],
+  },
 ];
 
-export function AdminDashboard({ user }) {
+export function AdminDashboard({ user, onLogout }) {
   const [activeSection, setActiveSection] = useState('OVERVIEW');
   const [revenueData, setRevenueData] = useState(null);
   const [schedules, setSchedules] = useState([]);
@@ -70,6 +90,22 @@ export function AdminDashboard({ user }) {
   const [groupBookingsLoading, setGroupBookingsLoading] = useState(false);
   const [decidingGroupId, setDecidingGroupId] = useState(null);
   const [rosterPreview, setRosterPreview] = useState(null); // the group booking whose roster is being viewed
+
+  // Ferry Roster System (RFP Page 21, Section 6 Item 2) — the daily vessel
+  // duty roster and its voyage lifecycle, distinct from the tourist-facing
+  // ferry search (which only ever sees SCHEDULED sailings).
+  const [ferryRosterDate, setFerryRosterDate] = useState(new Date().toISOString().split('T')[0]);
+  const [ferryRoster, setFerryRoster] = useState([]);
+  const [ferryRosterLoading, setFerryRosterLoading] = useState(false);
+  const [vessels, setVessels] = useState([]);
+  const [transitioningScheduleId, setTransitioningScheduleId] = useState(null);
+  const [isAssignFormOpen, setIsAssignFormOpen] = useState(false);
+  const [assignForm, setAssignForm] = useState({
+    vessel_id: '', source_port: 'PORT_BLAIR', destination_port: 'HAVELOCK',
+    departure_date: new Date().toISOString().split('T')[0], departure_time: '08:00', captain_name: '',
+  });
+  const [assigningRoster, setAssigningRoster] = useState(false);
+  const [rosterMessage, setRosterMessage] = useState(null);
 
   const fetchGroupBookings = async () => {
     setGroupBookingsLoading(true);
@@ -142,7 +178,75 @@ export function AdminDashboard({ user }) {
     fetchGates();
     fetchValidatedTicketsReport(reportDate);
     fetchGroupBookings();
+    fetchVessels();
   }, []);
+
+  useEffect(() => {
+    fetchFerryRoster(ferryRosterDate);
+  }, [ferryRosterDate]);
+
+  const fetchVessels = async () => {
+    try {
+      const res = await API.get('/admin/vessels');
+      setVessels(res.data);
+      if (res.data.length > 0) {
+        setAssignForm((f) => ({ ...f, vessel_id: f.vessel_id || res.data[0].vessel_id }));
+      }
+    } catch (err) {
+      console.error('Failed to load vessels', err);
+    }
+  };
+
+  const fetchFerryRoster = async (rosterDate) => {
+    setFerryRosterLoading(true);
+    try {
+      const res = await API.get(`/admin/ferry-roster?roster_date=${rosterDate}`);
+      setFerryRoster(res.data);
+    } catch (err) {
+      console.error('Failed to load ferry roster', err);
+      setFerryRoster([]);
+    } finally {
+      setFerryRosterLoading(false);
+    }
+  };
+
+  const handleRosterTransition = async (scheduleId, nextStatus) => {
+    setTransitioningScheduleId(scheduleId);
+    setRosterMessage(null);
+    try {
+      await API.patch(`/admin/ferry-roster/${scheduleId}/status`, { status: nextStatus });
+      fetchFerryRoster(ferryRosterDate);
+    } catch (err) {
+      setRosterMessage({ type: 'error', text: err.response?.data?.detail || 'Could not update voyage status' });
+    } finally {
+      setTransitioningScheduleId(null);
+    }
+  };
+
+  const handleAssignRoster = async (e) => {
+    e.preventDefault();
+    setAssigningRoster(true);
+    setRosterMessage(null);
+    try {
+      await API.post('/admin/ferry-roster/assign', assignForm);
+      setRosterMessage({ type: 'success', text: 'Sailing added to the daily roster.' });
+      setIsAssignFormOpen(false);
+      fetchFerryRoster(ferryRosterDate);
+    } catch (err) {
+      setRosterMessage({ type: 'error', text: err.response?.data?.detail || 'Could not assign sailing' });
+    } finally {
+      setAssigningRoster(false);
+    }
+  };
+
+  // Each roster status's single next action — mirrors the backend's
+  // ROSTER_STATUS_FLOW so the UI never offers a transition the API would
+  // reject anyway.
+  const ROSTER_NEXT_ACTION = {
+    SCHEDULED: { next: 'BOARDING', label: 'Open Boarding' },
+    BOARDING: { next: 'CAST_OFF', label: 'Cast Off (Sailed)' },
+    CAST_OFF: { next: 'BERTHED', label: 'Mark Berthed' },
+  };
 
   useEffect(() => {
     if (selectedSiteId) fetchStaffForGate(selectedSiteId);
@@ -539,7 +643,19 @@ export function AdminDashboard({ user }) {
   }
 
   return (
-    <div className="space-y-8">
+    <>
+    <div className="w-full">
+      <DashboardSidebar
+        portalLabel="Admin MIS"
+        portalIcon={ShieldCheck}
+        groups={ADMIN_SECTION_GROUPS}
+        activeSection={activeSection}
+        onSelectSection={setActiveSection}
+        user={user}
+        onLogout={onLogout}
+      />
+
+      <div className="md:ml-64 min-w-0 p-4 md:p-6 space-y-8 max-w-7xl">
       {/* 1. Header Banner */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -560,31 +676,6 @@ export function AdminDashboard({ user }) {
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh Metrics
         </button>
       </div>
-
-      {/* Section Navigation (sidebar) + Content — one bordered shell instead
-          of two separate floating cards, so the dashboard reads as a single
-          cohesive tool rather than mismatched pieces. */}
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col lg:flex-row items-stretch">
-        <aside className="shrink-0 lg:w-[240px] p-2.5 border-b lg:border-b-0 lg:border-r border-slate-200 bg-slate-50/60 rounded-t-2xl lg:rounded-l-2xl lg:rounded-tr-none flex lg:flex-col gap-0.5 overflow-x-auto lg:overflow-visible lg:sticky lg:top-24 lg:self-start">
-          {ADMIN_SECTIONS.map((section) => {
-            const SectionIcon = section.icon;
-            return (
-              <button
-                key={section.key}
-                onClick={() => setActiveSection(section.key)}
-                className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2.5 whitespace-nowrap transition-all ${
-                  activeSection === section.key
-                    ? 'bg-navy-800 text-white shadow-sm'
-                    : 'text-slate-500 hover:text-navy-800 hover:bg-white'
-                }`}
-              >
-                <SectionIcon className="w-4 h-4 shrink-0" /> {section.label}
-              </button>
-            );
-          })}
-        </aside>
-
-        <div className="flex-1 min-w-0 p-6 space-y-8">
 
       {activeSection === 'OVERVIEW' && (
       <>
@@ -641,6 +732,199 @@ export function AdminDashboard({ user }) {
           </div>
           <p className="text-[11px] text-slate-500 font-medium">Inter-island catamarans</p>
         </div>
+      </div>
+      </>
+      )}
+
+      {activeSection === 'ROSTER' && (
+      <>
+      {/* Ferry Roster System — RFP Page 21, Section 6 Item 2: "Roaster
+          system of Ferry Management System (Boat services)". The daily
+          vessel duty roster and its voyage lifecycle, distinct from the
+          tourist-facing route search. */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <span className="text-[10px] font-extrabold uppercase tracking-widest text-cyan-700">
+              Maritime Duty Roster
+            </span>
+            <h3 className="font-serif text-lg font-black text-navy-800 flex items-center gap-2">
+              <Anchor className="w-5 h-5 text-cyan-600" /> Ferry Fleet Roster &amp; Voyage Lifecycle
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Assign vessels to daily sailings, and step each voyage through Boarding → Cast Off → Berthed.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={ferryRosterDate}
+              onChange={(e) => setFerryRosterDate(e.target.value)}
+              className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-mono text-navy-800"
+            />
+            <button
+              type="button"
+              onClick={() => setIsAssignFormOpen((v) => !v)}
+              className="px-4 py-2 bg-navy-800 hover:bg-navy-700 text-white font-bold text-xs rounded-lg flex items-center gap-2 shadow-md"
+            >
+              <Plus className="w-4 h-4" /> Assign Sailing
+            </button>
+          </div>
+        </div>
+
+        {rosterMessage && (
+          <div className={`p-3 rounded-xl text-xs font-semibold flex items-center gap-2 ${
+            rosterMessage.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'
+          }`}>
+            {rosterMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <ShieldAlert className="w-4 h-4 shrink-0" />}
+            {rosterMessage.text}
+          </div>
+        )}
+
+        {isAssignFormOpen && (
+          <form onSubmit={handleAssignRoster} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Vessel</label>
+              <select
+                value={assignForm.vessel_id}
+                onChange={(e) => setAssignForm((f) => ({ ...f, vessel_id: e.target.value }))}
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+                required
+              >
+                {vessels.map((v) => (
+                  <option key={v.vessel_id} value={v.vessel_id}>{v.name} ({v.operator_name})</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Captain / Master</label>
+              <input
+                type="text"
+                placeholder="e.g. Capt. Rajesh Kumar"
+                value={assignForm.captain_name}
+                onChange={(e) => setAssignForm((f) => ({ ...f, captain_name: e.target.value }))}
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">From</label>
+                <select
+                  value={assignForm.source_port}
+                  onChange={(e) => setAssignForm((f) => ({ ...f, source_port: e.target.value }))}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+                >
+                  <option value="PORT_BLAIR">Port Blair</option>
+                  <option value="HAVELOCK">Havelock</option>
+                  <option value="NEIL">Neil</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">To</label>
+                <select
+                  value={assignForm.destination_port}
+                  onChange={(e) => setAssignForm((f) => ({ ...f, destination_port: e.target.value }))}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+                >
+                  <option value="PORT_BLAIR">Port Blair</option>
+                  <option value="HAVELOCK">Havelock</option>
+                  <option value="NEIL">Neil</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Departure Date</label>
+              <input
+                type="date"
+                value={assignForm.departure_date}
+                onChange={(e) => setAssignForm((f) => ({ ...f, departure_date: e.target.value }))}
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800 font-mono"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Departure Time</label>
+              <input
+                type="time"
+                value={assignForm.departure_time}
+                onChange={(e) => setAssignForm((f) => ({ ...f, departure_time: e.target.value }))}
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800 font-mono"
+                required
+              />
+            </div>
+            <div className="flex items-end">
+              <button
+                type="submit"
+                disabled={assigningRoster || !assignForm.vessel_id}
+                className="w-full py-2 bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs rounded-lg disabled:opacity-50"
+              >
+                {assigningRoster ? 'Assigning...' : 'Add to Roster'}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {ferryRosterLoading ? (
+          <div className="text-center py-12 text-slate-400 text-xs">Loading fleet roster...</div>
+        ) : ferryRoster.length === 0 ? (
+          <div className="text-center py-14 flex flex-col items-center gap-2">
+            <Anchor className="w-9 h-9 text-slate-300" />
+            <p className="text-xs text-slate-400">No sailings on the roster for {ferryRosterDate}.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 text-slate-500 font-mono text-[10px] uppercase tracking-wider border-b border-slate-200">
+                <tr>
+                  <th className="p-3">Vessel</th>
+                  <th className="p-3">Captain / Master</th>
+                  <th className="p-3">Route</th>
+                  <th className="p-3">Departure</th>
+                  <th className="p-3">Seats</th>
+                  <th className="p-3">Status</th>
+                  <th className="p-3">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {ferryRoster.map((r) => {
+                  const nextAction = ROSTER_NEXT_ACTION[r.status];
+                  const statusColor = {
+                    SCHEDULED: 'bg-slate-100 text-slate-600',
+                    BOARDING: 'bg-amber-50 text-amber-700 border border-amber-200',
+                    CAST_OFF: 'bg-cyan-50 text-cyan-700 border border-cyan-200',
+                    BERTHED: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+                    CANCELLED_WEATHER: 'bg-red-50 text-red-700 border border-red-200',
+                  }[r.status] || 'bg-slate-100 text-slate-600';
+                  return (
+                    <tr key={r.schedule_id} className="hover:bg-slate-50">
+                      <td className="p-3 font-bold text-navy-800">{r.vessel_name}</td>
+                      <td className="p-3 text-slate-600">{r.captain_name || '—'}</td>
+                      <td className="p-3 font-mono text-slate-500">{r.source_port.replace('_', ' ')} → {r.destination_port.replace('_', ' ')}</td>
+                      <td className="p-3 font-mono text-slate-500">{r.departure_time}</td>
+                      <td className="p-3 font-mono text-slate-500">{r.booked_seats}/{r.total_seats}</td>
+                      <td className="p-3">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${statusColor}`}>{r.status}</span>
+                      </td>
+                      <td className="p-3">
+                        {nextAction ? (
+                          <button
+                            onClick={() => handleRosterTransition(r.schedule_id, nextAction.next)}
+                            disabled={transitioningScheduleId === r.schedule_id}
+                            className="px-3 py-1.5 bg-navy-800 hover:bg-navy-700 text-white font-bold text-[11px] rounded-lg disabled:opacity-50 whitespace-nowrap"
+                          >
+                            {transitioningScheduleId === r.schedule_id ? 'Updating...' : nextAction.label}
+                          </button>
+                        ) : (
+                          <span className="text-[10px] text-slate-400">Voyage complete</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
       </>
       )}
@@ -1530,6 +1814,10 @@ export function AdminDashboard({ user }) {
       </>
       )}
 
+      {activeSection === 'GATE_SCANNER' && (
+        <StaffGateScanner user={user} />
+      )}
+
         </div>
       </div>
 
@@ -1573,6 +1861,6 @@ export function AdminDashboard({ user }) {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
