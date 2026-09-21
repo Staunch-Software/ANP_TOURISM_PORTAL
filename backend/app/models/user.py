@@ -21,7 +21,7 @@ class User(Base):
     full_name = Column(String(100), default="Valued Tourist")
     email = Column(String(150), nullable=True)
     state_or_country = Column(String(100), nullable=True)
-    user_type = Column(String(30), default="TOURIST")  # TOURIST, ADMIN, OPERATOR, VENDOR
+    user_type = Column(String(30), default="TOURIST")  # TOURIST, ADMIN, OPERATOR, VENDOR, AGENT
     nationality = Column(String(20), default="INDIAN")  # INDIAN, FOREIGN
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -30,6 +30,11 @@ class User(Base):
     business_name = Column(String(150), nullable=True)
     gstin = Column(String(20), nullable=True)
     trade_license_number = Column(String(50), nullable=True)
-    service_category = Column(String(30), nullable=True)  # FERRY_OPERATOR, WATER_SPORTS
+    service_category = Column(String(30), nullable=True)  # FERRY_OPERATOR, WATER_SPORTS, TICKET_AGGREGATOR
     approval_status = Column(String(20), nullable=True)  # PENDING, APPROVED, REJECTED (NULL = not an applicant)
     approval_notes = Column(Text, nullable=True)
+
+    # RFP Page 27 "Booking by Ticket Aggregators": issued once an AGENT
+    # application is approved, so the agent can integrate the Sync API
+    # into their own website/app instead of only using this dashboard.
+    api_key = Column(String(64), unique=True, index=True, nullable=True)

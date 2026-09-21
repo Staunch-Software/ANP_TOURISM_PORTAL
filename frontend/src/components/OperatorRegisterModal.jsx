@@ -112,7 +112,7 @@ export function OperatorRegisterModal({ isOpen, onClose }) {
           <Building2 className="w-6 h-6 text-cyan-300" />
           <div>
             <div className="text-sm font-bold text-white">Partner with ANIIDCO</div>
-            <div className="text-[10px] text-slate-300">Ferry &amp; Water Sports Operator Registration (RFP 7.2.1)</div>
+            <div className="text-[10px] text-slate-300">Service Provider &amp; Ticket Aggregator Registration (RFP 7.2.1)</div>
           </div>
         </div>
 
@@ -275,6 +275,7 @@ export function OperatorRegisterModal({ isOpen, onClose }) {
                   >
                     <option value="FERRY_OPERATOR">Ferry Operator</option>
                     <option value="WATER_SPORTS">Water Sports Provider</option>
+                    <option value="TICKET_AGGREGATOR">Ticket Aggregator / Travel Agent</option>
                   </select>
                 </div>
                 <div>

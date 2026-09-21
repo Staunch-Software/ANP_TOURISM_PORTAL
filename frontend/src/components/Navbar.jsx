@@ -129,6 +129,19 @@ export function Navbar({
             >
               My Passes
             </button>
+
+            {user?.role === 'AGENT' && (
+              <button
+                onClick={() => setActiveTab('AGENT_CONSOLE')}
+                className={`px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all ${
+                  activeTab === 'AGENT_CONSOLE'
+                    ? 'bg-cyan-700 text-white shadow-md'
+                    : 'text-amber-400 hover:text-amber-300 hover:bg-navy-600'
+                }`}
+              >
+                Agent Console
+              </button>
+            )}
           </nav>
         )}
 
@@ -222,6 +235,16 @@ export function Navbar({
                 >
                   My Passes
                 </button>
+                {user?.role === 'AGENT' && (
+                  <button
+                    onClick={() => { setActiveTab('AGENT_CONSOLE'); setIsMobileMenuOpen(false); }}
+                    className={`w-full text-left px-4 py-3 rounded-lg text-sm font-bold transition-all ${
+                      activeTab === 'AGENT_CONSOLE' ? 'bg-cyan-700 text-white' : 'text-amber-400 hover:bg-navy-700'
+                    }`}
+                  >
+                    Agent Console
+                  </button>
+                )}
               </>
             )}
 

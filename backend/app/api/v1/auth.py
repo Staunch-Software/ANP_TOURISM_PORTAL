@@ -1,4 +1,5 @@
 import uuid
+import secrets
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
@@ -206,6 +207,36 @@ async def get_my_profile(current_user: User = Depends(get_current_user)):
         profile_complete=_is_profile_complete(current_user),
         has_password=bool(current_user.password_hash),
         approval_status=current_user.approval_status,
+        business_name=current_user.business_name,
+        api_key=current_user.api_key,
+    )
+
+
+@router.post("/agent/regenerate-api-key", response_model=ProfileResponse)
+async def regenerate_agent_api_key(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """RFP p.27: lets an approved Ticket Aggregator rotate their Sync API
+    key themselves (e.g. after a suspected leak) without needing ANIIDCO
+    to intervene."""
+    if current_user.user_type != "AGENT" or current_user.approval_status != "APPROVED":
+        raise HTTPException(status_code=403, detail="Only an approved Ticket Aggregator account has an API key to regenerate.")
+
+    current_user.api_key = secrets.token_hex(32)
+    await db.commit()
+    await db.refresh(current_user)
+
+    return ProfileResponse(
+        user_id=str(current_user.id),
+        phone_number=current_user.phone_number,
+        full_name=current_user.full_name,
+        email=current_user.email,
+        state_or_country=current_user.state_or_country,
+        nationality=current_user.nationality,
+        role=current_user.user_type,
+        profile_complete=_is_profile_complete(current_user),
+        has_password=bool(current_user.password_hash),
+        approval_status=current_user.approval_status,
+        business_name=current_user.business_name,
+        api_key=current_user.api_key,
     )
 
 
@@ -243,6 +274,8 @@ async def set_password(
         profile_complete=_is_profile_complete(current_user),
         has_password=bool(current_user.password_hash),
         approval_status=current_user.approval_status,
+        business_name=current_user.business_name,
+        api_key=current_user.api_key,
     )
 
 
@@ -276,6 +309,8 @@ async def reset_password(
         profile_complete=_is_profile_complete(current_user),
         has_password=bool(current_user.password_hash),
         approval_status=current_user.approval_status,
+        business_name=current_user.business_name,
+        api_key=current_user.api_key,
     )
 
 
@@ -313,10 +348,12 @@ async def update_my_profile(
         profile_complete=_is_profile_complete(current_user),
         has_password=bool(current_user.password_hash),
         approval_status=current_user.approval_status,
+        business_name=current_user.business_name,
+        api_key=current_user.api_key,
     )
 
 
-VALID_SERVICE_CATEGORIES = {"FERRY_OPERATOR", "WATER_SPORTS"}
+VALID_SERVICE_CATEGORIES = {"FERRY_OPERATOR", "WATER_SPORTS", "TICKET_AGGREGATOR"}
 
 
 @router.post("/register-operator", response_model=OperatorRegistrationResponse)

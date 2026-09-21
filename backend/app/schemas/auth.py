@@ -26,6 +26,8 @@ class ProfileResponse(BaseModel):
     profile_complete: bool
     has_password: bool = False  # RFP 7.2.1-1: whether first-time password setup is already done
     approval_status: Optional[str] = None  # PENDING/APPROVED/REJECTED if they applied as a service provider
+    business_name: Optional[str] = None
+    api_key: Optional[str] = None  # RFP p.27: issued to an approved AGENT for their own Sync API integration
 
 
 class SetPasswordRequest(BaseModel):

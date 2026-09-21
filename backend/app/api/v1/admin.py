@@ -1,6 +1,7 @@
 import uuid
 import io
 import csv
+import secrets
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -37,6 +38,10 @@ from app.schemas.admin import (
     RosterStatusUpdateRequest,
     RosterAssignRequest,
     VesselSummary,
+    AnalyticsResponse,
+    DailyTrendPoint,
+    CategoryBreakdownItem,
+    TopAttractionItem,
 )
 from datetime import datetime, timedelta, date as date_type, time as time_type
 
@@ -245,6 +250,72 @@ async def get_revenue_mis(
         monument_revenue_inr=monument_rev,
         ferry_revenue_inr=ferry_rev,
         island_footfall=footfall,
+    )
+
+
+# -------------------------------------------------------------
+# 3b. Analytics & Trend Dashboard (RFP p.24, Technical Evaluation
+# Criteria: "Analytic Dashboard" scored 10 marks). Every number below is a
+# real GROUP BY over Orders/OrderItems for the requested date range --
+# there is no fabricated or simulated data here, unlike the coarse
+# island_footfall ratio above (that one's a placeholder split, not a
+# per-item location breakdown, since OrderItem doesn't record an island).
+# -------------------------------------------------------------
+@router.get("/analytics", response_model=AnalyticsResponse)
+async def get_analytics(
+    days: int = 14,
+    admin_user: User = Depends(verify_admin_role),
+    db: AsyncSession = Depends(get_db),
+):
+    days = max(1, min(days, 90))
+    range_end = datetime.utcnow().date()
+    range_start = range_end - timedelta(days=days - 1)
+
+    day_col = func.date(Order.created_at)
+    trend_res = await db.execute(
+        select(day_col, func.sum(Order.net_payable), func.count(Order.id))
+        .where(Order.status == "CONFIRMED", day_col >= range_start)
+        .group_by(day_col)
+        .order_by(day_col.asc())
+    )
+    trend_by_date = {str(d): (float(rev or 0), int(cnt or 0)) for d, rev, cnt in trend_res.all()}
+
+    daily_trend = []
+    for i in range(days):
+        d = range_start + timedelta(days=i)
+        rev, cnt = trend_by_date.get(str(d), (0.0, 0))
+        daily_trend.append(DailyTrendPoint(trend_date=str(d), revenue_inr=rev, orders_count=cnt))
+
+    cat_res = await db.execute(
+        select(OrderItem.item_type, func.sum(OrderItem.subtotal), func.count(OrderItem.id))
+        .join(Order, OrderItem.order_id == Order.id)
+        .where(Order.status == "CONFIRMED", func.date(Order.created_at) >= range_start)
+        .group_by(OrderItem.item_type)
+    )
+    category_breakdown = [
+        CategoryBreakdownItem(item_type=item_type, revenue_inr=float(rev or 0), bookings_count=int(cnt or 0))
+        for item_type, rev, cnt in cat_res.all()
+    ]
+
+    top_res = await db.execute(
+        select(OrderItem.title, func.sum(OrderItem.subtotal), func.count(OrderItem.id))
+        .join(Order, OrderItem.order_id == Order.id)
+        .where(Order.status == "CONFIRMED", func.date(Order.created_at) >= range_start)
+        .group_by(OrderItem.title)
+        .order_by(func.sum(OrderItem.subtotal).desc())
+        .limit(5)
+    )
+    top_attractions = [
+        TopAttractionItem(title=title, revenue_inr=float(rev or 0), bookings_count=int(cnt or 0))
+        for title, rev, cnt in top_res.all()
+    ]
+
+    return AnalyticsResponse(
+        range_start=str(range_start),
+        range_end=str(range_end),
+        daily_trend=daily_trend,
+        category_breakdown=category_breakdown,
+        top_attractions=top_attractions,
     )
 
 
@@ -509,7 +580,7 @@ async def assign_ferry_roster(
 # -------------------------------------------------------------
 # 5. User Management & Role Control (RFP Clause 7.2.1-III)
 # -------------------------------------------------------------
-VALID_ROLES = {"TOURIST", "ADMIN", "OPERATOR", "VENDOR"}
+VALID_ROLES = {"TOURIST", "ADMIN", "OPERATOR", "VENDOR", "AGENT"}
 
 
 @router.get("/users", response_model=List[UserSummary])
@@ -727,9 +798,19 @@ async def approve_operator_application(
 
     applicant.approval_status = "APPROVED"
     applicant.approval_notes = payload.reason
-    # FERRY_OPERATOR applicants become OPERATOR; WATER_SPORTS applicants
-    # become VENDOR — service_category was captured at registration time.
-    applicant.user_type = "OPERATOR" if applicant.service_category == "FERRY_OPERATOR" else "VENDOR"
+    # FERRY_OPERATOR -> OPERATOR, WATER_SPORTS -> VENDOR, TICKET_AGGREGATOR
+    # -> AGENT — service_category was captured at registration time.
+    if applicant.service_category == "FERRY_OPERATOR":
+        applicant.user_type = "OPERATOR"
+    elif applicant.service_category == "TICKET_AGGREGATOR":
+        applicant.user_type = "AGENT"
+        # RFP Page 27: "Create a secure API that can be shared with
+        # approved Agents wishing to develop their own website or
+        # application for ticket bookings." Issued once, at approval.
+        if not applicant.api_key:
+            applicant.api_key = secrets.token_hex(32)
+    else:
+        applicant.user_type = "VENDOR"
     applicant.is_active = True
     await db.commit()
     await db.refresh(applicant)

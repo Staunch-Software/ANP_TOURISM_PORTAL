@@ -6,6 +6,7 @@ import { AttractionsExplorer, ATTRACTION_IMAGES, FALLBACK_IMAGE, ISLAND_LABELS }
 import { FerrySearch } from './components/FerrySearch';
 import { CartDrawer } from './components/CartDrawer';
 import { DigitalWallet } from './components/DigitalWallet';
+import { AgentConsole } from './components/AgentConsole';
 import { AdminDashboard } from './components/AdminDashboard';
 import { OperatorDashboard } from './components/OperatorDashboard';
 import { VendorDashboard } from './components/VendorDashboard';
@@ -34,6 +35,12 @@ const HERO_SLIDES = [
 // show at all: it would just be clutter competing with their real task.
 const STAFF_ROLES = ['ADMIN', 'OPERATOR', 'VENDOR'];
 const STAFF_TABS = ['ADMIN', 'OPERATOR', 'VENDOR'];
+// The Agent Console isn't a staff dashboard (an Agent keeps the normal
+// tourist <main> wrapper so they can still book for clients), but it's
+// also not a tourist landing page — the marketing hero/search/footer
+// above and below it would just be clutter for someone here to check an
+// API key, not plan a trip.
+const HIDE_TOURIST_CHROME_TABS = [...STAFF_TABS, 'AGENT_CONSOLE'];
 
 const DISCOVER_CARDS = [
   {
@@ -170,7 +177,7 @@ export default function App() {
         onOpenCart={() => setIsCartOpen(true)}
       />
 
-      {!STAFF_TABS.includes(activeTab) && (
+      {!HIDE_TOURIST_CHROME_TABS.includes(activeTab) && (
       <>
       {/* Hero Section — editorial rotating carousel of real Andaman locations */}
       <section className="relative min-h-[420px] flex items-center justify-center overflow-hidden bg-navy-800">
@@ -468,6 +475,13 @@ export default function App() {
               onRequireLogin={() => openLogin('VISITOR')}
             />
           )}
+
+          {activeTab === 'AGENT_CONSOLE' && (
+            <AgentConsole
+              user={currentUser}
+              onRequireLogin={() => openLogin('VISITOR')}
+            />
+          )}
         </main>
       )}
 
@@ -475,7 +489,7 @@ export default function App() {
           not a page with a footer below it — showing the tourist footer
           here would just scroll the sidebar out of view without anything
           useful replacing it. */}
-      {!STAFF_TABS.includes(activeTab) && (
+      {!HIDE_TOURIST_CHROME_TABS.includes(activeTab) && (
         <footer className="bg-navy-900 text-slate-400 py-8 px-4 mt-auto">
           <div className="max-w-7xl mx-auto flex flex-wrap justify-between gap-6">
             <div className="max-w-sm">
@@ -521,6 +535,7 @@ export default function App() {
           if (userData.role === 'ADMIN') setActiveTab('ADMIN');
           else if (userData.role === 'OPERATOR') setActiveTab('OPERATOR');
           else if (userData.role === 'VENDOR') setActiveTab('VENDOR');
+          else if (userData.role === 'AGENT') setActiveTab('AGENT_CONSOLE');
         }}
       />
 
