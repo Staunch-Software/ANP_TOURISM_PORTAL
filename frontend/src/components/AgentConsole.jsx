@@ -64,9 +64,11 @@ export function AgentConsole({ user, onRequireLogin }) {
     }
   };
 
-  const sampleRequest = `curl -X POST https://api.aniidco.gov.in/api/v1/agent/api/book-attraction \\
+  const displayKey = revealed && apiKey ? apiKey : 'YOUR_API_KEY';
+
+  const sampleAttractionRequest = `curl -X POST https://api.aniidco.gov.in/api/v1/agent/api/book-attraction \\
   -H "Content-Type: application/json" \\
-  -H "X-API-Key: ${revealed && apiKey ? apiKey : 'YOUR_API_KEY'}" \\
+  -H "X-API-Key: ${displayKey}" \\
   -d '{
     "slot_id": "<attraction-slot-id>",
     "nationality": "INDIAN",
@@ -76,6 +78,21 @@ export function AgentConsole({ user, onRequireLogin }) {
       "gender": "MALE",
       "id_type": "AADHAAR",
       "id_number": "123456789012"
+    }
+  }'`;
+
+  const sampleFerryRequest = `curl -X POST https://api.aniidco.gov.in/api/v1/agent/api/book-ferry-seat \\
+  -H "Content-Type: application/json" \\
+  -H "X-API-Key: ${displayKey}" \\
+  -d '{
+    "schedule_id": "<ferry-schedule-id>",
+    "seat_number": "D1A",
+    "passenger": {
+      "name": "Sunita Devi",
+      "age": 29,
+      "gender": "FEMALE",
+      "id_type": "AADHAAR",
+      "id_number": "987654321098"
     }
   }'`;
 
@@ -140,9 +157,19 @@ export function AgentConsole({ user, onRequireLogin }) {
         <p className="text-xs text-slate-500">
           A single call from your own backend issues the same tamper-proof, Ed25519-signed QR ticket a direct web booking gets. No cart or session needed — your system authenticates with the header below.
         </p>
-        <pre className="bg-navy-900 text-cyan-100 text-[11px] leading-relaxed rounded-xl p-4 overflow-x-auto font-mono">{sampleRequest}</pre>
+        <pre className="bg-navy-900 text-cyan-100 text-[11px] leading-relaxed rounded-xl p-4 overflow-x-auto font-mono">{sampleAttractionRequest}</pre>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-3">
+        <h3 className="font-serif text-base font-black text-navy-800 flex items-center gap-2">
+          <Code2 className="w-4.5 h-4.5 text-cyan-600" /> Sync API — Book a Ferry Seat
+        </h3>
+        <p className="text-xs text-slate-500">
+          Same one-call pattern for inter-island ferry seats — find a schedule and seat number via the public <code className="font-mono bg-slate-100 px-1 rounded">GET /ferry/schedules</code> and <code className="font-mono bg-slate-100 px-1 rounded">GET /ferry/schedules/{'{'}id{'}'}/seat-map</code> endpoints first.
+        </p>
+        <pre className="bg-navy-900 text-cyan-100 text-[11px] leading-relaxed rounded-xl p-4 overflow-x-auto font-mono">{sampleFerryRequest}</pre>
         <p className="text-[11px] text-slate-400">
-          A matching <code className="font-mono bg-slate-100 px-1 rounded">GET /agent/api/bookings</code> endpoint (same header) returns your full booking history for reconciliation against ANIIDCO's periodic settlement.
+          A matching <code className="font-mono bg-slate-100 px-1 rounded">GET /agent/api/bookings</code> endpoint (same header) returns your full booking history — attractions and ferries together — for reconciliation against ANIIDCO's periodic settlement.
         </p>
       </div>
     </div>

@@ -11,6 +11,12 @@ class AgentBookingRequest(BaseModel):
     passenger: PassengerDetail
 
 
+class AgentFerryBookingRequest(BaseModel):
+    schedule_id: str
+    seat_number: str
+    passenger: PassengerDetail
+
+
 class AgentBookingResponse(BaseModel):
     booking_ref: str
     ticket_ref: str
