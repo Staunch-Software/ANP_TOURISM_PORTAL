@@ -116,12 +116,19 @@ async def confirm_payment_and_issue_tickets(
     booking_ref = order.order_ref
     head_item = order_items[0]
 
+    # Compress items for QR payload to avoid huge QR codes for group bookings.
+    # The LPU's scan.py adopts these offline using the `qty` field.
+    from collections import OrderedDict
+    payload_items_dict = OrderedDict()
+    for item in order_items:
+        key = (item.item_type, item.title, item.slot_or_seat_info)
+        if key not in payload_items_dict:
+            payload_items_dict[key] = {"typ": item.item_type, "ttl": item.title, "sub": item.slot_or_seat_info, "qty": 0}
+        payload_items_dict[key]["qty"] += 1
+
     payload_dict = {
         "ref": booking_ref,
-        "items": [
-            {"typ": item.item_type, "ttl": item.title, "sub": item.slot_or_seat_info}
-            for item in order_items
-        ],
+        "items": list(payload_items_dict.values()),
         "pax": head_item.passenger_name,
         "doc": f"{head_item.id_type}:{head_item.id_number[-4:]}",
         "iss": "ANIIDCO_GOVT_AN",

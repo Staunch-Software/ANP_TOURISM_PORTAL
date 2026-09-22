@@ -5,22 +5,38 @@ from pydantic import BaseModel
 
 
 class TicketChangeLeg(BaseModel):
-    """One attraction within a booking -- a booking's QR may cover several
-    (RFP p.28: "Unified QR code... across multiple attractions"). Order in
-    this list is the contract: the LPU matches a leg to its local row by
-    position (item_index), not by title, so never reorder an existing
-    booking's items list once pushed."""
+    """One entitlement within a booking -- a booking's QR may cover several
+    (RFP p.28: "Unified QR code... across multiple attractions"), including
+    a Group Booking, where every leg is a DIFFERENT PASSENGER on the same
+    attraction/slot rather than a different attraction. Order in this list
+    is the contract: the LPU matches a leg to its local row by position
+    (item_index), not by title, so never reorder an existing booking's
+    items list once pushed.
+
+    Passenger identity lives HERE, per leg -- not only on TicketChangeItem
+    -- because a Group Booking has one passenger per leg, not one shared
+    passenger for the whole booking. TicketChangeItem.passenger_name/
+    id_type/id_number remain as a booking-level "lead contact" fallback
+    for older LPU builds; these per-leg fields are what an updated LPU
+    actually uses to attribute a scan to the right person.
+    """
+    ticket_ref: str  # this leg's own individual Ticket.ticket_ref (one per passenger)
     item_type: str
     title: str
     slot_or_seat_info: str
     check_in_status: str  # ISSUED, CHECKED_IN, or CANCELLED -- per leg
     version: int = 1  # monotonic per-leg counter -- see models/ticket.py
+    passenger_name: str
+    passenger_age: Optional[int] = None
+    passenger_gender: Optional[str] = None
+    id_type: str
+    id_number: str
 
 
 class TicketChangeItem(BaseModel):
     ticket_ref: str  # this is the booking_ref -- what the LPU keys its local booking on
     items: List[TicketChangeLeg]
-    passenger_name: str
+    passenger_name: str  # lead/head passenger only -- see TicketChangeLeg for per-leg identity
     passenger_age: Optional[int] = None
     passenger_gender: Optional[str] = None
     id_type: str
@@ -63,6 +79,8 @@ class CounterTicketRequest(BaseModel):
     id_type: str
     id_number: str
     price_inr: float
+    contact_phone: str
+    contact_email: Optional[str] = None
     qr_payload_json: str
     qr_signature_b64: str
     issued_at: datetime

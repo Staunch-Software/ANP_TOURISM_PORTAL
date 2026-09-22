@@ -35,7 +35,7 @@ function parseRosterCsv(text) {
   }).filter((m) => m.full_name);
 }
 
-export function GroupBookingModal({ isOpen, onClose, user, onRequireLogin }) {
+export function GroupBookingModal({ isOpen, onClose, user, onRequireLogin, onViewMyBookings }) {
   const [step, setStep] = useState('DETAILS'); // DETAILS -> SLOT -> ROSTER -> REVIEW -> DONE
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -452,10 +452,18 @@ export function GroupBookingModal({ isOpen, onClose, user, onRequireLogin }) {
               <p className="font-mono text-sm font-black text-cyan-700 bg-cyan-50 border border-cyan-200 inline-block px-4 py-2 rounded-lg">
                 {submittedRef}
               </p>
-              <div>
+              <div className="flex flex-col sm:flex-row gap-2 justify-center pt-1">
                 <button onClick={onClose} className="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-navy-800 font-bold rounded-lg text-xs">
                   Close
                 </button>
+                {onViewMyBookings && (
+                  <button
+                    onClick={() => { onClose(); onViewMyBookings(); }}
+                    className="px-5 py-2 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-lg text-xs flex items-center justify-center gap-1.5"
+                  >
+                    Track My Request <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </div>
           )}
