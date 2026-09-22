@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.core.database import engine, Base
+from app.core.database import engine, Base, sync_missing_columns
 from app.api.v1 import auth, attractions, ferry, cart, payments, tickets, admin, sync, operator, gates, vendor, group_bookings, agent
 
 
@@ -12,6 +12,11 @@ from app.api.v1 import auth, attractions, ferry, cart, payments, tickets, admin,
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Creates missing TABLES only -- an existing table that's missing a
+        # column a newer model added (e.g. a teammate's older local DB)
+        # needs its own step, since create_all() never alters a table that
+        # already exists.
+        await conn.run_sync(sync_missing_columns)
     print("Database tables verified & initialized.")
     yield
 

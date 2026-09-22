@@ -5,7 +5,7 @@ import {
   Ship, CloudRain, CheckCircle2, FileSpreadsheet, RefreshCw, Sliders,
   UserPlus, ShieldAlert, MapPin, KeyRound, Trash2, Plus, ClipboardCheck,
   GraduationCap, Eye, X, LayoutDashboard, ClipboardList, ScanLine, Anchor, UserCog,
-  BarChart3, Bell, BellRing
+  BarChart3, Bell, BellRing, CalendarClock
 } from 'lucide-react';
 import { DashboardSidebar } from './DashboardSidebar';
 import { StaffGateScanner } from './StaffGateScanner';
@@ -42,6 +42,7 @@ const ADMIN_SECTION_GROUPS = [
       { key: 'USERS', label: 'User Management', icon: Users },
       { key: 'APPROVALS', label: 'Service Providers', icon: UserPlus },
       { key: 'GROUPS', label: 'Group Bookings', icon: GraduationCap },
+      { key: 'RESCHEDULES', label: 'Reschedule Requests', icon: CalendarClock },
     ],
   },
 ];
@@ -123,6 +124,14 @@ export function AdminDashboard({ user, onLogout }) {
   const [alertsLoading, setAlertsLoading] = useState(false);
   const [includeResolvedAlerts, setIncludeResolvedAlerts] = useState(false);
   const [resolvingAlertId, setResolvingAlertId] = useState(null);
+
+  // Reschedule Requests (RFP p.28: "An approval workflow/SoP must be
+  // created" for a tourist's time-slot change request) — staff review
+  // queue, mirrors the Group Bookings approve/reject pattern.
+  const [rescheduleRequests, setRescheduleRequests] = useState([]);
+  const [rescheduleRequestsLoading, setRescheduleRequestsLoading] = useState(false);
+  const [rescheduleStatusFilter, setRescheduleStatusFilter] = useState('PENDING_APPROVAL');
+  const [decidingRescheduleId, setDecidingRescheduleId] = useState(null);
 
   const fetchGroupBookings = async () => {
     setGroupBookingsLoading(true);
@@ -210,6 +219,10 @@ export function AdminDashboard({ user, onLogout }) {
     fetchAlerts(includeResolvedAlerts);
   }, [includeResolvedAlerts]);
 
+  useEffect(() => {
+    fetchRescheduleRequests(rescheduleStatusFilter);
+  }, [rescheduleStatusFilter]);
+
   const fetchAnalytics = async (days) => {
     setAnalyticsLoading(true);
     try {
@@ -245,6 +258,45 @@ export function AdminDashboard({ user, onLogout }) {
       alert(err.response?.data?.detail || 'Could not resolve alert');
     } finally {
       setResolvingAlertId(null);
+    }
+  };
+
+  const fetchRescheduleRequests = async (statusFilter) => {
+    setRescheduleRequestsLoading(true);
+    try {
+      const res = await API.get(`/admin/reschedule-requests?status_filter=${statusFilter}`);
+      setRescheduleRequests(res.data);
+    } catch (err) {
+      console.error('Failed to load reschedule requests', err);
+      setRescheduleRequests([]);
+    } finally {
+      setRescheduleRequestsLoading(false);
+    }
+  };
+
+  const handleApproveReschedule = async (requestId) => {
+    setDecidingRescheduleId(requestId);
+    try {
+      await API.post(`/admin/reschedule-requests/${requestId}/approve`, { reason: 'Approved by ticket counter staff' });
+      fetchRescheduleRequests(rescheduleStatusFilter);
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Could not approve reschedule request');
+    } finally {
+      setDecidingRescheduleId(null);
+    }
+  };
+
+  const handleRejectReschedule = async (requestId) => {
+    const reason = window.prompt('Reason for rejection (shown to the tourist):', 'Requested slot is not suitable');
+    if (reason === null) return;
+    setDecidingRescheduleId(requestId);
+    try {
+      await API.post(`/admin/reschedule-requests/${requestId}/reject`, { reason });
+      fetchRescheduleRequests(rescheduleStatusFilter);
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Could not reject reschedule request');
+    } finally {
+      setDecidingRescheduleId(null);
     }
   };
 
@@ -987,6 +1039,96 @@ export function AdminDashboard({ user, onLogout }) {
                   >
                     {resolvingAlertId === a.alert_id ? 'Resolving...' : 'Mark Resolved'}
                   </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      </>
+      )}
+
+      {activeSection === 'RESCHEDULES' && (
+      <>
+      {/* Reschedule Approval Workflow — RFP p.28 "Upgradation/ Re-schedule
+          of Tickets": a tourist's time-slot change request always needs a
+          staff decision before the ticket itself changes. */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <span className="text-[10px] font-extrabold uppercase tracking-widest text-cyan-700">
+              Ticket Counter Approval
+            </span>
+            <h3 className="font-serif text-lg font-black text-navy-800 flex items-center gap-2">
+              <CalendarClock className="w-5 h-5 text-cyan-600" /> Reschedule Requests
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Tourist-submitted requests to change a purchased ticket's time slot. Approving moves the ticket's booked slot immediately.
+            </p>
+          </div>
+          <select
+            value={rescheduleStatusFilter}
+            onChange={(e) => setRescheduleStatusFilter(e.target.value)}
+            className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-navy-800"
+          >
+            <option value="PENDING_APPROVAL">Pending Approval</option>
+            <option value="APPROVED">Approved</option>
+            <option value="REJECTED">Rejected</option>
+            <option value="ALL">All</option>
+          </select>
+        </div>
+
+        {rescheduleRequestsLoading ? (
+          <div className="text-center py-12 text-slate-400 text-xs">Loading reschedule requests...</div>
+        ) : rescheduleRequests.length === 0 ? (
+          <div className="text-center py-14 flex flex-col items-center gap-2">
+            <CalendarClock className="w-9 h-9 text-slate-300" />
+            <p className="text-xs text-slate-400">No reschedule requests in this filter.</p>
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {rescheduleRequests.map((r) => (
+              <div
+                key={r.id}
+                className="p-4 rounded-2xl border border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <span className="font-mono text-[10px] text-cyan-700 font-bold">{r.request_ref}</span>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      r.status === 'PENDING_APPROVAL' ? 'bg-amber-100 text-amber-800' :
+                      r.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+                    }`}>
+                      {r.status.replace(/_/g, ' ')}
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-400">{new Date(r.created_at).toLocaleString('en-IN')}</span>
+                  </div>
+                  <p className="text-xs font-bold text-navy-800">{r.attraction_title} · Ticket {r.ticket_ref}</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    <span className="text-slate-400">From</span> {r.current_slot_info} <span className="text-slate-400">→ To</span> {r.requested_slot_info}
+                  </p>
+                  <p className="text-[11px] text-slate-500 mt-0.5 italic">"{r.reason}"</p>
+                  {r.admin_notes && (
+                    <p className="text-[11px] text-slate-400 mt-0.5">Staff note: {r.admin_notes}</p>
+                  )}
+                </div>
+                {r.status === 'PENDING_APPROVAL' && (
+                  <div className="flex gap-2 shrink-0">
+                    <button
+                      onClick={() => handleRejectReschedule(r.id)}
+                      disabled={decidingRescheduleId === r.id}
+                      className="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-100 text-slate-600 font-bold text-xs rounded-lg disabled:opacity-50"
+                    >
+                      Reject
+                    </button>
+                    <button
+                      onClick={() => handleApproveReschedule(r.id)}
+                      disabled={decidingRescheduleId === r.id}
+                      className="px-4 py-2 bg-navy-800 hover:bg-navy-700 text-white font-bold text-xs rounded-lg disabled:opacity-50"
+                    >
+                      {decidingRescheduleId === r.id ? 'Processing...' : 'Approve'}
+                    </button>
+                  </div>
                 )}
               </div>
             ))}
