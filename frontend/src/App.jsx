@@ -12,6 +12,7 @@ import { OperatorDashboard } from './components/OperatorDashboard';
 import { VendorDashboard } from './components/VendorDashboard';
 import { OperatorRegisterModal } from './components/OperatorRegisterModal';
 import { GroupBookingModal } from './components/GroupBookingModal';
+import { MyGroupBookings } from './components/MyGroupBookings';
 import {
   Waves, ArrowUpRight, Users2, MapPin, Search, ShieldCheck,
   Landmark, Clock3, Ship, ArrowRight
@@ -440,15 +441,25 @@ export default function App() {
                 </div>
                 <div>
                   <p className="text-sm font-bold text-navy-800">Booking for a school, college, or large group?</p>
-                  <p className="text-[11px] text-slate-500">Submit a roster-based group application for ANIIDCO approval — schools, colleges, corporates & tour operators.</p>
+                  <p className="text-[11px] text-slate-500">Submit a roster-based group application for ANIIDCO approval — schools, colleges, corporates &amp; tour operators.</p>
                 </div>
               </div>
-              <button
-                onClick={() => setIsGroupBookingOpen(true)}
-                className="px-4 py-2 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-lg text-xs shadow-md whitespace-nowrap"
-              >
-                Start Group Booking
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                {currentUser && (
+                  <button
+                    onClick={() => setActiveTab('GROUP_BOOKINGS')}
+                    className="px-4 py-2 bg-white hover:bg-cyan-50 text-cyan-700 font-bold rounded-lg text-xs border border-cyan-300 whitespace-nowrap"
+                  >
+                    My Requests
+                  </button>
+                )}
+                <button
+                  onClick={() => setIsGroupBookingOpen(true)}
+                  className="px-4 py-2 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-lg text-xs shadow-md whitespace-nowrap"
+                >
+                  Start Group Booking
+                </button>
+              </div>
             </div>
           )}
 
@@ -480,6 +491,15 @@ export default function App() {
             <AgentConsole
               user={currentUser}
               onRequireLogin={() => openLogin('VISITOR')}
+            />
+          )}
+
+          {activeTab === 'GROUP_BOOKINGS' && (
+            <MyGroupBookings
+              user={currentUser}
+              onRequireLogin={() => openLogin('VISITOR')}
+              onOpenGroupBooking={() => setIsGroupBookingOpen(true)}
+              onViewPasses={() => setActiveTab('PASSES')}
             />
           )}
         </main>
@@ -515,6 +535,14 @@ export default function App() {
               >
                 Group / Institutional Booking (Schools, Colleges, Tours)
               </button>
+              {currentUser && (
+                <button
+                  onClick={() => setActiveTab('GROUP_BOOKINGS')}
+                  className="text-cyan-300 hover:text-cyan-200 underline underline-offset-2 block mt-1"
+                >
+                  Track My Group Booking Requests
+                </button>
+              )}
             </div>
           </div>
           <div className="max-w-7xl mx-auto border-t border-navy-700 mt-4 pt-3 text-[10.5px] text-slate-500">
@@ -559,6 +587,7 @@ export default function App() {
         onClose={() => setIsGroupBookingOpen(false)}
         user={currentUser}
         onRequireLogin={() => { setIsGroupBookingOpen(false); openLogin('VISITOR'); }}
+        onViewMyBookings={() => { setIsGroupBookingOpen(false); setActiveTab('GROUP_BOOKINGS'); }}
       />
     </div>
   );

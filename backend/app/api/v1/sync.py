@@ -127,16 +127,30 @@ async def get_ticket_changes(
 
     tickets = []
     for booking_ref, legs in bookings.items():
-        head = legs[0]  # passenger/signature fields are identical across a booking's rows
+        head = legs[0]  # booking-level fields (signature, payload) are identical across a booking's rows --
+        # but passenger identity is NOT: a Group Booking's legs are
+        # different PEOPLE on the same attraction, not different
+        # attractions for one person, so each leg below carries its own
+        # ticket_ref/passenger_name/id_type/id_number rather than
+        # inheriting head's. TicketChangeItem's own passenger_name/
+        # id_type/id_number (below) stay as a booking-level "lead
+        # contact" fallback for older LPU builds -- the per-leg fields
+        # are what an updated LPU actually uses.
         tickets.append(TicketChangeItem(
             ticket_ref=booking_ref,
             items=[
                 TicketChangeLeg(
+                    ticket_ref=leg.ticket_ref,
                     item_type=leg.item_type,
                     title=leg.title,
                     slot_or_seat_info=leg.slot_or_seat_info,
                     check_in_status=leg.check_in_status,
                     version=leg.version,
+                    passenger_name=leg.passenger_name,
+                    passenger_age=leg.passenger_age,
+                    passenger_gender=leg.passenger_gender,
+                    id_type=leg.id_type,
+                    id_number=leg.id_number,
                 )
                 for leg in legs
             ],
@@ -228,23 +242,24 @@ async def push_counter_ticket(req: CounterTicketRequest, db: AsyncSession = Depe
         # Already synced in a previous (retried) attempt -- no-op.
         return CounterTicketResponse(status="OK", ticket_ref=req.ticket_ref, message="Already synced")
 
-    # Counter sales have no online user account -- fold them under one
-    # walk-in User per site so the existing Order/Ticket FK chain still holds.
-    walkin_phone = f"WALKIN-{req.site_id}"
-    user_res = await db.execute(select(User).where(User.phone_number == walkin_phone))
-    walkin_user = user_res.scalars().first()
-    if not walkin_user:
-        walkin_user = User(
-            phone_number=walkin_phone,
-            full_name=f"Walk-in Counter ({req.site_id})",
-            user_type="COUNTER_WALKIN",
+    # Look up or create the tourist's account using the provided phone number.
+    # This fulfills RFP p.28 Point 8: capturing real contact info for counter 
+    # sales so digital tickets can be sent via SMS/Email/WhatsApp.
+    user_res = await db.execute(select(User).where(User.phone_number == req.contact_phone))
+    tourist_user = user_res.scalars().first()
+    if not tourist_user:
+        tourist_user = User(
+            phone_number=req.contact_phone,
+            email=req.contact_email,
+            full_name=req.passenger_name or f"Counter Guest ({req.site_id})",
+            user_type="TOURIST",
         )
-        db.add(walkin_user)
+        db.add(tourist_user)
         await db.flush()
 
     order = Order(
         order_ref=f"AN-2026-CTR-{random.randint(100000, 999999)}",
-        user_id=walkin_user.id,
+        user_id=tourist_user.id,
         channel="POS_COUNTER",
         gross_amount=req.price_inr,
         tax_amount=0.0,
@@ -277,7 +292,7 @@ async def push_counter_ticket(req: CounterTicketRequest, db: AsyncSession = Depe
         item_index=0,
         order_id=order.id,
         order_item_id=order_item.id,
-        user_id=walkin_user.id,
+        user_id=tourist_user.id,
         item_type=req.item_type,
         title=req.title,
         slot_or_seat_info=req.slot_or_seat_info,

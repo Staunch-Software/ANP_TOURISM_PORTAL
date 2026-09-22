@@ -363,6 +363,7 @@ async def cancel_group_booking(
             tickets_res = await db.execute(select(Ticket).where(Ticket.order_id == order.id))
             for ticket in tickets_res.scalars().all():
                 ticket.check_in_status = "CANCELLED"
+                ticket.version = (ticket.version or 1) + 1
 
     gb.status = "CANCELLED"
     gb.admin_notes = payload.reason
