@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import API from '../api/client';
 import { QRCodeSVG } from 'qrcode.react';
 import {
-  Ticket, ShieldCheck, CheckCircle2, XCircle, Printer, RefreshCw, Ship, Landmark
+  Ticket, ShieldCheck, CheckCircle2, XCircle, Printer, RefreshCw, Ship, Landmark, Sparkles, CalendarClock
 } from 'lucide-react';
 
 const ITEM_TYPE_ICON = { FERRY: Ship, ATTRACTION: Landmark };
@@ -12,6 +12,14 @@ export function DigitalWallet({ user, onRequireLogin }) {
   const [loading, setLoading] = useState(false);
   const [activeVerification, setActiveVerification] = useState(null);
   const [verifying, setVerifying] = useState(false);
+  const [upgrading, setUpgrading] = useState(null); // ticket_ref currently being upgraded
+  const [rescheduleTicket, setRescheduleTicket] = useState(null); // entitlement being rescheduled
+  const [rescheduleDate, setRescheduleDate] = useState('');
+  const [rescheduleSlots, setRescheduleSlots] = useState([]);
+  const [rescheduleSlotId, setRescheduleSlotId] = useState('');
+  const [rescheduleReason, setRescheduleReason] = useState('');
+  const [rescheduleLoadingSlots, setRescheduleLoadingSlots] = useState(false);
+  const [rescheduleSubmitting, setRescheduleSubmitting] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -41,6 +49,62 @@ export function DigitalWallet({ user, onRequireLogin }) {
       alert("Verification failed or pass reference not found");
     } finally {
       setVerifying(false);
+    }
+  };
+
+  const handleUpgradeToExpress = async (ticketRef) => {
+    if (!window.confirm("Upgrade this ticket to Express? You will be charged the price difference immediately.")) return;
+    setUpgrading(ticketRef);
+    try {
+      const res = await API.post(`/tickets/${ticketRef}/upgrade-to-express`);
+      alert(res.data.message);
+      fetchPasses();
+    } catch (err) {
+      alert(err.response?.data?.detail || "Upgrade failed");
+    } finally {
+      setUpgrading(null);
+    }
+  };
+
+  const openRescheduleModal = (ent) => {
+    setRescheduleTicket(ent);
+    setRescheduleDate('');
+    setRescheduleSlots([]);
+    setRescheduleSlotId('');
+    setRescheduleReason('');
+  };
+
+  const loadRescheduleSlots = async (dateStr) => {
+    setRescheduleDate(dateStr);
+    setRescheduleSlotId('');
+    setRescheduleSlots([]);
+    if (!dateStr || !rescheduleTicket) return;
+    setRescheduleLoadingSlots(true);
+    try {
+      const res = await API.get(`/tickets/${rescheduleTicket.ticket_ref}/reschedule-options`, { params: { date: dateStr } });
+      setRescheduleSlots(res.data);
+    } catch (err) {
+      alert(err.response?.data?.detail || "Could not load slots for that date");
+    } finally {
+      setRescheduleLoadingSlots(false);
+    }
+  };
+
+  const submitRescheduleRequest = async () => {
+    if (!rescheduleSlotId) return alert("Pick a time slot first");
+    if (!rescheduleReason.trim()) return alert("Please give a reason for the reschedule");
+    setRescheduleSubmitting(true);
+    try {
+      await API.post(`/tickets/${rescheduleTicket.ticket_ref}/reschedule-request`, {
+        requested_slot_id: rescheduleSlotId,
+        reason: rescheduleReason.trim(),
+      });
+      alert("Reschedule request submitted. A staff member will review it shortly.");
+      setRescheduleTicket(null);
+    } catch (err) {
+      alert(err.response?.data?.detail || "Could not submit reschedule request");
+    } finally {
+      setRescheduleSubmitting(false);
     }
   };
 
@@ -140,20 +204,53 @@ export function DigitalWallet({ user, onRequireLogin }) {
                   {pass.entitlements.map((ent) => {
                     const TypeIcon = ITEM_TYPE_ICON[ent.item_type] || Ticket;
                     const isCheckedIn = ent.check_in_status === 'CHECKED_IN';
+                    const canModify = ent.item_type === 'ATTRACTION' && ent.check_in_status === 'ISSUED';
+                    const isExpress = ent.ticket_tier === 'EXPRESS';
                     return (
-                      <div key={ent.ticket_ref} className="flex items-center justify-between gap-2 text-xs border-b border-slate-100 pb-2 last:border-0 last:pb-0">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <TypeIcon className="w-3.5 h-3.5 text-cyan-600 shrink-0" />
-                          <div className="min-w-0">
-                            <p className="font-bold text-navy-800 truncate">{ent.title}</p>
-                            <p className="text-[10px] text-slate-500 font-mono truncate">{ent.slot_or_seat_info} · {ent.passenger_name}</p>
+                      <div key={ent.ticket_ref} className="border-b border-slate-100 pb-2 last:border-0 last:pb-0 space-y-1.5">
+                        <div className="flex items-center justify-between gap-2 text-xs">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <TypeIcon className="w-3.5 h-3.5 text-cyan-600 shrink-0" />
+                            <div className="min-w-0">
+                              <p className="font-bold text-navy-800 truncate flex items-center gap-1.5">
+                                {ent.title}
+                                {isExpress && (
+                                  <span className="px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-amber-50 text-amber-700 border border-amber-200 shrink-0">
+                                    Express
+                                  </span>
+                                )}
+                              </p>
+                              <p className="text-[10px] text-slate-500 font-mono truncate">{ent.slot_or_seat_info} · {ent.passenger_name}</p>
+                            </div>
                           </div>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                            isCheckedIn ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600 border border-slate-200'
+                          }`}>
+                            {ent.check_in_status}
+                          </span>
                         </div>
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
-                          isCheckedIn ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600 border border-slate-200'
-                        }`}>
-                          {ent.check_in_status}
-                        </span>
+
+                        {canModify && (
+                          <div className="flex items-center gap-2 pl-5.5 ml-0.5">
+                            {!isExpress && (
+                              <button
+                                type="button"
+                                disabled={upgrading === ent.ticket_ref}
+                                onClick={() => handleUpgradeToExpress(ent.ticket_ref)}
+                                className="px-2 py-1 rounded-md bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 text-[10px] font-bold flex items-center gap-1 transition-colors disabled:opacity-50"
+                              >
+                                <Sparkles className="w-3 h-3" /> {upgrading === ent.ticket_ref ? 'Upgrading...' : 'Upgrade to Express'}
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => openRescheduleModal(ent)}
+                              className="px-2 py-1 rounded-md bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 text-cyan-700 text-[10px] font-bold flex items-center gap-1 transition-colors"
+                            >
+                              <CalendarClock className="w-3 h-3" /> Request Reschedule
+                            </button>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -243,6 +340,82 @@ export function DigitalWallet({ user, onRequireLogin }) {
               className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-navy-800 font-bold rounded-lg text-xs transition-colors"
             >
               Close Turnstile Simulator
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Reschedule Request Modal — RFP p.28: submits a request, does NOT
+          change the ticket immediately; staff must approve it. */}
+      {rescheduleTicket && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-900/70 backdrop-blur-sm p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md p-6 shadow-2xl relative">
+            <button
+              onClick={() => setRescheduleTicket(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-navy-800 p-1"
+            >
+              ✕
+            </button>
+
+            <div className="w-14 h-14 rounded-2xl bg-cyan-50 text-cyan-700 border border-cyan-200 flex items-center justify-center mb-4">
+              <CalendarClock className="w-7 h-7" />
+            </div>
+            <h3 className="font-serif text-lg font-black text-navy-800">Request Time Slot Reschedule</h3>
+            <p className="text-xs text-slate-500 mt-1 mb-4">
+              {rescheduleTicket.title} — currently {rescheduleTicket.slot_or_seat_info}. Submitted for staff review; the ticket won't change until approved.
+            </p>
+
+            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">New Date</label>
+            <input
+              type="date"
+              value={rescheduleDate}
+              onChange={(e) => loadRescheduleSlots(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm mb-3"
+            />
+
+            {rescheduleLoadingSlots ? (
+              <p className="text-xs text-slate-400 mb-3">Loading available slots...</p>
+            ) : rescheduleDate && rescheduleSlots.length === 0 ? (
+              <p className="text-xs text-slate-400 mb-3">No slots found for this date.</p>
+            ) : rescheduleSlots.length > 0 ? (
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                {rescheduleSlots.map((s) => (
+                  <button
+                    key={s.slot_id}
+                    type="button"
+                    disabled={!s.is_available}
+                    onClick={() => setRescheduleSlotId(s.slot_id)}
+                    className={`px-2 py-2 rounded-lg text-xs font-bold border transition-colors ${
+                      rescheduleSlotId === s.slot_id
+                        ? 'bg-cyan-700 text-white border-cyan-700'
+                        : s.is_available
+                        ? 'bg-white text-navy-800 border-slate-200 hover:border-cyan-400'
+                        : 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed'
+                    }`}
+                  >
+                    {s.start_time} - {s.end_time}
+                    {!s.is_available && <span className="block text-[9px] font-normal">Full / current slot</span>}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Reason</label>
+            <textarea
+              value={rescheduleReason}
+              onChange={(e) => setRescheduleReason(e.target.value)}
+              rows={2}
+              placeholder="e.g. Family emergency, changed travel dates..."
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm mb-4"
+            />
+
+            <button
+              type="button"
+              disabled={rescheduleSubmitting}
+              onClick={submitRescheduleRequest}
+              className="w-full py-2.5 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-lg text-xs shadow-md disabled:opacity-50"
+            >
+              {rescheduleSubmitting ? 'Submitting...' : 'Submit Reschedule Request'}
             </button>
           </div>
         </div>

@@ -16,9 +16,11 @@ from app.models.user import User
 from app.models.order import Order, OrderItem
 from app.models.ticket import Ticket
 from app.models.ferry import FerrySchedule, FerrySeat, Vessel
-from app.models.attraction import AttractionSlot
+from app.models.attraction import Attraction, AttractionSlot
 from app.models.admin_alert import AdminAlert
+from app.models.reschedule import RescheduleRequest
 from app.api.v1.auth import get_current_user
+from app.schemas.ticket import RescheduleRequestSummary, RescheduleDecisionRequest
 from app.schemas.admin import (
     HarborManifestResponse,
     HarborPassengerEntry,
@@ -969,3 +971,147 @@ async def resolve_admin_alert(
     await db.commit()
     await db.refresh(alert)
     return _alert_to_summary(alert)
+
+
+async def _reschedule_req_to_summary(db: AsyncSession, rr: RescheduleRequest) -> RescheduleRequestSummary:
+    ticket_res = await db.execute(select(Ticket).where(Ticket.id == rr.ticket_id))
+    ticket = ticket_res.scalars().first()
+    slot_res = await db.execute(select(AttractionSlot).where(AttractionSlot.id == rr.requested_slot_id))
+    slot = slot_res.scalars().first()
+    attraction = None
+    if slot:
+        attraction_res = await db.execute(select(Attraction).where(Attraction.id == slot.attraction_id))
+        attraction = attraction_res.scalars().first()
+
+    return RescheduleRequestSummary(
+        id=str(rr.id),
+        request_ref=rr.request_ref,
+        ticket_ref=ticket.ticket_ref if ticket else "UNKNOWN",
+        attraction_title=attraction.title if attraction else (ticket.title if ticket else "Unknown"),
+        current_slot_info=ticket.slot_or_seat_info if ticket else "",
+        requested_slot_info=f"{slot.slot_date} ({slot.start_time} - {slot.end_time})" if slot else "Unknown",
+        reason=rr.reason,
+        status=rr.status,
+        admin_notes=rr.admin_notes,
+        created_at=rr.created_at.isoformat(),
+    )
+
+
+# RFP p.28: "An approval workflow/SoP must be created, and upon
+# acceptance, the revised ticket should be issued to the beneficiary."
+# Ticket-counter staff (Admin/Operator/Vendor/Tourism Officer) review each
+# tourist-submitted reschedule request here.
+@router.get("/reschedule-requests", response_model=List[RescheduleRequestSummary])
+async def list_reschedule_requests(
+    status_filter: str = "PENDING_APPROVAL",
+    staff_user: User = Depends(verify_staff_role),
+    db: AsyncSession = Depends(get_db),
+):
+    query = select(RescheduleRequest).order_by(RescheduleRequest.created_at.desc())
+    if status_filter and status_filter != "ALL":
+        query = query.where(RescheduleRequest.status == status_filter)
+    res = await db.execute(query)
+    requests = res.scalars().all()
+    return [await _reschedule_req_to_summary(db, rr) for rr in requests]
+
+
+@router.post("/reschedule-requests/{request_id}/approve", response_model=RescheduleRequestSummary)
+async def approve_reschedule_request(
+    request_id: str,
+    payload: RescheduleDecisionRequest,
+    staff_user: User = Depends(verify_staff_role),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        req_uuid = uuid.UUID(request_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid request UUID")
+
+    res = await db.execute(select(RescheduleRequest).where(RescheduleRequest.id == req_uuid))
+    reschedule_req = res.scalars().first()
+    if not reschedule_req:
+        raise HTTPException(status_code=404, detail="Reschedule request not found")
+    if reschedule_req.status != "PENDING_APPROVAL":
+        raise HTTPException(status_code=400, detail=f"This request is already {reschedule_req.status}")
+
+    ticket_res = await db.execute(select(Ticket).where(Ticket.id == reschedule_req.ticket_id))
+    ticket = ticket_res.scalars().first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if ticket.check_in_status != "ISSUED":
+        raise HTTPException(status_code=400, detail=f"Cannot reschedule a ticket that is {ticket.check_in_status}")
+
+    item_res = await db.execute(select(OrderItem).where(OrderItem.id == ticket.order_item_id))
+    item = item_res.scalars().first()
+    if not item or not item.attraction_slot_id:
+        raise HTTPException(status_code=400, detail="Could not locate the booked slot for this ticket")
+
+    old_slot_res = await db.execute(select(AttractionSlot).where(AttractionSlot.id == item.attraction_slot_id))
+    old_slot = old_slot_res.scalars().first()
+
+    new_slot_res = await db.execute(select(AttractionSlot).where(AttractionSlot.id == reschedule_req.requested_slot_id))
+    new_slot = new_slot_res.scalars().first()
+    if not new_slot:
+        raise HTTPException(status_code=404, detail="Requested slot no longer exists")
+
+    # booked_count tracks TOTAL occupancy of the slot (Express tickets are
+    # already included in it, per payments.py) and always moves with the
+    # ticket; premium_booked_count is a sub-count of how much of the
+    # earmarked Express allocation is used, and only applies to EXPRESS
+    # tickets on top of that.
+    is_express = ticket.ticket_tier == "EXPRESS"
+    if new_slot.booked_count >= new_slot.total_capacity:
+        raise HTTPException(status_code=400, detail="Requested slot is already full")
+    if is_express and new_slot.premium_booked_count >= new_slot.premium_capacity:
+        raise HTTPException(status_code=400, detail="Requested slot has no Express/Premium allocation left")
+
+    if old_slot:
+        old_slot.booked_count = max(0, (old_slot.booked_count or 0) - 1)
+        if is_express:
+            old_slot.premium_booked_count = max(0, (old_slot.premium_booked_count or 0) - 1)
+
+    new_slot.booked_count = (new_slot.booked_count or 0) + 1
+    if is_express:
+        new_slot.premium_booked_count = (new_slot.premium_booked_count or 0) + 1
+
+    new_slot_info = f"{new_slot.slot_date} ({new_slot.start_time} - {new_slot.end_time})"
+    item.attraction_slot_id = new_slot.id
+    item.slot_or_seat_info = new_slot_info
+    ticket.slot_or_seat_info = new_slot_info
+    ticket.version = (ticket.version or 1) + 1
+
+    reschedule_req.status = "APPROVED"
+    reschedule_req.admin_notes = payload.reason
+    reschedule_req.reviewed_by = staff_user.id
+    reschedule_req.reviewed_at = datetime.utcnow()
+
+    await db.commit()
+    return await _reschedule_req_to_summary(db, reschedule_req)
+
+
+@router.post("/reschedule-requests/{request_id}/reject", response_model=RescheduleRequestSummary)
+async def reject_reschedule_request(
+    request_id: str,
+    payload: RescheduleDecisionRequest,
+    staff_user: User = Depends(verify_staff_role),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        req_uuid = uuid.UUID(request_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid request UUID")
+
+    res = await db.execute(select(RescheduleRequest).where(RescheduleRequest.id == req_uuid))
+    reschedule_req = res.scalars().first()
+    if not reschedule_req:
+        raise HTTPException(status_code=404, detail="Reschedule request not found")
+    if reschedule_req.status != "PENDING_APPROVAL":
+        raise HTTPException(status_code=400, detail=f"This request is already {reschedule_req.status}")
+
+    reschedule_req.status = "REJECTED"
+    reschedule_req.admin_notes = payload.reason
+    reschedule_req.reviewed_by = staff_user.id
+    reschedule_req.reviewed_at = datetime.utcnow()
+
+    await db.commit()
+    return await _reschedule_req_to_summary(db, reschedule_req)

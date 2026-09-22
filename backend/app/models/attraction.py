@@ -17,6 +17,14 @@ class Attraction(Base):
     foreign_price_inr = Column(Numeric(10, 2), nullable=False)  # Foreign national price
     is_active = Column(Boolean, default=True)
 
+    # RFP p.28 "Upgradation/Re-schedule of Tickets": "A certain percentage
+    # of Tickets should be earmarked for Premium Tickets with higher
+    # pricing." Nullable so an attraction with no configured Express price
+    # falls back to a 1.5x default (see tickets.py) rather than blocking
+    # the upgrade feature entirely.
+    express_price_inr = Column(Numeric(10, 2), nullable=True)
+    express_price_foreign_inr = Column(Numeric(10, 2), nullable=True)
+
 
 class AttractionSlot(Base):
     __tablename__ = "attraction_slots"
@@ -28,3 +36,9 @@ class AttractionSlot(Base):
     end_time = Column(String(10), nullable=False)  # "10:00"
     total_capacity = Column(Integer, nullable=False)  # e.g. 500
     booked_count = Column(Integer, default=0)
+
+    # Earmarked Express/Premium allocation, carved out of total_capacity --
+    # a portion of every slot's seats are reserved so an upgrade can
+    # always be honoured even once standard tickets sell out.
+    premium_capacity = Column(Integer, default=0)
+    premium_booked_count = Column(Integer, default=0)

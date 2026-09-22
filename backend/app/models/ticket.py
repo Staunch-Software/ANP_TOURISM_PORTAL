@@ -30,6 +30,13 @@ class Ticket(Base):
     qr_signature_b64 = Column(Text, nullable=False)
 
     check_in_status = Column(String(30), default="ISSUED")  # ISSUED, CHECKED_IN, CANCELLED
+
+    # RFP p.28: "A certain percentage of Tickets should be earmarked for
+    # Premium Tickets" -- STANDARD upgrades to EXPRESS in place (same
+    # ticket_ref) rather than issuing a second ticket, so the anti-black-
+    # marketing rule ("not permitted to purchase additional tickets for
+    # the same date, time, and slot") is just "already EXPRESS => reject."
+    ticket_tier = Column(String(20), nullable=False, default="STANDARD")
     checked_in_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
