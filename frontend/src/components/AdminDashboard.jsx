@@ -5,7 +5,7 @@ import {
   Ship, CloudRain, CheckCircle2, FileSpreadsheet, RefreshCw, Sliders,
   UserPlus, ShieldAlert, MapPin, KeyRound, Trash2, Plus, ClipboardCheck,
   GraduationCap, Eye, X, LayoutDashboard, ClipboardList, ScanLine, Anchor, UserCog,
-  BarChart3, Bell, BellRing, CalendarClock
+  BarChart3, Bell, BellRing, CalendarClock, LifeBuoy, ArrowUpCircle
 } from 'lucide-react';
 import { DashboardSidebar } from './DashboardSidebar';
 import { StaffGateScanner } from './StaffGateScanner';
@@ -43,6 +43,7 @@ const ADMIN_SECTION_GROUPS = [
       { key: 'APPROVALS', label: 'Service Providers', icon: UserPlus },
       { key: 'GROUPS', label: 'Group Bookings', icon: GraduationCap },
       { key: 'RESCHEDULES', label: 'Reschedule Requests', icon: CalendarClock },
+      { key: 'GRIEVANCES', label: 'Grievance Redressal', icon: LifeBuoy },
     ],
   },
 ];
@@ -132,6 +133,16 @@ export function AdminDashboard({ user, onLogout }) {
   const [rescheduleRequestsLoading, setRescheduleRequestsLoading] = useState(false);
   const [rescheduleStatusFilter, setRescheduleStatusFilter] = useState('PENDING_APPROVAL');
   const [decidingRescheduleId, setDecidingRescheduleId] = useState(null);
+
+  // Grievance Redressal (RFP p.21): L1 -> L2 -> L3 -> Appellate escalation,
+  // Priority Matrix P1-P4. One staff role tier handles every escalation
+  // level today (no separate CC/Tech/Nodal accounts), so a single queue
+  // with an "Escalate" action covers the whole trail.
+  const [grievances, setGrievances] = useState([]);
+  const [grievancesLoading, setGrievancesLoading] = useState(false);
+  const [grievanceStatusFilter, setGrievanceStatusFilter] = useState('OPEN');
+  const [decidingGrievanceId, setDecidingGrievanceId] = useState(null);
+  const [ackPriority, setAckPriority] = useState({}); // grievance id -> selected priority before acknowledging
 
   const fetchGroupBookings = async () => {
     setGroupBookingsLoading(true);
@@ -223,6 +234,10 @@ export function AdminDashboard({ user, onLogout }) {
     fetchRescheduleRequests(rescheduleStatusFilter);
   }, [rescheduleStatusFilter]);
 
+  useEffect(() => {
+    fetchGrievances(grievanceStatusFilter);
+  }, [grievanceStatusFilter]);
+
   const fetchAnalytics = async (days) => {
     setAnalyticsLoading(true);
     try {
@@ -297,6 +312,60 @@ export function AdminDashboard({ user, onLogout }) {
       alert(err.response?.data?.detail || 'Could not reject reschedule request');
     } finally {
       setDecidingRescheduleId(null);
+    }
+  };
+
+  const fetchGrievances = async (statusFilter) => {
+    setGrievancesLoading(true);
+    try {
+      const res = await API.get(`/admin/grievances?status_filter=${statusFilter}`);
+      setGrievances(res.data);
+    } catch (err) {
+      console.error('Failed to load grievances', err);
+      setGrievances([]);
+    } finally {
+      setGrievancesLoading(false);
+    }
+  };
+
+  const handleAcknowledgeGrievance = async (grievanceId) => {
+    const priority = ackPriority[grievanceId] || 'P3';
+    setDecidingGrievanceId(grievanceId);
+    try {
+      await API.post(`/admin/grievances/${grievanceId}/acknowledge`, { priority });
+      fetchGrievances(grievanceStatusFilter);
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Could not acknowledge grievance');
+    } finally {
+      setDecidingGrievanceId(null);
+    }
+  };
+
+  const handleEscalateGrievance = async (grievanceId) => {
+    const reason = window.prompt('Reason for escalation:', 'Not resolved within turnaround time');
+    if (reason === null) return;
+    setDecidingGrievanceId(grievanceId);
+    try {
+      await API.post(`/admin/grievances/${grievanceId}/escalate`, { reason });
+      fetchGrievances(grievanceStatusFilter);
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Could not escalate grievance');
+    } finally {
+      setDecidingGrievanceId(null);
+    }
+  };
+
+  const handleResolveGrievance = async (grievanceId) => {
+    const resolutionNotes = window.prompt('Resolution notes (shown to the complainant):');
+    if (!resolutionNotes || !resolutionNotes.trim()) return;
+    setDecidingGrievanceId(grievanceId);
+    try {
+      await API.post(`/admin/grievances/${grievanceId}/resolve`, { resolution_notes: resolutionNotes.trim() });
+      fetchGrievances(grievanceStatusFilter);
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Could not resolve grievance');
+    } finally {
+      setDecidingGrievanceId(null);
     }
   };
 
@@ -1127,6 +1196,129 @@ export function AdminDashboard({ user, onLogout }) {
                       className="px-4 py-2 bg-navy-800 hover:bg-navy-700 text-white font-bold text-xs rounded-lg disabled:opacity-50"
                     >
                       {decidingRescheduleId === r.id ? 'Processing...' : 'Approve'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      </>
+      )}
+
+      {activeSection === 'GRIEVANCES' && (
+      <>
+      {/* Grievance Redressal -- RFP p.21: L1 (Agency CC) -> L2 (Agency
+          Tech/O&M) -> L3 (Authority Nodal) -> Appellate (Authority), with
+          a Priority Matrix (P1-P4) whose SLA clock starts on this log. */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <span className="text-[10px] font-extrabold uppercase tracking-widest text-cyan-700">
+              Helpdesk Log
+            </span>
+            <h3 className="font-serif text-lg font-black text-navy-800 flex items-center gap-2">
+              <LifeBuoy className="w-5 h-5 text-cyan-600" /> Grievance Redressal
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Tourist/service-provider complaints. Acknowledge to set priority, escalate through L1 → L2 → L3 → Appellate, or resolve.
+            </p>
+          </div>
+          <select
+            value={grievanceStatusFilter}
+            onChange={(e) => setGrievanceStatusFilter(e.target.value)}
+            className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-navy-800"
+          >
+            <option value="OPEN">Open</option>
+            <option value="ACKNOWLEDGED">Acknowledged</option>
+            <option value="IN_PROGRESS">In Progress</option>
+            <option value="RESOLVED">Resolved</option>
+            <option value="ALL">All</option>
+          </select>
+        </div>
+
+        {grievancesLoading ? (
+          <div className="text-center py-12 text-slate-400 text-xs">Loading grievances...</div>
+        ) : grievances.length === 0 ? (
+          <div className="text-center py-14 flex flex-col items-center gap-2">
+            <LifeBuoy className="w-9 h-9 text-slate-300" />
+            <p className="text-xs text-slate-400">No grievances in this filter.</p>
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {grievances.map((g) => (
+              <div key={g.id} className="p-4 rounded-2xl border border-slate-200 bg-slate-50 space-y-2.5">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <span className="font-mono text-[10px] text-cyan-700 font-bold">{g.ticket_ref}</span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-navy-800 text-white">{g.category.replace(/_/g, ' ')}</span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        g.priority === 'P1' ? 'bg-red-100 text-red-700' :
+                        g.priority === 'P2' ? 'bg-amber-100 text-amber-800' :
+                        g.priority === 'P3' ? 'bg-cyan-100 text-cyan-700' : 'bg-slate-200 text-slate-600'
+                      }`}>
+                        {g.priority}
+                      </span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700">{g.escalation_level}</span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        g.status === 'RESOLVED' ? 'bg-emerald-100 text-emerald-700' :
+                        g.status === 'OPEN' ? 'bg-slate-200 text-slate-600' : 'bg-amber-100 text-amber-800'
+                      }`}>
+                        {g.status.replace(/_/g, ' ')}
+                      </span>
+                    </div>
+                    <p className="text-xs font-bold text-navy-800">{g.subject}</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">{g.description}</p>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      {g.complainant_phone} · {new Date(g.created_at).toLocaleString('en-IN')}
+                      {g.related_booking_ref && ` · Booking ${g.related_booking_ref}`}
+                    </p>
+                    {g.resolution_notes && (
+                      <p className="text-[11px] text-navy-700 mt-1.5 whitespace-pre-line">↳ {g.resolution_notes}</p>
+                    )}
+                  </div>
+                </div>
+
+                {g.status !== 'RESOLVED' && g.status !== 'CLOSED' && (
+                  <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200">
+                    {g.status === 'OPEN' && (
+                      <>
+                        <select
+                          value={ackPriority[g.id] || 'P3'}
+                          onChange={(e) => setAckPriority((prev) => ({ ...prev, [g.id]: e.target.value }))}
+                          className="px-2 py-1.5 border border-slate-300 rounded-lg text-[11px] font-bold"
+                        >
+                          <option value="P1">P1 - Critical</option>
+                          <option value="P2">P2 - High</option>
+                          <option value="P3">P3 - Medium</option>
+                          <option value="P4">P4 - Low</option>
+                        </select>
+                        <button
+                          onClick={() => handleAcknowledgeGrievance(g.id)}
+                          disabled={decidingGrievanceId === g.id}
+                          className="px-3 py-1.5 bg-cyan-700 hover:bg-cyan-600 text-white font-bold text-[11px] rounded-lg disabled:opacity-50"
+                        >
+                          Acknowledge
+                        </button>
+                      </>
+                    )}
+                    {g.escalation_level !== 'APPELLATE' && (
+                      <button
+                        onClick={() => handleEscalateGrievance(g.id)}
+                        disabled={decidingGrievanceId === g.id}
+                        className="px-3 py-1.5 bg-white border border-purple-300 hover:bg-purple-50 text-purple-700 font-bold text-[11px] rounded-lg flex items-center gap-1 disabled:opacity-50"
+                      >
+                        <ArrowUpCircle className="w-3.5 h-3.5" /> Escalate
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleResolveGrievance(g.id)}
+                      disabled={decidingGrievanceId === g.id}
+                      className="px-3 py-1.5 bg-navy-800 hover:bg-navy-700 text-white font-bold text-[11px] rounded-lg disabled:opacity-50"
+                    >
+                      {decidingGrievanceId === g.id ? 'Processing...' : 'Resolve'}
                     </button>
                   </div>
                 )}

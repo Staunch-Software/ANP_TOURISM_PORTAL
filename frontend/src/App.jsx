@@ -13,6 +13,7 @@ import { VendorDashboard } from './components/VendorDashboard';
 import { OperatorRegisterModal } from './components/OperatorRegisterModal';
 import { GroupBookingModal } from './components/GroupBookingModal';
 import { MyGroupBookings } from './components/MyGroupBookings';
+import { SupportCenter } from './components/SupportCenter';
 import {
   Waves, ArrowUpRight, Users2, MapPin, Search, ShieldCheck,
   Landmark, Clock3, Ship, ArrowRight
@@ -164,6 +165,11 @@ export default function App() {
     localStorage.removeItem('aniidco_token');
     localStorage.removeItem('aniidco_user');
     setCurrentUser(null);
+    // Without this, the next person to sign in on this browser (a
+    // different role entirely) inherits whatever tab the last session
+    // left active -- e.g. a Tourist landing on the Admin dashboard's
+    // "Restricted Access" screen right after an Admin logs out.
+    setActiveTab('ATTRACTIONS');
   };
 
   return (
@@ -494,6 +500,13 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'SUPPORT' && (
+            <SupportCenter
+              user={currentUser}
+              onRequireLogin={() => openLogin('VISITOR')}
+            />
+          )}
+
           {activeTab === 'GROUP_BOOKINGS' && (
             <MyGroupBookings
               user={currentUser}
@@ -564,6 +577,9 @@ export default function App() {
           else if (userData.role === 'OPERATOR') setActiveTab('OPERATOR');
           else if (userData.role === 'VENDOR') setActiveTab('VENDOR');
           else if (userData.role === 'AGENT') setActiveTab('AGENT_CONSOLE');
+          // A Tourist (or any other role) always lands on the booking
+          // funnel, never on whatever tab a previous session left behind.
+          else setActiveTab('ATTRACTIONS');
         }}
       />
 

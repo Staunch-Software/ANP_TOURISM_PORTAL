@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.database import engine, Base, sync_missing_columns
-from app.api.v1 import auth, attractions, ferry, cart, payments, tickets, admin, sync, operator, gates, vendor, group_bookings, agent
+from app.api.v1 import auth, attractions, ferry, cart, payments, tickets, admin, sync, operator, gates, vendor, group_bookings, agent, grievances
 
 
 @asynccontextmanager
@@ -50,6 +50,7 @@ app.include_router(vendor.router, prefix=settings.API_V1_STR)
 app.include_router(group_bookings.router, prefix=settings.API_V1_STR)
 app.include_router(group_bookings.admin_router, prefix=settings.API_V1_STR)
 app.include_router(agent.router, prefix=settings.API_V1_STR)
+app.include_router(grievances.router, prefix=settings.API_V1_STR)
 
 
 @app.get("/api/health")

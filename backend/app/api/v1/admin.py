@@ -19,8 +19,15 @@ from app.models.ferry import FerrySchedule, FerrySeat, Vessel
 from app.models.attraction import Attraction, AttractionSlot
 from app.models.admin_alert import AdminAlert
 from app.models.reschedule import RescheduleRequest
+from app.models.grievance import GrievanceTicket
 from app.api.v1.auth import get_current_user
 from app.schemas.ticket import RescheduleRequestSummary, RescheduleDecisionRequest
+from app.schemas.grievance import (
+    GrievanceSummary,
+    GrievancePriorityUpdateRequest,
+    GrievanceEscalateRequest,
+    GrievanceResolveRequest,
+)
 from app.schemas.admin import (
     HarborManifestResponse,
     HarborPassengerEntry,
@@ -1115,3 +1122,140 @@ async def reject_reschedule_request(
 
     await db.commit()
     return await _reschedule_req_to_summary(db, reschedule_req)
+
+
+ESCALATION_ORDER = ["L1", "L2", "L3", "APPELLATE"]
+
+
+async def _grievance_to_summary(db: AsyncSession, g: GrievanceTicket) -> GrievanceSummary:
+    user_res = await db.execute(select(User).where(User.id == g.user_id))
+    complainant = user_res.scalars().first()
+    return GrievanceSummary(
+        id=str(g.id),
+        ticket_ref=g.ticket_ref,
+        category=g.category,
+        subject=g.subject,
+        description=g.description,
+        related_booking_ref=g.related_booking_ref,
+        priority=g.priority,
+        escalation_level=g.escalation_level,
+        status=g.status,
+        resolution_notes=g.resolution_notes,
+        complainant_phone=complainant.phone_number if complainant else None,
+        created_at=g.created_at.isoformat(),
+        acknowledged_at=g.acknowledged_at.isoformat() if g.acknowledged_at else None,
+        resolved_at=g.resolved_at.isoformat() if g.resolved_at else None,
+    )
+
+
+# RFP p.21 "Grievance Redressal": L1 (Agency CC team) -> L2 (Agency
+# Tech/O&M) -> L3 (Authority Nodal) -> Appellate (Authority). This portal
+# only has one staff role tier per dashboard today (no separate CC/Tech/
+# Nodal accounts), so escalation_level is tracked as a field any staff
+# member can advance, rather than a role that doesn't exist yet.
+@router.get("/grievances", response_model=List[GrievanceSummary])
+async def list_grievances(
+    status_filter: str = "OPEN",
+    staff_user: User = Depends(verify_staff_role),
+    db: AsyncSession = Depends(get_db),
+):
+    query = select(GrievanceTicket).order_by(GrievanceTicket.created_at.desc())
+    if status_filter and status_filter != "ALL":
+        query = query.where(GrievanceTicket.status == status_filter)
+    res = await db.execute(query)
+    tickets = res.scalars().all()
+    return [await _grievance_to_summary(db, g) for g in tickets]
+
+
+@router.post("/grievances/{grievance_id}/acknowledge", response_model=GrievanceSummary)
+async def acknowledge_grievance(
+    grievance_id: str,
+    payload: GrievancePriorityUpdateRequest,
+    staff_user: User = Depends(verify_staff_role),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        g_uuid = uuid.UUID(grievance_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid grievance UUID")
+
+    if payload.priority not in {"P1", "P2", "P3", "P4"}:
+        raise HTTPException(status_code=400, detail="priority must be one of P1, P2, P3, P4")
+
+    res = await db.execute(select(GrievanceTicket).where(GrievanceTicket.id == g_uuid))
+    ticket = res.scalars().first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Grievance not found")
+    if ticket.status not in ("OPEN",):
+        raise HTTPException(status_code=400, detail=f"This grievance is already {ticket.status}")
+
+    ticket.priority = payload.priority
+    ticket.status = "ACKNOWLEDGED"
+    ticket.acknowledged_at = datetime.utcnow()
+    ticket.handled_by = staff_user.id
+
+    await db.commit()
+    return await _grievance_to_summary(db, ticket)
+
+
+@router.post("/grievances/{grievance_id}/escalate", response_model=GrievanceSummary)
+async def escalate_grievance(
+    grievance_id: str,
+    payload: GrievanceEscalateRequest,
+    staff_user: User = Depends(verify_staff_role),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        g_uuid = uuid.UUID(grievance_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid grievance UUID")
+
+    res = await db.execute(select(GrievanceTicket).where(GrievanceTicket.id == g_uuid))
+    ticket = res.scalars().first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Grievance not found")
+    if ticket.status in ("RESOLVED", "CLOSED"):
+        raise HTTPException(status_code=400, detail=f"Cannot escalate a {ticket.status} grievance")
+
+    current_idx = ESCALATION_ORDER.index(ticket.escalation_level)
+    if current_idx == len(ESCALATION_ORDER) - 1:
+        raise HTTPException(status_code=400, detail="Already at the highest escalation level (Appellate)")
+
+    ticket.escalation_level = ESCALATION_ORDER[current_idx + 1]
+    ticket.status = "IN_PROGRESS"
+    if payload.reason:
+        note = f"[Escalated to {ticket.escalation_level}: {payload.reason}]"
+        ticket.resolution_notes = f"{ticket.resolution_notes}\n{note}" if ticket.resolution_notes else note
+
+    await db.commit()
+    return await _grievance_to_summary(db, ticket)
+
+
+@router.post("/grievances/{grievance_id}/resolve", response_model=GrievanceSummary)
+async def resolve_grievance(
+    grievance_id: str,
+    payload: GrievanceResolveRequest,
+    staff_user: User = Depends(verify_staff_role),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        g_uuid = uuid.UUID(grievance_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid grievance UUID")
+    if not payload.resolution_notes.strip():
+        raise HTTPException(status_code=400, detail="resolution_notes is required")
+
+    res = await db.execute(select(GrievanceTicket).where(GrievanceTicket.id == g_uuid))
+    ticket = res.scalars().first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Grievance not found")
+    if ticket.status in ("RESOLVED", "CLOSED"):
+        raise HTTPException(status_code=400, detail=f"This grievance is already {ticket.status}")
+
+    ticket.status = "RESOLVED"
+    ticket.resolution_notes = payload.resolution_notes.strip()
+    ticket.resolved_at = datetime.utcnow()
+    ticket.handled_by = staff_user.id
+
+    await db.commit()
+    return await _grievance_to_summary(db, ticket)
