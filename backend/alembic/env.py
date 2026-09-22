@@ -25,6 +25,7 @@ from app.models.ferry import Vessel, FerrySchedule, FerrySeat
 from app.models.lpu_heartbeat import LPUHeartbeat
 from app.models.gate import Gate, GateService
 from app.models.gate_staff import GateStaff
+from app.models.group_booking import GroupBooking, GroupBookingItem
 
 config = context.config
 
