@@ -9,10 +9,16 @@ from sqlalchemy.future import select
 from app.core.database import get_db
 from app.models.user import User
 from app.models.attraction import Attraction, AttractionSlot
+from app.models.ferry import FerrySchedule, FerrySeat, Vessel
 from app.models.order import Order, OrderItem
 from app.models.ticket import Ticket
 from app.services.crypto_service import sign_ticket_payload
-from app.schemas.agent import AgentBookingRequest, AgentBookingResponse, AgentBookingSummary
+from app.schemas.agent import (
+    AgentBookingRequest,
+    AgentBookingResponse,
+    AgentBookingSummary,
+    AgentFerryBookingRequest,
+)
 
 router = APIRouter(prefix="/agent", tags=["Ticket Aggregator / Agent Sync API"])
 
@@ -143,6 +149,122 @@ async def agent_book_attraction(
         slot_or_seat_info=slot_or_seat_info,
         amount_charged_inr=price,
         message="Booking confirmed. Settlement with ANIIDCO follows your agency's agreed billing cycle.",
+    )
+
+
+@router.post("/api/book-ferry-seat", response_model=AgentBookingResponse)
+async def agent_book_ferry_seat(
+    req: AgentFerryBookingRequest,
+    agent: User = Depends(get_agent_by_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    RFP Page 27: the required stakeholder study explicitly names ferry
+    operators alongside water sports/tourism service providers as
+    services an approved agent must be able to book -- this is that
+    ferry-side equivalent of POST /agent/api/book-attraction.
+    """
+    try:
+        schedule_uuid = uuid.UUID(req.schedule_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid Schedule UUID")
+
+    res = await db.execute(
+        select(FerrySeat, FerrySchedule, Vessel)
+        .join(FerrySchedule, FerrySeat.schedule_id == FerrySchedule.id)
+        .join(Vessel, FerrySchedule.vessel_id == Vessel.id)
+        .where(
+            FerrySeat.schedule_id == schedule_uuid,
+            FerrySeat.seat_number == req.seat_number.upper(),
+        )
+    )
+    row = res.first()
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Seat {req.seat_number} not found on this voyage")
+    seat, schedule, vessel = row
+
+    if schedule.status != "SCHEDULED":
+        raise HTTPException(status_code=400, detail=f"This voyage is no longer accepting bookings (status: {schedule.status})")
+    if seat.is_booked:
+        raise HTTPException(status_code=409, detail=f"Seat {req.seat_number} is already booked")
+
+    price = float(seat.price_inr)
+    title = f"Ferry: {vessel.name} ({schedule.source_port} -> {schedule.destination_port})"
+    slot_or_seat_info = f"Seat {seat.seat_number} ({seat.cabin_class}) - {schedule.departure_date} {schedule.departure_time}"
+
+    order_ref = f"AN-2026-ORD-{random.randint(100000, 999999)}"
+    order = Order(
+        order_ref=order_ref,
+        user_id=agent.id,
+        channel="AGENT_API",
+        gross_amount=price,
+        net_payable=price,
+        status="CONFIRMED",
+    )
+    db.add(order)
+    await db.flush()
+
+    item = OrderItem(
+        order_id=order.id,
+        position=0,
+        item_type="FERRY",
+        ferry_seat_id=seat.id,
+        title=title,
+        slot_or_seat_info=slot_or_seat_info,
+        unit_price=price,
+        quantity=1,
+        subtotal=price,
+        passenger_name=req.passenger.name,
+        passenger_age=req.passenger.age,
+        passenger_gender=req.passenger.gender,
+        id_type=req.passenger.id_type,
+        id_number=req.passenger.id_number,
+    )
+    db.add(item)
+    seat.is_booked = True
+    await db.flush()
+
+    payload_dict = {
+        "ref": order_ref,
+        "items": [{"typ": "FERRY", "ttl": title, "sub": slot_or_seat_info}],
+        "pax": req.passenger.name,
+        "doc": f"{req.passenger.id_type}:{req.passenger.id_number[-4:]}",
+        "iss": "ANIIDCO_GOVT_AN",
+        "iat": int(datetime.utcnow().timestamp()),
+    }
+    compact_json, signature_b64 = sign_ticket_payload(payload_dict)
+
+    ticket_ref = f"AN-2026-TKT-{random.randint(100000, 999999)}"
+    ticket = Ticket(
+        ticket_ref=ticket_ref,
+        booking_ref=order_ref,
+        item_index=0,
+        order_id=order.id,
+        order_item_id=item.id,
+        user_id=agent.id,
+        item_type="FERRY",
+        title=title,
+        slot_or_seat_info=slot_or_seat_info,
+        passenger_name=req.passenger.name,
+        passenger_age=req.passenger.age,
+        passenger_gender=req.passenger.gender,
+        id_type=req.passenger.id_type,
+        id_number=req.passenger.id_number,
+        qr_payload_json=compact_json,
+        qr_signature_b64=signature_b64,
+        check_in_status="ISSUED",
+        issued_by="AGENT_API",
+    )
+    db.add(ticket)
+    await db.commit()
+
+    return AgentBookingResponse(
+        booking_ref=order_ref,
+        ticket_ref=ticket_ref,
+        title=title,
+        slot_or_seat_info=slot_or_seat_info,
+        amount_charged_inr=price,
+        message="Ferry booking confirmed. Settlement with ANIIDCO follows your agency's agreed billing cycle.",
     )
 
 
