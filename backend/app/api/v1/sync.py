@@ -10,11 +10,14 @@
 #                                   a physical counter while disconnected.
 #   POST /sync/heartbeat        -- LPU liveness ping, feeds the Authority
 #                                   dashboard's real-time LPU uptime view.
+import json
 import logging
 import random
 from datetime import datetime, timezone
+from typing import List
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from sqlalchemy import select, text
 
 logger = logging.getLogger("anp.sync")
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,7 +30,7 @@ from app.models.user import User
 from app.models.order import Order, OrderItem
 from app.models.ticket import Ticket
 from app.models.lpu_heartbeat import LPUHeartbeat
-from app.models.gate import Gate
+from app.models.gate import Gate, GateService
 from app.models.gate_staff import GateStaff
 from app.schemas.sync import (
     TicketChangeItem,
@@ -366,6 +369,32 @@ async def get_staff_changes(
         select(GateStaff).where(GateStaff.site_id == site_id, GateStaff.updated_at > since)
     )
     rows = res.scalars().all()
+    
+    services_res = await db.execute(
+        select(GateService).where(GateService.site_id == site_id)
+    )
+    allowed_titles = [s.title for s in services_res.scalars().all()]
+
+    from datetime import date, timedelta
+    today_str = date.today().isoformat()
+    end_str = (date.today() + timedelta(days=7)).isoformat()
+    
+    allowed_slots = {}
+    if allowed_titles:
+        slots_res = await db.execute(
+            text("""
+                SELECT a.title, s.slot_date, s.start_time, s.end_time 
+                FROM attraction_slots s
+                JOIN attractions a ON a.id = s.attraction_id
+                WHERE a.title = ANY(:titles) AND s.slot_date >= :today AND s.slot_date <= :end_date
+            """),
+            {"titles": allowed_titles, "today": today_str, "end_date": end_str}
+        )
+        for row in slots_res:
+            title, sdate, stime, etime = row
+            if title not in allowed_slots:
+                allowed_slots[title] = []
+            allowed_slots[title].append({"date": sdate, "start": stime, "end": etime})
 
     return StaffChangesResponse(
         staff=[
@@ -380,5 +409,8 @@ async def get_staff_changes(
             )
             for s in rows
         ],
+        allowed_titles=allowed_titles,
+        allowed_slots=allowed_slots,
         server_time=datetime.now(timezone.utc),
     )
+# Trigger reload
