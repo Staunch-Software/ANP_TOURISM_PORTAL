@@ -27,8 +27,22 @@ class Settings(BaseSettings):
     # the frontend hides "Continue with Google" until this is configured.
     GOOGLE_CLIENT_ID: str = ""
 
+    # --- Razorpay Configuration ---
+    RAZORPAY_KEY_ID: str = ""
+    RAZORPAY_KEY_SECRET: str = ""
+    RAZORPAY_WEBHOOK_SECRET: str = ""
+
+    # --- Email (SMTP) Configuration ---
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = "noreply@andamantourism.gov.in"
+
+
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 
 settings = Settings()

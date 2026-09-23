@@ -1,7 +1,11 @@
 import random
+import os
+import hmac
+import hashlib
+import razorpay
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func
@@ -16,9 +20,23 @@ from app.models.ticket import Ticket
 from app.models.admin_alert import AdminAlert
 from app.api.v1.auth import get_current_user
 from app.services.crypto_service import sign_ticket_payload
-from app.schemas.payment import PaymentConfirmRequest, PaymentConfirmResponse
+from app.services.email_service import send_ticket_confirmation
+from app.schemas.payment import (
+    PaymentConfirmRequest, PaymentConfirmResponse, 
+    RazorpayOrderRequest, RazorpayOrderResponse, RefundRequest
+)
 
 router = APIRouter(prefix="/payments", tags=["Payment & Ticket Issuance"])
+from app.core.config import settings
+
+# Initialize Razorpay client
+# In production, these should be securely loaded from env variables
+razorpay_client = razorpay.Client(
+    auth=(
+        settings.RAZORPAY_KEY_ID, 
+        settings.RAZORPAY_KEY_SECRET
+    )
+)
 
 # RFP Group Bookings Clause V: "alert and report to ANIIDCO regarding
 # multiple bookings from the same ID ... who have reserved the same
@@ -59,9 +77,48 @@ async def _check_repeat_booking_fraud(db: AsyncSession, item: OrderItem) -> None
         )
 
 
+@router.post("/create-order", response_model=RazorpayOrderResponse)
+async def create_razorpay_order(
+    req: RazorpayOrderRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(
+        select(Order).where(Order.order_ref == req.order_ref, Order.user_id == current_user.id)
+    )
+    order = res.scalars().first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order reference not found")
+        
+    if order.status == "CONFIRMED":
+        raise HTTPException(status_code=400, detail="Order has already been paid")
+
+    try:
+        # Create Razorpay Order
+        rzp_order = razorpay_client.order.create({
+            "amount": int(order.net_payable * 100), # amount in paise
+            "currency": "INR",
+            "receipt": order.order_ref,
+            "notes": {
+                "user_id": str(current_user.id)
+            }
+        })
+        
+        return RazorpayOrderResponse(
+            success=True,
+            order_id=rzp_order["id"],
+            amount=float(order.net_payable),
+            currency="INR",
+            key_id=settings.RAZORPAY_KEY_ID
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create Razorpay order: {str(e)}")
+
+
 @router.post("/confirm", response_model=PaymentConfirmResponse)
 async def confirm_payment_and_issue_tickets(
     req: PaymentConfirmRequest,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     r=Depends(get_redis),
@@ -76,10 +133,22 @@ async def confirm_payment_and_issue_tickets(
     if order.status == "CONFIRMED":
         raise HTTPException(status_code=400, detail="Order has already been paid and tickets are issued")
 
-    if not req.mock_success:
-        order.status = "FAILED"
-        await db.commit()
-        raise HTTPException(status_code=400, detail="Payment declined by bank")
+    # Verify Razorpay signature
+    try:
+        msg = f"{req.razorpay_order_id}|{req.razorpay_payment_id}"
+        secret = settings.RAZORPAY_KEY_SECRET
+        expected_signature = hmac.new(
+            secret.encode(), 
+            msg.encode(), 
+            hashlib.sha256
+        ).hexdigest()
+
+        if expected_signature != req.razorpay_signature:
+            order.status = "FAILED"
+            await db.commit()
+            raise HTTPException(status_code=400, detail="Invalid payment signature")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Payment verification failed: {str(e)}")
 
     items_res = await db.execute(
         select(OrderItem).where(OrderItem.order_id == order.id).order_by(OrderItem.position)
@@ -164,6 +233,14 @@ async def confirm_payment_and_issue_tickets(
     order.status = "CONFIRMED"
     db.add_all(tickets_to_create)
     await db.commit()
+    
+    # Send email in background
+    background_tasks.add_task(
+        send_ticket_confirmation,
+        current_user.email,
+        order.order_ref,
+        tickets_to_create
+    )
 
     await r.delete(f"cart:{str(current_user.id)}")
 
@@ -174,3 +251,60 @@ async def confirm_payment_and_issue_tickets(
         total_paid=float(order.net_payable),
         message="Payment verified successfully. A single Unified QR boarding pass has been generated for this order!",
     )
+
+
+@router.post("/webhook")
+async def razorpay_webhook(request: Request, db: AsyncSession = Depends(get_db)):
+    try:
+        body = await request.body()
+        signature = request.headers.get("X-Razorpay-Signature")
+        
+        expected_signature = hmac.new(
+            settings.RAZORPAY_WEBHOOK_SECRET.encode(), 
+            body, 
+            hashlib.sha256
+        ).hexdigest()
+
+        if expected_signature != signature:
+            raise HTTPException(status_code=400, detail="Invalid Webhook Signature")
+
+        event = await request.json()
+
+        if event.get("event") == "payment.captured":
+            payment_entity = event["payload"]["payment"]["entity"]
+            order_ref = payment_entity["notes"].get("receipt")
+            
+            # Additional fallback logic could go here to mark orders as PAID 
+            # if the user disconnected before reaching the `/confirm` endpoint.
+            print(f"Webhook received: Payment captured for {order_ref}")
+
+        elif event.get("event") == "payment.failed":
+            payment_entity = event["payload"]["payment"]["entity"]
+            print(f"Webhook received: Payment failed for {payment_entity.get('order_id')}")
+
+        return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/process-refund")
+async def process_refund(
+    req: RefundRequest,
+    current_user: User = Depends(get_current_user),
+):
+    # Security: Ensure only authorized admins/system can trigger refunds
+    if current_user.role not in ["ADMIN", "AGENCY_SUPPORT"]:
+        raise HTTPException(status_code=403, detail="Not authorized to process refunds")
+
+    try:
+        refund = razorpay_client.payment.refund(req.payment_id, {
+            "amount": int(req.amount * 100),
+            "speed": "normal",
+            "notes": {
+                "reason": req.reason
+            }
+        })
+        return {"success": True, "refund": refund}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to process refund: {str(e)}")
+

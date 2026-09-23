@@ -75,27 +75,75 @@ export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed })
     }
   };
 
-  const handleConfirmPayment = async () => {
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.async = true;
+    document.body.appendChild(script);
+    return () => {
+      if (document.body.contains(script)) {
+        document.body.removeChild(script);
+      }
+    };
+  }, []);
+
+  const launchRazorpay = async (method) => {
     setPaying(true);
     try {
-      await API.post('/payments/confirm', {
-        order_ref: activeOrder.order_ref,
-        payment_method: paymentMethod,
-        mock_success: true
+      // Create Razorpay Order via Backend
+      const res = await API.post('/payments/create-order', {
+        order_ref: activeOrder.order_ref
       });
+      const rzpData = res.data;
 
-      setPaymentSuccess(true);
-      if (onCartUpdated) onCartUpdated();
+      const options = {
+        key: rzpData.key_id,
+        amount: rzpData.amount * 100, // paise
+        currency: "INR", // STRICTLY INR FOR UPI
+        name: "Andaman Tourism",
+        description: `Order #${activeOrder.order_ref}`,
+        order_id: rzpData.order_id,
+        prefill: {
+          method: method, // 'upi', 'card', 'netbanking'
+          contact: "9999999999",
+          email: "tourist@andaman.gov.in"
+        },
+        handler: async function (response) {
+          try {
+            await API.post('/payments/confirm', {
+              order_ref: activeOrder.order_ref,
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature
+            });
+            setPaymentSuccess(true);
+            if (onCartUpdated) onCartUpdated();
+            
+            setTimeout(() => {
+              setPaymentSuccess(false);
+              setActiveOrder(null);
+              onClose();
+              if (onOrderConfirmed) onOrderConfirmed();
+            }, 3000);
+          } catch (err) {
+            alert(err.response?.data?.detail || "Payment verification failed");
+          }
+        },
+        modal: {
+          ondismiss: function() {
+            setPaying(false);
+          }
+        }
+      };
 
-      setTimeout(() => {
-        setPaymentSuccess(false);
-        setActiveOrder(null);
-        onClose();
-        if (onOrderConfirmed) onOrderConfirmed();
-      }, 2000);
+      const rzp = new window.Razorpay(options);
+      rzp.on('payment.failed', function (response){
+        alert("Payment failed: " + response.error.description);
+        setPaying(false);
+      });
+      rzp.open();
     } catch (err) {
-      alert(err.response?.data?.detail || "Payment processing failed");
-    } finally {
+      alert(err.response?.data?.detail || "Failed to initialize payment");
       setPaying(false);
     }
   };
@@ -274,94 +322,44 @@ export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed })
                   </span>
                 </div>
 
-                {/* Payment Method Tabs */}
-                <div className="flex bg-slate-100 p-1 rounded-xl mb-4 text-xs font-bold">
+                {/* Payment Method Action Buttons */}
+                <div className="space-y-3 py-2 text-xs font-bold">
                   <button
-                    onClick={() => setPaymentMethod('UPI')}
-                    className={`flex-1 py-2 rounded-lg flex items-center justify-center gap-1.5 transition-all ${
-                      paymentMethod === 'UPI' ? 'bg-navy-800 text-white shadow' : 'text-slate-500 hover:text-navy-800'
-                    }`}
+                    disabled={paying}
+                    onClick={() => launchRazorpay('upi')}
+                    className="w-full p-4 rounded-xl flex items-center justify-between border hover:border-cyan-500 hover:bg-cyan-50 transition-all text-navy-800"
                   >
-                    <QrCode className="w-3.5 h-3.5" /> Instant UPI QR
+                    <div className="flex items-center gap-3">
+                      <QrCode className="w-5 h-5 text-cyan-600" />
+                      <span className="text-sm">Pay via UPI (QR / Intent)</span>
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-slate-400" />
                   </button>
+
                   <button
-                    onClick={() => setPaymentMethod('CARD')}
-                    className={`flex-1 py-2 rounded-lg flex items-center justify-center gap-1.5 transition-all ${
-                      paymentMethod === 'CARD' ? 'bg-navy-800 text-white shadow' : 'text-slate-500 hover:text-navy-800'
-                    }`}
+                    disabled={paying}
+                    onClick={() => launchRazorpay('card')}
+                    className="w-full p-4 rounded-xl flex items-center justify-between border hover:border-cyan-500 hover:bg-cyan-50 transition-all text-navy-800"
                   >
-                    <CreditCard className="w-3.5 h-3.5" /> Cards
+                    <div className="flex items-center gap-3">
+                      <CreditCard className="w-5 h-5 text-cyan-600" />
+                      <span className="text-sm">Pay via Cards (Credit/Debit)</span>
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-slate-400" />
                   </button>
+
                   <button
-                    onClick={() => setPaymentMethod('NETBANKING')}
-                    className={`flex-1 py-2 rounded-lg flex items-center justify-center gap-1.5 transition-all ${
-                      paymentMethod === 'NETBANKING' ? 'bg-navy-800 text-white shadow' : 'text-slate-500 hover:text-navy-800'
-                    }`}
+                    disabled={paying}
+                    onClick={() => launchRazorpay('netbanking')}
+                    className="w-full p-4 rounded-xl flex items-center justify-between border hover:border-cyan-500 hover:bg-cyan-50 transition-all text-navy-800"
                   >
-                    <Building className="w-3.5 h-3.5" /> Net Banking
+                    <div className="flex items-center gap-3">
+                      <Building className="w-5 h-5 text-cyan-600" />
+                      <span className="text-sm">Pay via Netbanking</span>
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-slate-400" />
                   </button>
                 </div>
-
-                {/* Payment Method Content */}
-                {paymentMethod === 'UPI' && (
-                  <div className="text-center py-3 space-y-3">
-                    <div className="w-44 h-44 bg-white p-3 rounded-2xl mx-auto shadow-inner flex flex-col items-center justify-center border-4 border-slate-100">
-                      <div className="w-full h-full bg-navy-800 rounded-lg flex flex-col items-center justify-center p-2 text-white text-center">
-                        <QrCode className="w-20 h-20 text-cyan-300" />
-                        <span className="text-[10px] font-mono text-slate-300 mt-1">Scan via any UPI App</span>
-                      </div>
-                    </div>
-                    <p className="text-[11px] text-slate-500">GPay • PhonePe • Paytm • BHIM</p>
-                  </div>
-                )}
-
-                {paymentMethod === 'CARD' && (
-                  <div className="space-y-3 py-2">
-                    <input
-                      type="text"
-                      placeholder="Card Number (4532 •••• •••• ••••)"
-                      defaultValue="4532 8812 9012 3341"
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800 font-mono"
-                    />
-                    <div className="grid grid-cols-2 gap-2">
-                      <input
-                        type="text"
-                        placeholder="MM / YY"
-                        defaultValue="12/28"
-                        className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800 font-mono"
-                      />
-                      <input
-                        type="password"
-                        placeholder="CVV"
-                        defaultValue="921"
-                        maxLength="3"
-                        className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800 font-mono"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {paymentMethod === 'NETBANKING' && (
-                  <div className="py-2 space-y-2">
-                    {['State Bank of India (SBI)', 'HDFC Bank', 'ICICI Bank', 'Axis Bank'].map((bank, i) => (
-                      <label key={bank} className="flex items-center gap-2 p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-xs text-navy-800 cursor-pointer hover:border-cyan-400">
-                        <input type="radio" name="bank" defaultChecked={i === 0} className="text-cyan-600" />
-                        <span>{bank}</span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-
-                {/* Confirm Payment Button */}
-                <button
-                  type="button"
-                  disabled={paying}
-                  onClick={handleConfirmPayment}
-                  className="w-full py-3 mt-4 bg-emerald-700 hover:bg-emerald-600 text-white font-bold rounded-lg text-xs shadow-md flex items-center justify-center gap-2 transition-all"
-                >
-                  <ShieldCheck className="w-4 h-4" />
-                  {paying ? 'Verifying with Bank...' : `Pay ₹${activeOrder.net_payable.toLocaleString('en-IN')} & Issue Passes`}
-                </button>
               </div>
             )}
           </div>
@@ -370,3 +368,5 @@ export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed })
     </div>
   );
 }
+
+
