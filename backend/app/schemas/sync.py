@@ -25,6 +25,7 @@ class TicketChangeLeg(BaseModel):
     title: str
     slot_or_seat_info: str
     check_in_status: str  # ISSUED, CHECKED_IN, or CANCELLED -- per leg
+    checked_in_at: Optional[datetime] = None
     version: int = 1  # monotonic per-leg counter -- see models/ticket.py
     passenger_name: str
     passenger_age: Optional[int] = None

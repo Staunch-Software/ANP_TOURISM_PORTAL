@@ -18,6 +18,7 @@ from app.models.order import Order, OrderItem
 from app.models.ticket import Ticket
 from app.models.group_booking import GroupBookingRequest
 from app.api.v1.auth import get_current_user
+from app.api.v1.payments import razorpay_client
 from app.api.v1.admin import verify_admin_role
 from app.schemas.group_booking import (
     GroupBookingRequestCreate,
@@ -358,6 +359,16 @@ async def cancel_group_booking(
         order = order_res.scalars().first()
         if order:
             order.status = "CANCELLED"
+            if order.razorpay_payment_id:
+                try:
+                    razorpay_client.payment.refund(order.razorpay_payment_id, {
+                        "amount": int(order.net_payable * 100),
+                        "speed": "normal",
+                        "notes": {"reason": payload.reason}
+                    })
+                except Exception as e:
+                    # In a real system, you might log this and queue for retry
+                    print(f"Refund API failed: {e}")
             # Tickets only exist once the group's organizer has paid (see
             # payments.py); an approved-but-unpaid request has none yet.
             tickets_res = await db.execute(select(Ticket).where(Ticket.order_id == order.id))

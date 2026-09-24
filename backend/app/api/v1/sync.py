@@ -148,6 +148,7 @@ async def get_ticket_changes(
                     title=leg.title,
                     slot_or_seat_info=leg.slot_or_seat_info,
                     check_in_status=leg.check_in_status,
+                    checked_in_at=leg.checked_in_at,
                     version=leg.version,
                     passenger_name=leg.passenger_name,
                     passenger_age=leg.passenger_age,

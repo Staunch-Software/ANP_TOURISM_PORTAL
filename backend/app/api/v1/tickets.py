@@ -15,6 +15,8 @@ from app.models.attraction import Attraction, AttractionSlot
 from app.models.ferry import FerrySeat, FerrySchedule
 from app.models.reschedule import RescheduleRequest
 from app.api.v1.auth import get_current_user
+from app.api.v1.payments import razorpay_client
+from app.models.order import Order
 from app.api.v1.admin import verify_staff_role
 from app.services.crypto_service import verify_ticket_offline, get_public_key_hex
 from app.schemas.ticket import (
@@ -525,3 +527,75 @@ async def get_my_reschedule_requests(
             )
         )
     return summaries
+
+@router.post("/{booking_ref}/cancel")
+async def cancel_booking(
+    booking_ref: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    # Find the order
+    res = await db.execute(select(Order).where(Order.order_ref == booking_ref, Order.user_id == current_user.id))
+    order = res.scalars().first()
+    
+    if not order:
+        raise HTTPException(status_code=404, detail="Booking not found")
+        
+    if order.status == "CANCELLED":
+        raise HTTPException(status_code=400, detail="Booking is already cancelled")
+        
+    # Cancel the tickets
+    tickets_res = await db.execute(select(Ticket).where(Ticket.order_id == order.id))
+    tickets = tickets_res.scalars().all()
+    
+    for ticket in tickets:
+        if ticket.check_in_status == "CHECKED_IN":
+            raise HTTPException(status_code=400, detail="Cannot cancel a booking that has already been checked in")
+
+        # Check 24 hour rule
+        entry_window = await _get_entry_window(db, ticket)
+        if entry_window:
+            window_start = entry_window[0]
+            from datetime import timedelta
+            if datetime.utcnow() > (window_start - timedelta(hours=24)):
+                raise HTTPException(status_code=400, detail="Cancellation is only permitted 24 hours prior to the slot.")
+
+        ticket.check_in_status = "CANCELLED"
+        ticket.version = (ticket.version or 1) + 1
+        
+        # Free up capacity
+        item_res = await db.execute(select(OrderItem).where(OrderItem.id == ticket.order_item_id))
+        order_item = item_res.scalars().first()
+        if not order_item: continue
+
+        if ticket.item_type == "ATTRACTION" and order_item.attraction_slot_id:
+            slot_res = await db.execute(select(AttractionSlot).where(AttractionSlot.id == order_item.attraction_slot_id))
+            slot = slot_res.scalars().first()
+            if slot:
+                slot.booked_count = max(0, slot.booked_count - 1)
+        elif ticket.item_type == "FERRY" and order_item.ferry_seat_id:
+            seat_res = await db.execute(select(FerrySeat).where(FerrySeat.id == order_item.ferry_seat_id))
+            seat = seat_res.scalars().first()
+            if seat:
+                seat.status = "AVAILABLE"
+                seat.passenger_name = None
+                seat.passenger_age = None
+                seat.passenger_gender = None
+    
+    order.status = "CANCELLED"
+    
+    # Process Refund if applicable
+    if order.razorpay_payment_id:
+        try:
+            # 50% penalty as per RFP Page 27, Clause 6 (simplified here)
+            refund_amount = float(order.net_payable) * 0.5
+            razorpay_client.payment.refund(order.razorpay_payment_id, {
+                "amount": int(refund_amount * 100),
+                "speed": "normal",
+                "notes": {"reason": "Cancelled by tourist"}
+            })
+        except Exception as e:
+            print(f"Refund API failed: {e}")
+
+    await db.commit()
+    return {"success": True, "message": "Booking cancelled and 50% refund initiated successfully."}

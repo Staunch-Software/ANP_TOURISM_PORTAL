@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import API from '../api/client';
 import { QRCodeSVG } from 'qrcode.react';
 import {
@@ -37,6 +37,18 @@ export function DigitalWallet({ user, onRequireLogin }) {
       setPasses([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  
+  const handleCancelBooking = async (bookingRef) => {
+    if (!window.confirm("Are you sure you want to cancel this booking? A 50% penalty will be deducted from your refund.")) return;
+    try {
+      const res = await API.post(`/tickets/${bookingRef}/cancel`);
+      alert(res.data.message);
+      fetchPasses();
+    } catch (err) {
+      alert(err.response?.data?.detail || "Cancellation failed");
     }
   };
 
@@ -134,11 +146,11 @@ export function DigitalWallet({ user, onRequireLogin }) {
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold mb-2">
-            <ShieldCheck className="w-3.5 h-3.5" /> Ed25519 Cryptographically Signed · Unified QR per Order
+            <ShieldCheck className="w-3.5 h-3.5" /> Ed25519 Cryptographically Signed Â· Unified QR per Order
           </div>
           <h2 className="font-serif text-2xl font-black text-navy-800">Official Digital Pass Wallet</h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            One QR code per booking covers every attraction and ferry seat in that order — each gate checks off only its own entry.
+            One QR code per booking covers every attraction and ferry seat in that order â€” each gate checks off only its own entry.
           </p>
         </div>
 
@@ -176,7 +188,7 @@ export function DigitalWallet({ user, onRequireLogin }) {
                     UNIFIED BOARDING PASS
                   </span>
                   <h3 className="font-serif text-base font-black text-navy-800 mt-1.5">{pass.lead_passenger_name}</h3>
-                  <span className="text-xs text-slate-500 font-mono">{pass.entitlements.length} entitlement(s) · Order {pass.order_ref}</span>
+                  <span className="text-xs text-slate-500 font-mono">{pass.entitlements.length} entitlement(s) Â· Order {pass.order_ref}</span>
                 </div>
 
                 <div className="text-right">
@@ -220,7 +232,7 @@ export function DigitalWallet({ user, onRequireLogin }) {
                                   </span>
                                 )}
                               </p>
-                              <p className="text-[10px] text-slate-500 font-mono truncate">{ent.slot_or_seat_info} · {ent.passenger_name}</p>
+                              <p className="text-[10px] text-slate-500 font-mono truncate">{ent.slot_or_seat_info} Â· {ent.passenger_name}</p>
                             </div>
                           </div>
                           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
@@ -267,7 +279,16 @@ export function DigitalWallet({ user, onRequireLogin }) {
                   <Printer className="w-3.5 h-3.5" /> Print Pass
                 </button>
 
-                {/* Self-service preview: read-only, does not check anyone in — only staff can do that */}
+                <button
+                  type="button"
+                  onClick={() => handleCancelBooking(pass.booking_ref)}
+                  className="px-3 py-2 rounded-lg bg-white border border-red-200 hover:bg-red-50 text-red-600 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                >
+                  <XCircle className="w-3.5 h-3.5" /> Cancel Booking
+                </button>
+
+
+                {/* Self-service preview: read-only, does not check anyone in â€” only staff can do that */}
                 <button
                   type="button"
                   disabled={verifying}
@@ -282,7 +303,7 @@ export function DigitalWallet({ user, onRequireLogin }) {
         </div>
       )}
 
-      {/* Turnstile Scan Simulator Modal — read-only signature + status preview */}
+      {/* Turnstile Scan Simulator Modal â€” read-only signature + status preview */}
       {activeVerification && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-900/70 backdrop-blur-sm p-4">
           <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md p-6 shadow-2xl relative text-center">
@@ -290,7 +311,7 @@ export function DigitalWallet({ user, onRequireLogin }) {
               onClick={() => setActiveVerification(null)}
               className="absolute top-4 right-4 text-slate-400 hover:text-navy-800 p-1"
             >
-              ✕
+              âœ•
             </button>
 
             {/* Signature Indicator */}
@@ -345,7 +366,7 @@ export function DigitalWallet({ user, onRequireLogin }) {
         </div>
       )}
 
-      {/* Reschedule Request Modal — RFP p.28: submits a request, does NOT
+      {/* Reschedule Request Modal â€” RFP p.28: submits a request, does NOT
           change the ticket immediately; staff must approve it. */}
       {rescheduleTicket && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-900/70 backdrop-blur-sm p-4">
@@ -354,7 +375,7 @@ export function DigitalWallet({ user, onRequireLogin }) {
               onClick={() => setRescheduleTicket(null)}
               className="absolute top-4 right-4 text-slate-400 hover:text-navy-800 p-1"
             >
-              ✕
+              âœ•
             </button>
 
             <div className="w-14 h-14 rounded-2xl bg-cyan-50 text-cyan-700 border border-cyan-200 flex items-center justify-center mb-4">
@@ -362,7 +383,7 @@ export function DigitalWallet({ user, onRequireLogin }) {
             </div>
             <h3 className="font-serif text-lg font-black text-navy-800">Request Time Slot Reschedule</h3>
             <p className="text-xs text-slate-500 mt-1 mb-4">
-              {rescheduleTicket.title} — currently {rescheduleTicket.slot_or_seat_info}. Submitted for staff review; the ticket won't change until approved.
+              {rescheduleTicket.title} â€” currently {rescheduleTicket.slot_or_seat_info}. Submitted for staff review; the ticket won't change until approved.
             </p>
 
             <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">New Date</label>

@@ -231,6 +231,7 @@ async def confirm_payment_and_issue_tickets(
         tickets_to_create.append(ticket)
 
     order.status = "CONFIRMED"
+    order.razorpay_payment_id = req.razorpay_payment_id
     db.add_all(tickets_to_create)
     await db.commit()
     

@@ -19,6 +19,7 @@ class Order(Base):
     tax_amount = Column(Numeric(10, 2), default=0.00)  # GST
     net_payable = Column(Numeric(10, 2), nullable=False)
     status = Column(String(30), default="PENDING_PAYMENT")  # PENDING_PAYMENT, CONFIRMED, CANCELLED
+    razorpay_payment_id = Column(String(100), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")

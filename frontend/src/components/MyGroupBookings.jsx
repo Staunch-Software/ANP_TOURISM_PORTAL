@@ -3,7 +3,7 @@ import API from '../api/client';
 import {
   Users2, Building2, MapPin, Calendar, Clock3, CheckCircle2,
   XCircle, AlertCircle, Hourglass, CreditCard, ArrowRight,
-  RefreshCw, FileText, Ticket,
+  RefreshCw, FileText, Ticket, ShieldCheck,
 } from 'lucide-react';
 
 // ─── Status config ────────────────────────────────────────────────────────────
