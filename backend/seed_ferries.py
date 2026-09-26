@@ -5,17 +5,13 @@ from sqlalchemy.future import select
 
 from app.core.database import AsyncSessionLocal
 from app.models.ferry import Vessel, FerrySchedule, FerrySeat
+from app.data.catalog_templates import VESSELS_DATA, ROUTE_TEMPLATES
 
 
 async def seed_ferry_data():
     async with AsyncSessionLocal() as db:
-        vessels_data = [
-            {"name": "MV Makruzz Diamond", "operator": "Makruzz Catamarans", "capacity": 120},
-            {"name": "Green Ocean 1", "operator": "Green Ocean Lines", "capacity": 100},
-        ]
-
         vessel_map = {}
-        for v_data in vessels_data:
+        for v_data in VESSELS_DATA:
             res = await db.execute(select(Vessel).where(Vessel.name == v_data["name"]))
             vessel = res.scalars().first()
             if not vessel:
@@ -35,35 +31,8 @@ async def seed_ferry_data():
         today = date.today()
         dates = [today + timedelta(days=i) for i in range(5)]
 
-        route_templates = [
-            {
-                "vessel": "MV Makruzz Diamond",
-                "src": "PORT_BLAIR",
-                "dst": "HAVELOCK",
-                "dep_time": time(8, 0),
-            },
-            {
-                "vessel": "MV Makruzz Diamond",
-                "src": "HAVELOCK",
-                "dst": "NEIL",
-                "dep_time": time(11, 30),
-            },
-            {
-                "vessel": "Green Ocean 1",
-                "src": "PORT_BLAIR",
-                "dst": "HAVELOCK",
-                "dep_time": time(9, 30),
-            },
-            {
-                "vessel": "Green Ocean 1",
-                "src": "NEIL",
-                "dst": "PORT_BLAIR",
-                "dep_time": time(16, 0),
-            },
-        ]
-
         for d in dates:
-            for rt in route_templates:
+            for rt in ROUTE_TEMPLATES:
                 v = vessel_map[rt["vessel"]]
                 res = await db.execute(
                     select(FerrySchedule).where(

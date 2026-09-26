@@ -5,71 +5,7 @@ from sqlalchemy.future import select
 
 from app.core.database import AsyncSessionLocal
 from app.models.attraction import Attraction, AttractionSlot
-
-REAL_ATTRACTIONS = [
-    {
-        "title": "Cellular Jail National Memorial",
-        "island": "PORT_BLAIR",
-        "category": "MONUMENT",
-        "base_price_inr": 30.00,
-        "foreign_price_inr": 100.00,
-        "slots": [
-            ("09:00", "10:00", 300),
-            ("10:00", "11:00", 300),
-            ("11:00", "12:00", 300),
-            ("13:00", "14:00", 300),
-            ("14:00", "15:00", 300),
-            ("15:00", "16:00", 300),
-        ],
-    },
-    {
-        "title": "Cellular Jail Light & Sound Show",
-        "island": "PORT_BLAIR",
-        "category": "LIGHT_SOUND",
-        "base_price_inr": 150.00,
-        "foreign_price_inr": 300.00,
-        "slots": [
-            ("18:00", "19:00", 250),
-            ("19:15", "20:15", 250),
-            ("20:30", "21:30", 250),
-        ],
-    },
-    {
-        "title": "Ross Island (Netaji Subhash Chandra Bose Dweep)",
-        "island": "PORT_BLAIR",
-        "category": "MONUMENT",
-        "base_price_inr": 50.00,
-        "foreign_price_inr": 200.00,
-        "slots": [
-            ("08:30", "11:30", 400),
-            ("12:30", "15:30", 400),
-        ],
-    },
-    {
-        "title": "Elephant Beach Scuba Diving & Sea Walk",
-        "island": "HAVELOCK",
-        "category": "WATER_SPORT",
-        "base_price_inr": 2500.00,
-        "foreign_price_inr": 3500.00,
-        "slots": [
-            ("08:00", "10:00", 30),
-            ("10:30", "12:30", 30),
-            ("13:00", "15:00", 30),
-        ],
-    },
-    {
-        "title": "North Bay Coral Glass-Bottom Safari",
-        "island": "PORT_BLAIR",
-        "category": "WATER_SPORT",
-        "base_price_inr": 800.00,
-        "foreign_price_inr": 1500.00,
-        "slots": [
-            ("09:00", "11:00", 50),
-            ("11:30", "13:30", 50),
-            ("14:00", "16:00", 50),
-        ],
-    },
-]
+from app.data.catalog_templates import REAL_ATTRACTIONS
 
 
 async def seed():

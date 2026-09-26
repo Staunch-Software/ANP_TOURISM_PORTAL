@@ -1,11 +1,15 @@
 from contextlib import asynccontextmanager
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.database import engine, Base, sync_missing_columns
+from app.services.availability_service import ensure_rolling_availability
 from app.api.v1 import auth, attractions, ferry, cart, payments, tickets, admin, sync, operator, gates, vendor, group_bookings, agent, grievances
+
+scheduler = AsyncIOScheduler()
 
 
 @asynccontextmanager
@@ -18,7 +22,20 @@ async def lifespan(app: FastAPI):
         # already exists.
         await conn.run_sync(sync_missing_columns)
     print("Database tables verified & initialized.")
+
+    # Attraction slots / ferry sailings were previously seeded for a fixed
+    # N-day window from whenever seed_catalog.py/seed_ferries.py were last
+    # run by hand -- once "today" moved past that window, bookings and
+    # reschedules silently ran out of availability. This keeps a rolling
+    # window always topped up: once now (covers a backend that's been off
+    # for a while), then once a day.
+    await ensure_rolling_availability()
+    scheduler.add_job(ensure_rolling_availability, "interval", days=1, id="rolling_availability")
+    scheduler.start()
+
     yield
+
+    scheduler.shutdown()
 
 
 app = FastAPI(

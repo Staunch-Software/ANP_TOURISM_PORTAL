@@ -294,7 +294,7 @@ async def process_refund(
     current_user: User = Depends(get_current_user),
 ):
     # Security: Ensure only authorized admins/system can trigger refunds
-    if current_user.role not in ["ADMIN", "AGENCY_SUPPORT"]:
+    if current_user.user_type not in ["ADMIN", "TOURISM_OFFICER"]:
         raise HTTPException(status_code=403, detail="Not authorized to process refunds")
 
     try:

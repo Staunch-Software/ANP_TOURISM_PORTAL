@@ -577,10 +577,7 @@ async def cancel_booking(
             seat_res = await db.execute(select(FerrySeat).where(FerrySeat.id == order_item.ferry_seat_id))
             seat = seat_res.scalars().first()
             if seat:
-                seat.status = "AVAILABLE"
-                seat.passenger_name = None
-                seat.passenger_age = None
-                seat.passenger_gender = None
+                seat.is_booked = False
     
     order.status = "CANCELLED"
     
