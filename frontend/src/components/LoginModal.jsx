@@ -180,6 +180,10 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
     }
     setError(null);
     setStep('OTP');
+    // Best-effort: fire the WhatsApp send in the background without
+    // blocking the OTP screen -- the fixed demo code (123456) still works
+    // regardless of whether this actually reaches WhatsApp.
+    API.post('/auth/request-otp', { phone_number: phoneNumber }).catch(() => {});
   };
 
   const handleVerifyOtp = async (e) => {

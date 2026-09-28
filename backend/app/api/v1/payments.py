@@ -21,6 +21,7 @@ from app.models.admin_alert import AdminAlert
 from app.api.v1.auth import get_current_user
 from app.services.crypto_service import sign_ticket_payload
 from app.services.email_service import send_ticket_confirmation
+from app.services.whatsapp_service import send_whatsapp_ticket_confirmation
 from app.schemas.payment import (
     PaymentConfirmRequest, PaymentConfirmResponse, 
     RazorpayOrderRequest, RazorpayOrderResponse, RefundRequest
@@ -265,10 +266,16 @@ async def confirm_payment_and_issue_tickets(
     db.add_all(tickets_to_create)
     await db.commit()
     
-    # Send email in background
+    # Send email + WhatsApp (demo sidecar) in background
     background_tasks.add_task(
         send_ticket_confirmation,
         current_user.email,
+        order.order_ref,
+        tickets_to_create
+    )
+    background_tasks.add_task(
+        send_whatsapp_ticket_confirmation,
+        current_user.phone_number,
         order.order_ref,
         tickets_to_create
     )

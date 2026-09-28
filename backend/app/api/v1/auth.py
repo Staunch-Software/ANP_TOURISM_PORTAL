@@ -15,8 +15,11 @@ from app.core.database import get_db
 from app.core.redis import get_redis
 from app.models.user import User
 from app.services.password_service import hash_password, verify_password, MIN_PASSWORD_LENGTH
+from app.services.whatsapp_service import send_whatsapp_otp
 from app.schemas.auth import (
     OTPRequest,
+    OTPRequestOnly,
+    OTPRequestResponse,
     TokenResponse,
     ProfileResponse,
     ProfileUpdateRequest,
@@ -59,6 +62,19 @@ async def _issue_session_token(user: User, r) -> TokenResponse:
         user_id=str(user.id),
         phone=user.phone_number,
     )
+
+
+@router.post("/request-otp", response_model=OTPRequestResponse)
+async def request_otp(req: OTPRequestOnly):
+    """
+    Demo-only: sends the (fixed) demo OTP via the WhatsApp sidecar
+    (whatsapp-service/) as a stand-in for a paid SMS gateway. Always
+    returns success even if WhatsApp delivery fails -- verify-otp still
+    accepts the fixed demo code regardless, so this endpoint existing or
+    not, working or not, never blocks login.
+    """
+    await send_whatsapp_otp(req.phone_number, "123456")
+    return OTPRequestResponse(message="OTP sent")
 
 
 @router.post("/verify-otp", response_model=TokenResponse)

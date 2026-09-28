@@ -1,0 +1,144 @@
+"""
+WhatsApp delivery via the official Meta WhatsApp Cloud API (free tier --
+1,000 conversations/month, no ToS risk, no QR-scanned phone to babysit).
+Deliberately NOT using an unofficial WhatsApp Web scraper (e.g. Baileys):
+those get automated/high-volume numbers banned and drop connection
+mid-demo, which is unacceptable for a government RFP.
+
+Configure via WHATSAPP_CLOUD_API_TOKEN + WHATSAPP_PHONE_NUMBER_ID
+(app/core/config.py). Both empty by default, in which case every function
+here silently no-ops -- same pattern as email_service.py with no SMTP
+creds -- so login/payment flows never depend on this being configured.
+
+Sending a template message (send_whatsapp_otp) requires that template to
+be created and approved in the Meta Business Manager first; until that's
+done, this will log a failure and the caller is unaffected either way.
+Freeform text messages (send_whatsapp_ticket_confirmation) only deliver
+within Meta's 24-hour customer-service window (i.e. after the user has
+messaged the business number at least once) -- also fine for a demo
+context, and callers here don't depend on it succeeding.
+"""
+import asyncio
+import io
+import logging
+
+import qrcode
+import requests
+
+from app.core.config import settings
+
+logger = logging.getLogger("anp.whatsapp")
+
+GRAPH_API_VERSION = "v18.0"
+
+
+def _is_configured() -> bool:
+    return bool(settings.WHATSAPP_CLOUD_API_TOKEN and settings.WHATSAPP_PHONE_NUMBER_ID)
+
+
+def _to_e164(phone_number: str) -> str:
+    digits = "".join(ch for ch in str(phone_number) if ch.isdigit())
+    return digits if len(digits) > 10 else f"91{digits}"
+
+
+def _post_sync(payload: dict, phone_number: str, label: str) -> None:
+    if not _is_configured():
+        logger.info(f"Skipping WhatsApp {label} to {phone_number} (WHATSAPP_CLOUD_API_TOKEN/WHATSAPP_PHONE_NUMBER_ID not configured)")
+        return
+
+    url = f"https://graph.facebook.com/{GRAPH_API_VERSION}/{settings.WHATSAPP_PHONE_NUMBER_ID}/messages"
+    headers = {"Authorization": f"Bearer {settings.WHATSAPP_CLOUD_API_TOKEN}"}
+
+    try:
+        resp = requests.post(url, json=payload, headers=headers, timeout=10)
+        if resp.status_code == 200:
+            logger.info(f"Sent WhatsApp {label} to {phone_number}")
+        else:
+            logger.warning(f"WhatsApp Cloud API returned {resp.status_code} for {label} to {phone_number}: {resp.text}")
+    except Exception as e:
+        logger.warning(f"Failed to reach WhatsApp Cloud API for {label} to {phone_number}: {e}")
+
+
+def _make_qr_png_bytes(qr_data: str) -> bytes:
+    img = qrcode.make(qr_data)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _upload_media_sync(image_bytes: bytes) -> str:
+    """Uploads the QR image to Meta's servers (required before it can be
+    referenced in an outgoing message -- there's no localhost-reachable
+    public URL to point at instead) and returns the resulting media id."""
+    url = f"https://graph.facebook.com/{GRAPH_API_VERSION}/{settings.WHATSAPP_PHONE_NUMBER_ID}/media"
+    headers = {"Authorization": f"Bearer {settings.WHATSAPP_CLOUD_API_TOKEN}"}
+    files = {"file": ("boarding-pass-qr.png", image_bytes, "image/png")}
+    data = {"messaging_product": "whatsapp", "type": "image/png"}
+
+    resp = requests.post(url, headers=headers, files=files, data=data, timeout=15)
+    resp.raise_for_status()
+    return resp.json()["id"]
+
+
+def _send_qr_image_sync(phone_number: str, qr_data: str, caption: str) -> None:
+    if not _is_configured():
+        logger.info(f"Skipping WhatsApp QR image to {phone_number} (WHATSAPP_CLOUD_API_TOKEN/WHATSAPP_PHONE_NUMBER_ID not configured)")
+        return
+
+    try:
+        image_bytes = _make_qr_png_bytes(qr_data)
+        media_id = _upload_media_sync(image_bytes)
+    except Exception as e:
+        logger.warning(f"Failed to generate/upload QR image for {phone_number}: {e}")
+        return
+
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": _to_e164(phone_number),
+        "type": "image",
+        "image": {"id": media_id, "caption": caption},
+    }
+    _post_sync(payload, phone_number, "QR boarding pass image")
+
+
+async def send_whatsapp_otp(phone_number: str, otp_code: str) -> None:
+    # Requires an approved "auth_otp_code" template in Meta Business
+    # Manager with one body parameter. Template name is configurable so a
+    # differently-named approved template can be swapped in without a
+    # code change.
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": _to_e164(phone_number),
+        "type": "template",
+        "template": {
+            "name": settings.WHATSAPP_OTP_TEMPLATE_NAME,
+            "language": {"code": "en_US"},
+            "components": [{"type": "body", "parameters": [{"type": "text", "text": otp_code}]}],
+        },
+    }
+    await asyncio.to_thread(_post_sync, payload, phone_number, "OTP")
+
+
+async def send_whatsapp_ticket_confirmation(phone_number: str, order_ref: str, tickets: list) -> None:
+    lines = [f"- {t.title} ({t.item_type}) - {t.passenger_name} - Ref: {t.ticket_ref}" for t in tickets]
+    text = (
+        f"*Payment Successful*\n\n"
+        f"Your order {order_ref} is confirmed.\n\n"
+        f"Tickets:\n" + "\n".join(lines) + "\n\n"
+        f"Your Unified QR Boarding Pass is attached below -- also available anytime in the portal's Digital Pass Wallet."
+    )
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": _to_e164(phone_number),
+        "type": "text",
+        "text": {"body": text},
+    }
+    await asyncio.to_thread(_post_sync, payload, phone_number, "ticket confirmation")
+
+    # Every ticket in one booking shares the same signed QR (see
+    # payments.py's "Unified QR" comment) -- one image covers the order.
+    if tickets:
+        head = tickets[0]
+        qr_data = f"{head.qr_payload_json}|SIG:{head.qr_signature_b64}"
+        caption = f"Boarding Pass QR - Order {order_ref}"
+        await asyncio.to_thread(_send_qr_image_sync, phone_number, qr_data, caption)

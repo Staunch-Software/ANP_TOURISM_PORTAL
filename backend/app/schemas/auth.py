@@ -8,6 +8,14 @@ class OTPRequest(BaseModel):
     otp: str
 
 
+class OTPRequestOnly(BaseModel):
+    phone_number: str
+
+
+class OTPRequestResponse(BaseModel):
+    message: str
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str

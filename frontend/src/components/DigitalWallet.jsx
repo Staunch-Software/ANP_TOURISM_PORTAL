@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import API from '../api/client';
 import { QRCodeSVG } from 'qrcode.react';
 import {
-  Ticket, ShieldCheck, CheckCircle2, XCircle, Printer, RefreshCw, Ship, Landmark, Sparkles, CalendarClock
+  Ticket, ShieldCheck, CheckCircle2, XCircle, Printer, RefreshCw, Ship, Landmark, Sparkles, CalendarClock, MessageCircle
 } from 'lucide-react';
 
 const ITEM_TYPE_ICON = { FERRY: Ship, ATTRACTION: Landmark };
@@ -50,6 +50,25 @@ export function DigitalWallet({ user, onRequireLogin }) {
     } catch (err) {
       alert(err.response?.data?.detail || "Cancellation failed");
     }
+  };
+
+  // Official WhatsApp "Click to Chat" deep link (wa.me) -- no API keys,
+  // no ToS risk, works instantly. Pre-fills the tourist's own WhatsApp
+  // with their ticket details, defaulting to their own registered number
+  // so it opens straight into "Message yourself".
+  const handleShareOnWhatsApp = (pass) => {
+    const lines = pass.entitlements.map(
+      (e) => `- ${e.title} (${e.item_type}) - ${e.passenger_name} - Ref: ${e.ticket_ref}`
+    );
+    const text =
+      `*ANIIDCO Tourism Portal - Boarding Pass*\n\n` +
+      `Order: ${pass.order_ref}\n` +
+      `Lead Passenger: ${pass.lead_passenger_name}\n\n` +
+      `Tickets:\n${lines.join('\n')}\n\n` +
+      `View your Unified QR Boarding Pass in the portal's Digital Pass Wallet.`;
+    const targetNumber = user?.phone_number ? `91${user.phone_number.replace(/\D/g, '').slice(-10)}` : '';
+    const url = `https://wa.me/${targetNumber}?text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   const handleSimulateTurnstileScan = async (passRef) => {
@@ -297,6 +316,14 @@ export function DigitalWallet({ user, onRequireLogin }) {
                   className="px-3 py-2 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 text-xs font-semibold flex items-center gap-1.5 transition-colors"
                 >
                   <Printer className="w-3.5 h-3.5" /> Print Pass
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleShareOnWhatsApp(pass)}
+                  className="px-3 py-2 rounded-lg bg-white border border-emerald-200 hover:bg-emerald-50 text-emerald-700 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                >
+                  <MessageCircle className="w-3.5 h-3.5" /> Send to WhatsApp
                 </button>
 
                 {hasCancellableEntitlement && (

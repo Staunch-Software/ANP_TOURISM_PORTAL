@@ -39,6 +39,16 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM_EMAIL: str = "noreply@andamantourism.gov.in"
 
+    # --- WhatsApp (official Meta Cloud API, free tier) ---
+    # From Meta for Developers -> your app -> WhatsApp -> API Setup.
+    # Empty by default so the app runs fine without it; whatsapp_service.py
+    # no-ops (like email does with no SMTP creds) rather than failing.
+    WHATSAPP_CLOUD_API_TOKEN: str = ""
+    WHATSAPP_PHONE_NUMBER_ID: str = ""
+    # Name of the approved message template used for OTP delivery (Meta
+    # requires OTP-style templates to be pre-approved in Business Manager).
+    WHATSAPP_OTP_TEMPLATE_NAME: str = "auth_otp_code"
+
 
     class Config:
         env_file = ".env"
