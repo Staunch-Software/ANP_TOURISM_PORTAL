@@ -51,3 +51,8 @@ async def send_revised_ticket_email(user_email: str, ticket_ref: str, new_slot: 
     subject = f"Your Ticket Time Slot has been Revised: {ticket_ref}"
     html_content = f"<html><body><h2>Ticket Modification Approved</h2><p>ANIIDCO has approved your request to modify ticket <strong>{ticket_ref}</strong>.</p><p>Your new approved time slot is: <strong>{new_slot}</strong></p><p>Your Unified QR Boarding pass has been automatically updated.</p></body></html>"
     await asyncio.to_thread(_send_email_sync, user_email, subject, html_content)
+
+async def send_pre_visit_reminder(user_email: str, title: str, slot_or_seat_info: str, ticket_ref: str):
+    subject = f"Reminder: Your visit to {title} is coming up"
+    html_content = f"<html><body><h2>Upcoming Visit Reminder</h2><p>This is a reminder that your booking for <strong>{title}</strong> is scheduled soon:</p><p><strong>{slot_or_seat_info}</strong></p><p>Ticket Ref: {ticket_ref}</p><p>Please have your Unified QR Boarding Pass ready for entry. Access it anytime in the portal's Digital Pass Wallet.</p></body></html>"
+    await asyncio.to_thread(_send_email_sync, user_email, subject, html_content)

@@ -38,6 +38,11 @@ class Ticket(Base):
     # the same date, time, and slot") is just "already EXPRESS => reject."
     ticket_tier = Column(String(20), nullable=False, default="STANDARD")
     checked_in_at = Column(DateTime, nullable=True)
+
+    # RFP p.25 "Timely Reminders": set once a pre-visit reminder email has
+    # gone out for this ticket's slot, so the reminder job never re-sends
+    # it on a later pass -- see app/services/reminder_service.py.
+    reminder_sent_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

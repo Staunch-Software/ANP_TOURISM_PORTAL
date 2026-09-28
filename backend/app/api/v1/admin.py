@@ -22,6 +22,8 @@ from app.models.reschedule import RescheduleRequest
 from app.models.grievance import GrievanceTicket
 from app.api.v1.auth import get_current_user
 from app.schemas.ticket import RescheduleRequestSummary, RescheduleDecisionRequest
+from app.schemas.payment import CancellationSummary
+from app.api.v1.payments import process_cancellation_refund
 from app.schemas.grievance import (
     GrievanceSummary,
     GrievancePriorityUpdateRequest,
@@ -1259,3 +1261,72 @@ async def resolve_grievance(
 
     await db.commit()
     return await _grievance_to_summary(db, ticket)
+
+
+def _cancellation_to_summary(o: Order, complainant_phone: str = None) -> CancellationSummary:
+    return CancellationSummary(
+        id=str(o.id),
+        order_ref=o.order_ref,
+        order_status=o.status,
+        gross_amount=float(o.gross_amount),
+        net_payable=float(o.net_payable),
+        cancelled_at=o.cancelled_at.isoformat() if o.cancelled_at else None,
+        refund_status=o.refund_status,
+        refund_amount=float(o.refund_amount) if o.refund_amount is not None else None,
+        refund_id=o.refund_id,
+        refund_failure_reason=o.refund_failure_reason,
+        complainant_phone=complainant_phone,
+    )
+
+
+# Cancellations & Refunds -- RFP p.27 cancellation policy. The Razorpay
+# refund call used to be a bare try/except that only printed on failure,
+# so a failed refund was invisible to everyone; this surfaces it and lets
+# staff retry it. See also GET /tickets/my-cancellations (tourist view).
+@router.get("/cancellations", response_model=List[CancellationSummary])
+async def list_cancellations(
+    refund_status_filter: str = "ALL",
+    admin_user: User = Depends(verify_admin_role),
+    db: AsyncSession = Depends(get_db),
+):
+    query = select(Order).where(Order.status == "CANCELLED").order_by(Order.cancelled_at.desc())
+    if refund_status_filter and refund_status_filter != "ALL":
+        query = query.where(Order.refund_status == refund_status_filter)
+    res = await db.execute(query)
+    orders = res.scalars().all()
+
+    summaries = []
+    for o in orders:
+        user_res = await db.execute(select(User).where(User.id == o.user_id))
+        complainant = user_res.scalars().first()
+        summaries.append(_cancellation_to_summary(o, complainant.phone_number if complainant else None))
+    return summaries
+
+
+@router.post("/cancellations/{order_id}/retry-refund", response_model=CancellationSummary)
+async def retry_refund(
+    order_id: str,
+    admin_user: User = Depends(verify_admin_role),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        order_uuid = uuid.UUID(order_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid order UUID")
+
+    res = await db.execute(select(Order).where(Order.id == order_uuid))
+    order = res.scalars().first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.status != "CANCELLED":
+        raise HTTPException(status_code=400, detail="Only a cancelled order can have its refund retried")
+    if order.refund_status != "FAILED":
+        raise HTTPException(status_code=400, detail=f"Refund is not in a FAILED state (currently: {order.refund_status})")
+
+    retry_amount = float(order.refund_amount) if order.refund_amount is not None else float(order.net_payable)
+    await process_cancellation_refund(order, retry_amount, "Manual retry by ANIIDCO admin")
+    await db.commit()
+
+    user_res = await db.execute(select(User).where(User.id == order.user_id))
+    complainant = user_res.scalars().first()
+    return _cancellation_to_summary(order, complainant.phone_number if complainant else None)

@@ -5,7 +5,7 @@ import {
   Ship, CloudRain, CheckCircle2, FileSpreadsheet, RefreshCw, Sliders,
   UserPlus, ShieldAlert, MapPin, KeyRound, Trash2, Plus, ClipboardCheck,
   GraduationCap, Eye, X, LayoutDashboard, ClipboardList, ScanLine, Anchor, UserCog,
-  BarChart3, Bell, BellRing, CalendarClock, LifeBuoy, ArrowUpCircle
+  BarChart3, Bell, BellRing, CalendarClock, LifeBuoy, ArrowUpCircle, Receipt, RotateCcw
 } from 'lucide-react';
 import { DashboardSidebar } from './DashboardSidebar';
 import { StaffGateScanner } from './StaffGateScanner';
@@ -44,6 +44,7 @@ const ADMIN_SECTION_GROUPS = [
       { key: 'GROUPS', label: 'Group Bookings', icon: GraduationCap },
       { key: 'RESCHEDULES', label: 'Reschedule Requests', icon: CalendarClock },
       { key: 'GRIEVANCES', label: 'Grievance Redressal', icon: LifeBuoy },
+      { key: 'CANCELLATIONS', label: 'Cancellations & Refunds', icon: Receipt },
     ],
   },
 ];
@@ -144,6 +145,16 @@ export function AdminDashboard({ user, onLogout }) {
   const [decidingGrievanceId, setDecidingGrievanceId] = useState(null);
   const [ackPriority, setAckPriority] = useState({}); // grievance id -> selected priority before acknowledging
 
+  // Cancellations & Refunds (RFP p.27 cancellation policy) -- the Razorpay
+  // refund call used to be a bare try/except that only printed on
+  // failure, so a failed refund was invisible to everyone. This queue
+  // surfaces every cancelled order's refund outcome and lets staff retry
+  // a FAILED one.
+  const [cancellations, setCancellations] = useState([]);
+  const [cancellationsLoading, setCancellationsLoading] = useState(false);
+  const [cancellationRefundFilter, setCancellationRefundFilter] = useState('ALL');
+  const [retryingOrderRef, setRetryingOrderRef] = useState(null);
+
   const fetchGroupBookings = async () => {
     setGroupBookingsLoading(true);
     try {
@@ -237,6 +248,10 @@ export function AdminDashboard({ user, onLogout }) {
   useEffect(() => {
     fetchGrievances(grievanceStatusFilter);
   }, [grievanceStatusFilter]);
+
+  useEffect(() => {
+    fetchCancellations(cancellationRefundFilter);
+  }, [cancellationRefundFilter]);
 
   const fetchAnalytics = async (days) => {
     setAnalyticsLoading(true);
@@ -366,6 +381,31 @@ export function AdminDashboard({ user, onLogout }) {
       alert(err.response?.data?.detail || 'Could not resolve grievance');
     } finally {
       setDecidingGrievanceId(null);
+    }
+  };
+
+  const fetchCancellations = async (refundStatusFilter) => {
+    setCancellationsLoading(true);
+    try {
+      const res = await API.get(`/admin/cancellations?refund_status_filter=${refundStatusFilter}`);
+      setCancellations(res.data);
+    } catch (err) {
+      console.error('Failed to load cancellations', err);
+      setCancellations([]);
+    } finally {
+      setCancellationsLoading(false);
+    }
+  };
+
+  const handleRetryRefund = async (orderId) => {
+    setRetryingOrderRef(orderId);
+    try {
+      await API.post(`/admin/cancellations/${orderId}/retry-refund`);
+      fetchCancellations(cancellationRefundFilter);
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Could not retry refund');
+    } finally {
+      setRetryingOrderRef(null);
     }
   };
 
@@ -1321,6 +1361,92 @@ export function AdminDashboard({ user, onLogout }) {
                       {decidingGrievanceId === g.id ? 'Processing...' : 'Resolve'}
                     </button>
                   </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      </>
+      )}
+
+      {activeSection === 'CANCELLATIONS' && (
+      <>
+      {/* Cancellations & Refunds -- RFP p.27 cancellation policy. The
+          Razorpay refund call is a real API call that can fail (bad
+          payment id, Razorpay downtime); this makes that failure visible
+          instead of it disappearing into a server log nobody reads. */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <span className="text-[10px] font-extrabold uppercase tracking-widest text-cyan-700">
+              Cancellation Policy (RFP p.27)
+            </span>
+            <h3 className="font-serif text-lg font-black text-navy-800 flex items-center gap-2">
+              <Receipt className="w-5 h-5 text-cyan-600" /> Cancellations &amp; Refunds
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Every cancelled order's refund outcome, so a failed Razorpay refund never goes unnoticed.
+            </p>
+          </div>
+          <select
+            value={cancellationRefundFilter}
+            onChange={(e) => setCancellationRefundFilter(e.target.value)}
+            className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-navy-800"
+          >
+            <option value="ALL">All</option>
+            <option value="PROCESSED">Refund Processed</option>
+            <option value="FAILED">Refund Failed</option>
+            <option value="NOT_APPLICABLE">No Refund Needed</option>
+          </select>
+        </div>
+
+        {cancellationsLoading ? (
+          <div className="text-center py-12 text-slate-400 text-xs">Loading cancellations...</div>
+        ) : cancellations.length === 0 ? (
+          <div className="text-center py-14 flex flex-col items-center gap-2">
+            <Receipt className="w-9 h-9 text-slate-300" />
+            <p className="text-xs text-slate-400">No cancellations in this filter.</p>
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {cancellations.map((c) => (
+              <div
+                key={c.id}
+                className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                  c.refund_status === 'FAILED' ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-200'
+                }`}
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <span className="font-mono text-[10px] text-cyan-700 font-bold">{c.order_ref}</span>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      c.refund_status === 'PROCESSED' ? 'bg-emerald-100 text-emerald-700' :
+                      c.refund_status === 'FAILED' ? 'bg-red-100 text-red-700' : 'bg-slate-200 text-slate-600'
+                    }`}>
+                      {(c.refund_status || 'UNKNOWN').replace(/_/g, ' ')}
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-400">
+                      {c.cancelled_at ? new Date(c.cancelled_at).toLocaleString('en-IN') : ''}
+                    </span>
+                  </div>
+                  <p className="text-xs text-navy-800">
+                    {c.complainant_phone} · Net paid ₹{c.net_payable.toFixed(2)}
+                    {c.refund_amount != null && <> · Refund ₹{c.refund_amount.toFixed(2)}</>}
+                    {c.refund_id && <> · Razorpay ref {c.refund_id}</>}
+                  </p>
+                  {c.refund_failure_reason && (
+                    <p className="text-[11px] text-red-600 mt-1">Error: {c.refund_failure_reason}</p>
+                  )}
+                </div>
+                {c.refund_status === 'FAILED' && (
+                  <button
+                    onClick={() => handleRetryRefund(c.id)}
+                    disabled={retryingOrderRef === c.id}
+                    className="px-4 py-2 bg-navy-800 hover:bg-navy-700 text-white font-bold text-xs rounded-lg flex items-center gap-2 disabled:opacity-50 shrink-0"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" /> {retryingOrderRef === c.id ? 'Retrying...' : 'Retry Refund'}
+                  </button>
                 )}
               </div>
             ))}

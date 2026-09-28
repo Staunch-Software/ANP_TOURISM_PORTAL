@@ -33,10 +33,40 @@ from app.core.config import settings
 # In production, these should be securely loaded from env variables
 razorpay_client = razorpay.Client(
     auth=(
-        settings.RAZORPAY_KEY_ID, 
+        settings.RAZORPAY_KEY_ID,
         settings.RAZORPAY_KEY_SECRET
     )
 )
+
+
+async def process_cancellation_refund(order: Order, refund_amount: float, reason: str) -> None:
+    """
+    Shared by tickets.py's tourist self-cancel and group_bookings.py's
+    admin cancel -- records the outcome on the Order itself instead of
+    the old bare try/except that only printed on failure, so a failed
+    refund is now visible to both the tourist and an admin (see
+    GET /admin/cancellations) rather than disappearing silently.
+    """
+    order.cancelled_at = datetime.utcnow()
+
+    if not order.razorpay_payment_id:
+        order.refund_status = "NOT_APPLICABLE"
+        return
+
+    try:
+        refund = razorpay_client.payment.refund(order.razorpay_payment_id, {
+            "amount": int(refund_amount * 100),
+            "speed": "normal",
+            "notes": {"reason": reason},
+        })
+        order.refund_status = "PROCESSED"
+        order.refund_amount = refund_amount
+        order.refund_id = refund.get("id")
+    except Exception as e:
+        order.refund_status = "FAILED"
+        order.refund_amount = refund_amount
+        order.refund_failure_reason = str(e)
+
 
 # RFP Group Bookings Clause V: "alert and report to ANIIDCO regarding
 # multiple bookings from the same ID ... who have reserved the same

@@ -28,3 +28,17 @@ class RefundRequest(BaseModel):
     payment_id: str
     amount: float
     reason: Optional[str] = "Customer ticket cancellation"
+
+
+class CancellationSummary(BaseModel):
+    id: Optional[str] = None
+    order_ref: str
+    order_status: str
+    gross_amount: float
+    net_payable: float
+    cancelled_at: Optional[str] = None
+    refund_status: Optional[str] = None  # PROCESSED, FAILED, NOT_APPLICABLE
+    refund_amount: Optional[float] = None
+    refund_id: Optional[str] = None
+    refund_failure_reason: Optional[str] = None
+    complainant_phone: Optional[str] = None  # admin view only

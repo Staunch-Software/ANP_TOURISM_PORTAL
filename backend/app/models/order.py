@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, String, Integer, Numeric, DateTime, ForeignKey
+from sqlalchemy import Column, String, Integer, Numeric, DateTime, ForeignKey, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -21,6 +21,16 @@ class Order(Base):
     status = Column(String(30), default="PENDING_PAYMENT")  # PENDING_PAYMENT, CONFIRMED, CANCELLED
     razorpay_payment_id = Column(String(100), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Cancellation/refund tracking (RFP p.27 cancellation policy) -- the
+    # Razorpay refund call used to be a bare try/except that only printed
+    # on failure, so neither the tourist nor an admin could ever tell
+    # whether a refund actually went through. These make that auditable.
+    cancelled_at = Column(DateTime, nullable=True)
+    refund_status = Column(String(20), nullable=True)  # PROCESSED, FAILED, NOT_APPLICABLE
+    refund_amount = Column(Numeric(10, 2), nullable=True)
+    refund_id = Column(String(100), nullable=True)  # Razorpay refund id, when PROCESSED
+    refund_failure_reason = Column(Text, nullable=True)  # exception message, when FAILED
 
     items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
 

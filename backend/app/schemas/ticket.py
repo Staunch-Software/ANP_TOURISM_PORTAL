@@ -50,6 +50,10 @@ class OrderPassResponse(BaseModel):
     lead_passenger_name: str
     qr_token: str  # Combined JSON payload + signature, shared by every Ticket row under this booking_ref
     entitlements: List[EntitlementResponse]
+    order_status: Optional[str] = None
+    refund_status: Optional[str] = None
+    refund_amount: Optional[float] = None
+    cancelled_at: Optional[str] = None
 
 
 class OfflineVerificationResponse(BaseModel):

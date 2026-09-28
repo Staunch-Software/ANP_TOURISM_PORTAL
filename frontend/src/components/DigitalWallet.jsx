@@ -199,6 +199,24 @@ export function DigitalWallet({ user, onRequireLogin }) {
                 </div>
               </div>
 
+              {pass.order_status === 'CANCELLED' && (
+                <div className={`px-5 py-2.5 text-xs font-semibold border-b ${
+                  pass.refund_status === 'FAILED'
+                    ? 'bg-red-50 text-red-700 border-red-100'
+                    : 'bg-slate-50 text-slate-600 border-slate-100'
+                }`}>
+                  {pass.refund_status === 'PROCESSED' && (
+                    <>Booking cancelled — ₹{pass.refund_amount?.toFixed(2)} refunded{pass.cancelled_at ? ` on ${new Date(pass.cancelled_at).toLocaleDateString('en-IN')}` : ''}.</>
+                  )}
+                  {pass.refund_status === 'FAILED' && (
+                    <>Booking cancelled — refund could not be processed automatically. ANIIDCO support has been notified and will process it manually.</>
+                  )}
+                  {pass.refund_status === 'NOT_APPLICABLE' && (
+                    <>Booking cancelled — no payment was on record, so no refund was needed.</>
+                  )}
+                </div>
+              )}
+
               {/* Pass Mid Section: One QR Code covering the whole order */}
               <div className="p-6 flex flex-col sm:flex-row items-center gap-6">
                 <div className="bg-white p-3 rounded-2xl shadow-inner border-2 border-slate-200 flex-shrink-0">

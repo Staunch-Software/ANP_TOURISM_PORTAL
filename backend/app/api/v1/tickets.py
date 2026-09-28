@@ -15,10 +15,10 @@ from app.models.attraction import Attraction, AttractionSlot
 from app.models.ferry import FerrySeat, FerrySchedule
 from app.models.reschedule import RescheduleRequest
 from app.api.v1.auth import get_current_user
-from app.api.v1.payments import razorpay_client
-from app.models.order import Order
+from app.api.v1.payments import process_cancellation_refund
 from app.api.v1.admin import verify_staff_role
 from app.services.crypto_service import verify_ticket_offline, get_public_key_hex
+from app.schemas.payment import CancellationSummary
 from app.schemas.ticket import (
     OrderPassResponse,
     EntitlementResponse,
@@ -138,6 +138,10 @@ async def get_my_passes(
     for booking_ref, legs in bookings.items():
         head = legs[0]
         qr_combined = f"{head.qr_payload_json}|SIG:{head.qr_signature_b64}"
+
+        order_res = await db.execute(select(Order).where(Order.order_ref == booking_ref))
+        order = order_res.scalars().first()
+
         passes.append(
             OrderPassResponse(
                 booking_ref=booking_ref,
@@ -145,9 +149,44 @@ async def get_my_passes(
                 lead_passenger_name=head.passenger_name,
                 qr_token=qr_combined,
                 entitlements=[_entitlement_to_response(t) for t in legs],
+                order_status=order.status if order else None,
+                refund_status=order.refund_status if order else None,
+                refund_amount=float(order.refund_amount) if order and order.refund_amount is not None else None,
+                cancelled_at=order.cancelled_at.isoformat() if order and order.cancelled_at else None,
             )
         )
     return passes
+
+
+# Tourist: view my own cancellation/refund history -- previously there was
+# no way to see whether a refund actually succeeded (it was a bare
+# try/except that only printed on failure). See also GET
+# /admin/cancellations for the staff-side equivalent.
+@router.get("/my-cancellations", response_model=List[CancellationSummary])
+async def get_my_cancellations(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(
+        select(Order)
+        .where(Order.user_id == current_user.id, Order.status == "CANCELLED")
+        .order_by(Order.cancelled_at.desc())
+    )
+    orders = res.scalars().all()
+    return [
+        CancellationSummary(
+            order_ref=o.order_ref,
+            order_status=o.status,
+            gross_amount=float(o.gross_amount),
+            net_payable=float(o.net_payable),
+            cancelled_at=o.cancelled_at.isoformat() if o.cancelled_at else None,
+            refund_status=o.refund_status,
+            refund_amount=float(o.refund_amount) if o.refund_amount is not None else None,
+            refund_id=o.refund_id,
+            refund_failure_reason=o.refund_failure_reason,
+        )
+        for o in orders
+    ]
 
 
 # 2. Public Key Endpoint (Used by Gate Turnstiles to pre-download the public key)
@@ -573,26 +612,30 @@ async def cancel_booking(
             slot = slot_res.scalars().first()
             if slot:
                 slot.booked_count = max(0, slot.booked_count - 1)
+                if ticket.ticket_tier == "EXPRESS":
+                    slot.premium_booked_count = max(0, (slot.premium_booked_count or 0) - 1)
         elif ticket.item_type == "FERRY" and order_item.ferry_seat_id:
             seat_res = await db.execute(select(FerrySeat).where(FerrySeat.id == order_item.ferry_seat_id))
             seat = seat_res.scalars().first()
             if seat:
                 seat.is_booked = False
-    
+
     order.status = "CANCELLED"
-    
-    # Process Refund if applicable
-    if order.razorpay_payment_id:
-        try:
-            # 50% penalty as per RFP Page 27, Clause 6 (simplified here)
-            refund_amount = float(order.net_payable) * 0.5
-            razorpay_client.payment.refund(order.razorpay_payment_id, {
-                "amount": int(refund_amount * 100),
-                "speed": "normal",
-                "notes": {"reason": "Cancelled by tourist"}
-            })
-        except Exception as e:
-            print(f"Refund API failed: {e}")
+
+    # 50% penalty as per RFP Page 27, Clause 6 (simplified here)
+    refund_amount = float(order.net_payable) * 0.5
+    await process_cancellation_refund(order, refund_amount, "Cancelled by tourist")
 
     await db.commit()
-    return {"success": True, "message": "Booking cancelled and 50% refund initiated successfully."}
+
+    if order.refund_status == "FAILED":
+        message = (
+            f"Booking cancelled. The ₹{refund_amount:.2f} refund could not be processed automatically "
+            f"({order.refund_failure_reason}) -- ANIIDCO support has been notified and will process it manually."
+        )
+    elif order.refund_status == "PROCESSED":
+        message = f"Booking cancelled and ₹{refund_amount:.2f} refund (50%) initiated successfully."
+    else:
+        message = "Booking cancelled. No payment was on record, so no refund was needed."
+
+    return {"success": order.refund_status != "FAILED", "message": message}

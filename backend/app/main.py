@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import engine, Base, sync_missing_columns
 from app.services.availability_service import ensure_rolling_availability
+from app.services.reminder_service import send_pending_reminders
 from app.api.v1 import auth, attractions, ferry, cart, payments, tickets, admin, sync, operator, gates, vendor, group_bookings, agent, grievances
 
 scheduler = AsyncIOScheduler()
@@ -31,6 +32,12 @@ async def lifespan(app: FastAPI):
     # for a while), then once a day.
     await ensure_rolling_availability()
     scheduler.add_job(ensure_rolling_availability, "interval", days=1, id="rolling_availability")
+
+    # RFP p.25 "Timely Reminders" -- checks hourly for any ISSUED ticket
+    # whose slot is now within 24 hours out and hasn't been reminded yet.
+    await send_pending_reminders()
+    scheduler.add_job(send_pending_reminders, "interval", hours=1, id="pre_visit_reminders")
+
     scheduler.start()
 
     yield
