@@ -40,6 +40,10 @@ export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed })
   }, [countdown]);
 
   const fetchCart = async () => {
+    if (!localStorage.getItem('aniidco_token')) {
+      setCart(null);
+      return;
+    }
     setLoading(true);
     try {
       const res = await API.get('/cart');
@@ -368,4 +372,5 @@ export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed })
     </div>
   );
 }
+
 

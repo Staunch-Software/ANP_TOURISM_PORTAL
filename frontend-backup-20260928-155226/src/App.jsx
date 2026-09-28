@@ -14,20 +14,19 @@ import { OperatorRegisterModal } from './components/OperatorRegisterModal';
 import { GroupBookingModal } from './components/GroupBookingModal';
 import { MyGroupBookings } from './components/MyGroupBookings';
 import { SupportCenter } from './components/SupportCenter';
+import { ConnectedIslandsPreview, HeritageSitesPreview } from './components/HeritageSites';
 import {
   Waves, ArrowUpRight, Users2, MapPin, Search, ShieldCheck,
-  Landmark, Clock3, Ship, ArrowRight
+  Landmark, Clock3, Ship, ArrowRight, ChevronLeft, ChevronRight
 } from 'lucide-react';
 
-// Editorial hero carousel — every image here is a verified, real Andaman
-// & Nicobar location (checked individually against known landmarks before
-// use, since this is a government portal and a misattributed photo would
-// be a real credibility problem, not just a cosmetic one).
+// Experience-focused imagery, separate from the attraction cards below.
 const HERO_SLIDES = [
-  { img: '/images/hero-lagoon.jpg', caption: 'Radhanagar Beach, Havelock Island (Swaraj Dweep)' },
-  { img: '/images/ross-island-church-ruins.jpg', caption: "St. Paul's Church Ruins, Ross Island" },
-  { img: '/images/neil-island-natural-bridge.jpg', caption: 'Natural Rock Bridge (Howrah Bridge), Neil Island' },
-  { img: '/images/cellular-jail.jpg', caption: 'Cellular Jail National Memorial, Port Blair' },
+  { category: 'Beach', img: '/images/home-hero-beach.jpg', alt: 'Aerial view of white sand and clear turquoise water around Cinque Island.', caption: 'Beach · Cinque Island turquoise shores', position: '50% 54%', mobilePosition: '50% 56%' },
+  { category: 'Nature', img: '/images/home-hero-nature.jpg', alt: 'Lush tropical island coastline meeting clear blue water.', caption: 'Nature · Lush island coastlines', position: '50% 48%', mobilePosition: '50% 43%' },
+  { category: 'Sunset', img: '/images/home-hero-sunset.jpg', alt: 'Warm sunset light and silhouettes over Wandoor Beach in the Andaman Islands.', caption: 'Sunset · Golden skies over Wandoor', position: '50% 48%', mobilePosition: '50% 48%' },
+  { category: 'Bird watching', img: '/images/home-hero-bird.jpg', alt: 'A vivid kingfisher perched among green tropical forest branches.', caption: 'Bird watching · Kingfisher in its forest habitat', position: '50% 50%', mobilePosition: '50% 48%' },
+  { category: 'Scuba diving', img: '/images/home-hero-scuba.jpg', alt: 'A scuba diver exploring a colorful coral reef in clear blue water.', caption: 'Scuba diving · Discover the coral reefs', position: '50% 52%', mobilePosition: '50% 50%' },
 ];
 
 // Staff/service-provider dashboards are operational tools, not tourist
@@ -86,8 +85,12 @@ export default function App() {
   const [quickSearchIsland, setQuickSearchIsland] = useState('ALL');
   const [quickSearchDate, setQuickSearchDate] = useState(new Date().toISOString().split('T')[0]);
   const [popularAttractions, setPopularAttractions] = useState([]);
+  const initialLoadStartedRef = React.useRef(false);
 
   useEffect(() => {
+    if (initialLoadStartedRef.current) return;
+    initialLoadStartedRef.current = true;
+
     const savedUser = localStorage.getItem('aniidco_user');
     const token = localStorage.getItem('aniidco_token');
     if (savedUser && token) {
@@ -97,13 +100,23 @@ export default function App() {
         setActiveTab(parsedUser.role);
       }
     }
-    refreshCartCount();
+    if (savedUser && token) refreshCartCount();
 
     // Real, bookable attractions with their actual prices — no fabricated
     // ratings or invented figures, since this is a government portal.
     API.get('/attractions')
       .then((res) => setPopularAttractions(res.data.slice(0, 6)))
       .catch(() => setPopularAttractions([]));
+  }, []);
+
+  useEffect(() => {
+    const clearExpiredSession = () => {
+      setCurrentUser(null);
+      setCartCount(0);
+      setIsCartOpen(false);
+    };
+    window.addEventListener('aniidco:auth-expired', clearExpiredSession);
+    return () => window.removeEventListener('aniidco:auth-expired', clearExpiredSession);
   }, []);
 
   useEffect(() => {
@@ -114,6 +127,10 @@ export default function App() {
   }, []);
 
   const refreshCartCount = async () => {
+    if (!localStorage.getItem('aniidco_token')) {
+      setCartCount(0);
+      return;
+    }
     try {
       const res = await API.get('/cart');
       setCartCount(res.data.items?.length || 0);
@@ -164,6 +181,7 @@ export default function App() {
   const handleLogout = () => {
     localStorage.removeItem('aniidco_token');
     localStorage.removeItem('aniidco_user');
+    setFocusRequest(null);
     setCurrentUser(null);
     // Without this, the next person to sign in on this browser (a
     // different role entirely) inherits whatever tab the last session
@@ -173,7 +191,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col font-sans selection:bg-cyan-600 selection:text-white">
+    <div data-portal-page={activeTab} className="portal-app-shell min-h-screen bg-slate-100 text-slate-900 flex flex-col font-sans selection:bg-cyan-600 selection:text-white">
       <Navbar
         user={currentUser}
         onOpenLogin={openLogin}
@@ -181,61 +199,74 @@ export default function App() {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         cartCount={cartCount}
-        onOpenCart={() => setIsCartOpen(true)}
+        onOpenCart={() => currentUser && localStorage.getItem('aniidco_token') ? setIsCartOpen(true) : openLogin('VISITOR')}
       />
 
       {!HIDE_TOURIST_CHROME_TABS.includes(activeTab) && (
       <>
-      {/* Hero Section — editorial rotating carousel of real Andaman locations */}
-      <section className="relative min-h-[420px] flex items-center justify-center overflow-hidden bg-navy-800">
-        {HERO_SLIDES.map((slide, idx) => (
-          <div
-            key={slide.img}
-            className={`absolute inset-0 bg-cover bg-center ease-in-out ${
-              idx === heroSlide ? 'opacity-60' : 'opacity-0'
-            }`}
-            style={{
-              backgroundImage: `url('${slide.img}')`,
-              transform: idx === heroSlide ? 'scale(1.06)' : 'scale(1)',
-              transitionProperty: 'opacity, transform',
-              transitionDuration: '1500ms, 6500ms',
-            }}
-          ></div>
-        ))}
-        <div className="absolute inset-0 bg-gradient-to-b from-navy-900/60 via-navy-900/80 to-navy-900"></div>
-
-        {/* Slide caption + dots */}
-        <div className="absolute bottom-5 left-0 right-0 z-10 flex flex-col items-center gap-3">
-          <span className="text-[11px] text-cyan-200/90 font-semibold tracking-wide">
-            {HERO_SLIDES[heroSlide].caption}
-          </span>
-          <div className="flex items-center gap-1.5">
-            {HERO_SLIDES.map((slide, idx) => (
-              <button
-                key={slide.img}
-                onClick={() => setHeroSlide(idx)}
-                aria-label={`Show slide ${idx + 1}`}
-                className={`h-1.5 rounded-full transition-all ${
-                  idx === heroSlide ? 'w-6 bg-cyan-400' : 'w-1.5 bg-white/40 hover:bg-white/60'
-                }`}
-              ></button>
-            ))}
-          </div>
+      {/* Hero Section — rotating carousel of island experiences */}
+      <section className="relative min-h-[500px] overflow-hidden bg-navy-800">
+        <div className="absolute inset-0">
+          {HERO_SLIDES.map((slide, idx) => (
+            <div key={slide.img} className={`portal-hero-slide ${idx === heroSlide ? 'is-active' : 'is-inactive'}`}>
+              <img className="portal-hero-slide-image" src={slide.img} alt={slide.alt} draggable="false" style={{ '--hero-image-position': slide.position, '--hero-mobile-position': slide.mobilePosition }} />
+            </div>
+          ))}
+          <div className="portal-hero-overlay absolute inset-0"></div>
         </div>
 
-        <div className="relative z-10 max-w-4xl mx-auto px-4 py-14 text-center space-y-5">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 border border-white/25 text-cyan-200 text-[11px] font-bold tracking-wide">
-            <Waves className="w-3.5 h-3.5" />
-            <span>An Official Government of India Initiative</span>
+        <button type="button" onClick={() => setHeroSlide((index) => (index - 1 + HERO_SLIDES.length) % HERO_SLIDES.length)} className="portal-hero-arrow portal-hero-arrow-prev" aria-label="Previous experience"><ChevronLeft className="w-5 h-5" aria-hidden="true" /></button>
+        <button type="button" onClick={() => setHeroSlide((index) => (index + 1) % HERO_SLIDES.length)} className="portal-hero-arrow portal-hero-arrow-next" aria-label="Next experience"><ChevronRight className="w-5 h-5" aria-hidden="true" /></button>
+
+        <div className="relative z-10 max-w-[1280px] mx-auto px-4 py-8 lg:py-10">
+          <div className="grid lg:grid-cols-[minmax(0,1.7fr)_minmax(280px,0.9fr)] items-end gap-6 lg:gap-10">
+            <div className="pt-12 lg:pt-16">
+              <div className="flex items-end gap-3 md:gap-4">
+                {HERO_SLIDES.map((slide, idx) => (
+                  <div
+                    key={slide.img}
+                    className={`overflow-hidden rounded-xl border border-white/20 shadow-lg transition-all duration-500 ${idx === heroSlide ? 'flex-[1.2] opacity-100' : 'flex-[0.7] opacity-70 grayscale-[0.15]'}`}
+                    style={{ maxHeight: '290px' }}
+                  >
+                    <img src={slide.img} alt={slide.alt} className="h-[200px] md:h-[240px] w-full object-cover" />
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-5 flex flex-col items-center gap-3">
+                <span className="text-[11px] text-cyan-100 font-semibold tracking-wide">
+                  {HERO_SLIDES[heroSlide].caption}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  {HERO_SLIDES.map((slide, idx) => (
+                    <button
+                      key={slide.img}
+                      onClick={() => setHeroSlide(idx)}
+                      aria-label={`Show ${slide.category} slide`}
+                      className={`h-1.5 rounded-full transition-all ${
+                        idx === heroSlide ? 'w-6 bg-cyan-400' : 'w-1.5 bg-white/40 hover:bg-white/60'
+                      }`}
+                    ></button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="lg:pt-6 lg:pb-8 text-left lg:justify-self-end">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 border border-white/25 text-cyan-200 text-[11px] font-bold tracking-wide mb-4">
+                <Waves className="w-3.5 h-3.5" />
+                <span>An Official Government of India Initiative</span>
+              </div>
+
+              <h1 className="font-serif text-4xl sm:text-5xl lg:text-[5.2rem] lg:leading-[0.88] font-black tracking-[-0.05em] text-white leading-[0.9]">
+                Explore<br />the<br /><span className="text-cyan-300">Andamans.</span><br />Book It All<br />Here.
+              </h1>
+
+              <p className="mt-5 max-w-[26rem] text-slate-200 text-sm md:text-base leading-relaxed">
+                Monument entry, dive slots and inter-island ferry seats — one verified single-window booking, one tamper-proof digital pass for every gate.
+              </p>
+            </div>
           </div>
-
-          <h1 className="font-serif text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-white leading-tight">
-            Explore the Andamans. <span className="text-cyan-300">Book It All Here.</span>
-          </h1>
-
-          <p className="text-slate-200 text-sm md:text-base max-w-2xl mx-auto leading-relaxed">
-            Monument entry, dive slots and inter-island ferry seats — one verified single-window booking, one tamper-proof digital pass for every gate.
-          </p>
         </div>
       </section>
 
@@ -315,19 +346,22 @@ export default function App() {
       </div>
 
       {/* Trust strip */}
-      <div className="bg-white border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 py-5 grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="portal-trust-strip border-b border-cyan-100">
+        <div className="portal-trust-grid w-full max-w-[96rem] mx-auto px-4 py-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-0">
           {[
-            [ShieldCheck, '9 Heritage & Nature Sites'],
-            [Ship, '3 Islands Connected'],
+            [null, '9 Heritage & Nature Sites'],
+            [null, '3 Islands Connected'],
             [Landmark, '100% Tamper-Proof Digital Passes'],
             [Clock3, '24×7 Booking Availability'],
           ].map(([Icon, label]) => (
-            <div key={label} className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-cyan-50 text-cyan-700 border border-cyan-100 flex items-center justify-center shrink-0">
-                <Icon className="w-4.5 h-4.5" />
+            label === '9 Heritage & Nature Sites' ? <HeritageSitesPreview key={label} /> : label === '3 Islands Connected' ? <ConnectedIslandsPreview key={label} /> : <div key={label} className="portal-trust-item flex items-center gap-4">
+              <div className="portal-trust-icon flex items-center justify-center shrink-0">
+                <Icon className="w-6 h-6" />
               </div>
-              <span className="text-xs font-bold text-navy-800 leading-tight">{label}</span>
+              <span className="portal-trust-copy">
+                <strong>{label.split(' ')[0]}</strong>
+                <span>{label.split(' ').slice(1).join(' ')}</span>
+              </span>
             </div>
           ))}
         </div>

@@ -31,7 +31,7 @@ export function SupportCenter({ user, onRequireLogin }) {
   const [relatedBookingRef, setRelatedBookingRef] = useState('');
 
   useEffect(() => {
-    if (user) fetchGrievances();
+    if (user && localStorage.getItem('aniidco_token')) fetchGrievances();
   }, [user]);
 
   const fetchGrievances = async () => {

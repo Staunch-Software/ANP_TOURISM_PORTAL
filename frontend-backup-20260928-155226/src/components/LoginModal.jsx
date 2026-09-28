@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import API from '../api/client';
 import {
   ShieldCheck, Landmark, Phone, KeyRound, User, Mail, Globe, ArrowRight,
-  AlertCircle, Lock,
+  AlertCircle, Lock, Ship, Store,
 } from 'lucide-react';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
@@ -25,6 +25,13 @@ const CONTEXT_COPY = {
   },
 };
 
+const LOGIN_ROLES = [
+  { id: 'ADMIN', label: 'Admin', description: 'Administration portal access', context: 'STAFF', loginTitle: 'Admin Login', subtitle: 'Authorized administrators only', icon: ShieldCheck },
+  { id: 'VISITOR', label: 'Tourist', description: 'Book ferries and island experiences', context: 'VISITOR', loginTitle: 'Tourist Login', subtitle: 'Access bookings and digital passes', icon: User },
+  { id: 'VENDOR', label: 'Vendor', description: 'Manage activities and services', context: 'STAFF', loginTitle: 'Vendor Login', subtitle: 'Authorized activity vendors only', icon: Store },
+  { id: 'SERVICE_PROVIDER', label: 'Service Provider', description: 'Ferry operators and business partners', context: 'STAFF', loginTitle: 'Service Provider Login', subtitle: 'Authorized service providers only', icon: Ship },
+];
+
 export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VISITOR', onSwitchContext, onOpenOperatorRegister }) {
   // CREDENTIALS: phone + password (RFP 7.2.1-1 default subsequent login)
   // PHONE -> OTP: first-time registration, or the "Login with OTP" /
@@ -33,7 +40,8 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
   //   password yet, or whenever the OTP path was entered via "Forgot
   //   Password" (otpIntent === 'RESET')
   // PROFILE: RFP 7.2.1-1 mandatory profile fields, if still incomplete
-  const [step, setStep] = useState('CREDENTIALS');
+  const [step, setStep] = useState('ROLE');
+  const [selectedRole, setSelectedRole] = useState(null);
   const [otpIntent, setOtpIntent] = useState('REGISTER'); // 'REGISTER' | 'RESET'
 
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -59,7 +67,8 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
   // was left over from the previous session.
   useEffect(() => {
     if (isOpen) {
-      setStep('CREDENTIALS');
+      setStep('ROLE');
+      setSelectedRole(null);
       setOtpIntent('REGISTER');
       setPhoneNumber('');
       setPassword('');
@@ -172,6 +181,19 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
     setStep('PHONE');
   };
 
+  const selectRole = (role) => {
+    setSelectedRole(role.id);
+    onSwitchContext?.(role.context);
+    setError(null);
+    setStep('CREDENTIALS');
+  };
+
+  const returnToRoleSelection = () => {
+    setSelectedRole(null);
+    setError(null);
+    setStep('ROLE');
+  };
+
   const handleSendOtp = (e) => {
     e.preventDefault();
     if (!phoneNumber || phoneNumber.length < 10) {
@@ -266,7 +288,8 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
   };
 
   const headerTitle = {
-    CREDENTIALS: CONTEXT_COPY[loginContext]?.title,
+    ROLE: 'Choose your account type',
+    CREDENTIALS: LOGIN_ROLES.find((role) => role.id === selectedRole)?.loginTitle || CONTEXT_COPY[loginContext]?.title,
     PHONE: otpIntent === 'RESET' ? 'Reset Password' : 'Register / Login with OTP',
     OTP: otpIntent === 'RESET' ? 'Reset Password' : 'Register / Login with OTP',
     SET_PASSWORD: otpIntent === 'RESET' ? 'Set a New Password' : 'Create Your Password',
@@ -274,7 +297,8 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
   }[step];
 
   const headerSubtitle = {
-    CREDENTIALS: CONTEXT_COPY[loginContext]?.subtitle,
+    ROLE: 'Select the account you want to sign in or register with.',
+    CREDENTIALS: LOGIN_ROLES.find((role) => role.id === selectedRole)?.subtitle || CONTEXT_COPY[loginContext]?.subtitle,
     PHONE: 'Verified via One-Time Password (SMS)',
     OTP: 'Verified via One-Time Password (SMS)',
     SET_PASSWORD: 'RFP 7.2.1-1: no OTP needed for future logins once this is set',
@@ -282,8 +306,8 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
   }[step];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-900/70 backdrop-blur-sm p-4">
-      <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md shadow-2xl relative overflow-hidden">
+    <div className="portal-auth-overlay fixed inset-0 z-50 flex items-center justify-center bg-navy-900/70 backdrop-blur-sm p-4">
+      <div className="portal-auth-modal bg-white border border-slate-200 rounded-2xl w-full shadow-2xl relative overflow-hidden">
         {/* Government banner strip with official seal */}
         <div
           className="relative h-20 bg-cover bg-center"
@@ -314,7 +338,11 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
           <div className="flex items-center gap-3 mb-5">
             <div className="p-2.5 bg-cyan-50 text-cyan-700 border border-cyan-200 rounded-xl">
               {(() => {
-                const ContextIcon = step === 'CREDENTIALS' ? (CONTEXT_COPY[loginContext]?.icon || ShieldCheck) : Lock;
+                const ContextIcon = step === 'ROLE'
+                  ? Landmark
+                  : step === 'CREDENTIALS'
+                    ? LOGIN_ROLES.find((role) => role.id === selectedRole)?.icon || CONTEXT_COPY[loginContext]?.icon || ShieldCheck
+                    : Lock;
                 return <ContextIcon className="w-6 h-6" />;
               })()}
             </div>
@@ -328,6 +356,21 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-xs text-red-700">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
               <span>{error}</span>
+            </div>
+          )}
+
+          {step === 'ROLE' && (
+            <div className="portal-auth-role-grid">
+              {LOGIN_ROLES.map((role) => {
+                const RoleIcon = role.icon;
+                return (
+                  <button key={role.id} type="button" className="portal-auth-role-card" onClick={() => selectRole(role)}>
+                    <span className="portal-auth-role-icon"><RoleIcon className="w-5 h-5" /></span>
+                    <span className="portal-auth-role-label">{role.label}</span>
+                    <span className="portal-auth-role-description">{role.description}</span>
+                  </button>
+                );
+              })}
             </div>
           )}
 
@@ -398,33 +441,21 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
                 </p>
               </form>
 
-              {onSwitchContext && (
-                <div className="text-center text-[11px] text-slate-400 pt-4 border-t border-slate-100">
-                  {loginContext === 'VISITOR' ? (
-                    <>
-                      Ferry Operator, Activity Vendor or ANIIDCO Staff?{' '}
-                      <button type="button" onClick={() => onSwitchContext('STAFF')} className="text-navy-700 font-semibold hover:underline">
-                        Login here
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      Tourist looking to book a trip?{' '}
-                      <button type="button" onClick={() => onSwitchContext('VISITOR')} className="text-cyan-700 font-semibold hover:underline">
-                        Login here
-                      </button>
-                      {onOpenOperatorRegister && (
-                        <>
-                          {' '}·{' '}
-                          <button type="button" onClick={onOpenOperatorRegister} className="text-cyan-700 font-semibold hover:underline">
-                            Become a Service Provider
-                          </button>
-                        </>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
+              <div className="portal-auth-role-actions">
+                {selectedRole === 'VENDOR' && onOpenOperatorRegister && (
+                  <button type="button" onClick={onOpenOperatorRegister} className="text-cyan-700 font-semibold hover:underline">
+                    Register as a Vendor
+                  </button>
+                )}
+                {selectedRole === 'SERVICE_PROVIDER' && onOpenOperatorRegister && (
+                  <button type="button" onClick={onOpenOperatorRegister} className="text-cyan-700 font-semibold hover:underline">
+                    Register as a Service Provider
+                  </button>
+                )}
+                <button type="button" onClick={returnToRoleSelection} className="text-navy-700 font-semibold hover:underline">
+                  Change account type
+                </button>
+              </div>
             </div>
           )}
 

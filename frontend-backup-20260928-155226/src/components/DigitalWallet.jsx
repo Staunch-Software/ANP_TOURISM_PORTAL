@@ -22,7 +22,7 @@ export function DigitalWallet({ user, onRequireLogin }) {
   const [rescheduleSubmitting, setRescheduleSubmitting] = useState(false);
 
   useEffect(() => {
-    if (user) {
+    if (user && localStorage.getItem('aniidco_token')) {
       fetchPasses();
     }
   }, [user]);

@@ -291,6 +291,10 @@ export function MyGroupBookings({
   const [error, setError] = useState(null);
 
   const fetchBookings = useCallback(async () => {
+    if (!localStorage.getItem('aniidco_token')) {
+      setBookings([]);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -307,7 +311,7 @@ export function MyGroupBookings({
   }, []);
 
   useEffect(() => {
-    if (user) fetchBookings();
+    if (user && localStorage.getItem('aniidco_token')) fetchBookings();
   }, [user, fetchBookings]);
 
   // ── Not logged in ──────────────────────────────────────────────────────────

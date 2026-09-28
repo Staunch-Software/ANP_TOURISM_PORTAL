@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import API from '../api/client';
 import {
   MapPin, Users, ArrowRight, Calendar, Landmark, Sparkles, Waves, SearchX
@@ -39,6 +40,20 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
   const [passengerId, setPassengerId] = useState('');
   const [loading, setLoading] = useState(false);
   const [bookingLoading, setBookingLoading] = useState(false);
+
+  useEffect(() => {
+    if (!selectedAttraction) return undefined;
+
+    const rootOverflow = document.documentElement.style.overflow;
+    const bodyOverflow = document.body.style.overflow;
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.documentElement.style.overflow = rootOverflow;
+      document.body.style.overflow = bodyOverflow;
+    };
+  }, [selectedAttraction]);
 
   useEffect(() => {
     fetchAttractions();
@@ -134,7 +149,7 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
   return (
     <div className="space-y-8">
       {/* Island & Filter Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200">
+      <div className="hidden">
         {/* Island Pills */}
         <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
           {[
@@ -195,7 +210,7 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
       )}
 
       {/* Grid of Attractions */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="hidden">
         {attractions.map((item) => {
           const img = ATTRACTION_IMAGES[item.title] || FALLBACK_IMAGE;
           const displayPrice = nationality === 'INDIAN' ? item.base_price_inr : item.foreign_price_inr;
@@ -259,104 +274,127 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
       </div>
 
       {/* Interactive Slot Drawer Modal */}
-      {selectedAttraction && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-900/70 backdrop-blur-sm p-4">
-          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-xl p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-start mb-4 pb-3 border-b border-slate-100">
-              <div>
-                <span className="text-[10px] font-bold text-cyan-700 uppercase tracking-wider">Select Time Slot</span>
-                <h3 className="font-serif text-lg font-black text-navy-800">{selectedAttraction.title}</h3>
-                <span className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                  <MapPin className="w-3.5 h-3.5 text-cyan-600" /> {selectedAttraction.island}
-                </span>
+      {selectedAttraction && createPortal(
+        <div className="slot-booking-backdrop fixed inset-0 z-50 grid place-items-center bg-navy-900/70 p-3 backdrop-blur-sm sm:p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="slot-booking-title"
+            className="slot-booking-modal relative flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+          >
+            <div className="shrink-0 px-4 pt-4 sm:px-6 sm:pt-5">
+              <div className="mb-3 flex items-start justify-between border-b border-slate-100 pb-2.5 sm:mb-4 sm:pb-3">
+                <div className="min-w-0 pr-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-700">Select Time Slot</span>
+                  <h3 id="slot-booking-title" className="break-words font-serif text-sm font-black text-navy-800 sm:text-base lg:text-lg">{selectedAttraction.title}</h3>
+                  <span className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-500 sm:text-xs">
+                    <MapPin className="h-3.5 w-3.5 text-cyan-600" /> {selectedAttraction.island}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedAttraction(null)}
+                  aria-label="Close booking dialog"
+                  className="shrink-0 rounded-md p-1 text-sm font-bold text-slate-400 hover:text-navy-800"
+                >
+                  ✕
+                </button>
               </div>
-              <button
-                onClick={() => setSelectedAttraction(null)}
-                className="text-slate-400 hover:text-navy-800 p-1 text-sm font-bold"
-              >
-                ✕
-              </button>
-            </div>
 
-            {/* Date Picker */}
-            <div className="mb-4">
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5 flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-cyan-600" /> Select Visit Date:
-              </label>
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => handleDateChange(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-navy-800 font-mono focus:border-cyan-500 focus:outline-none"
-              />
-            </div>
-
-            {/* Available Slots Grid */}
-            <div className="mb-5">
-              <label className="block text-xs font-semibold text-slate-600 mb-2">Available Hourly Slots:</label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                {availableSlots.map((slot) => {
-                  const isSelected = selectedSlot?.slot_id === slot.slot_id;
-                  const isAvailable = slot.available_seats > 0;
-
-                  return (
-                    <button
-                      key={slot.slot_id}
-                      type="button"
-                      disabled={!isAvailable}
-                      onClick={() => setSelectedSlot(slot)}
-                      className={`p-2.5 rounded-lg border text-left transition-all ${
-                        !isAvailable
-                          ? 'bg-slate-50 border-slate-200 text-slate-300 opacity-70 cursor-not-allowed'
-                          : isSelected
-                          ? 'bg-cyan-50 border-cyan-500 text-cyan-800 ring-2 ring-cyan-500/30'
-                          : 'bg-white border-slate-200 text-slate-700 hover:border-cyan-400'
-                      }`}
-                    >
-                      <div className="text-xs font-mono font-bold flex items-center justify-between">
-                        <span>{slot.start_time} - {slot.end_time}</span>
-                      </div>
-                      <div className="text-[10px] mt-1 flex items-center gap-1 text-emerald-600">
-                        <Users className="w-3 h-3" /> {slot.available_seats} seats left
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Passenger Quick Form */}
-            <form onSubmit={handleConfirmAddToCart} className="space-y-3 pt-3 border-t border-slate-100">
-              <h4 className="text-xs font-bold text-slate-600">Lead Passenger Details (For Turnstile Entry):</h4>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="mb-3 sm:mb-4">
+                <label className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 sm:mb-1.5 sm:text-xs">
+                  <Calendar className="h-3.5 w-3.5 text-cyan-600" /> Select Visit Date:
+                </label>
                 <input
-                  type="text"
-                  placeholder="Full Name as on ID"
-                  value={passengerName}
-                  onChange={(e) => setPassengerName(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
-                  required
-                />
-                <input
-                  type="text"
-                  placeholder={nationality === 'INDIAN' ? "Aadhaar / Voter ID" : "Passport Number"}
-                  value={passengerId}
-                  onChange={(e) => setPassengerId(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
-                  required
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => handleDateChange(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-mono text-xs text-navy-800 focus:border-cyan-500 focus:outline-none sm:py-2 sm:text-sm"
                 />
               </div>
+            </div>
 
-              <button
-                type="submit"
-                disabled={bookingLoading}
-                className="w-full py-3 mt-2 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-lg text-sm flex items-center justify-center gap-2"
-              >
-                {bookingLoading ? 'Holding Slot in Redis...' : 'Confirm & Add to Trip Cart'}
-              </button>
-            </form>
+            <div className="slot-booking-scroll px-4 pb-4 sm:px-6 sm:pb-5">
+              <div className="mb-3 sm:mb-5">
+                <label htmlFor="booking-slot-select" className="mb-1.5 block text-[11px] font-semibold text-slate-600 sm:mb-2 sm:text-xs">Available Hourly Slots:</label>
+                <select
+                  id="booking-slot-select"
+                  value={selectedSlot ? String(selectedSlot.slot_id) : ''}
+                  onChange={(e) => setSelectedSlot(availableSlots.find((slot) => String(slot.slot_id) === e.target.value) || null)}
+                  className="slot-booking-mobile-select w-full rounded-lg border border-slate-300 bg-white px-3 text-xs text-navy-800 focus:border-cyan-500 focus:outline-none sm:hidden"
+                >
+                  <option value="">Select a time slot</option>
+                  {availableSlots.map((slot) => (
+                    <option key={slot.slot_id} value={String(slot.slot_id)} disabled={slot.available_seats <= 0}>
+                      {slot.start_time} - {slot.end_time} | {slot.available_seats} seats left
+                    </option>
+                  ))}
+                </select>
+
+                <div className="hidden grid-cols-2 gap-2 sm:grid lg:grid-cols-3 sm:gap-2.5">
+                  {availableSlots.map((slot) => {
+                    const isSelected = selectedSlot?.slot_id === slot.slot_id;
+                    const isAvailable = slot.available_seats > 0;
+
+                    return (
+                      <button
+                        key={slot.slot_id}
+                        type="button"
+                        disabled={!isAvailable}
+                        onClick={() => setSelectedSlot(slot)}
+                        className={`rounded-lg border p-2 text-left transition-all sm:p-2.5 ${
+                          !isAvailable
+                            ? 'bg-slate-50 border-slate-200 text-slate-300 opacity-70 cursor-not-allowed'
+                            : isSelected
+                            ? 'bg-cyan-50 border-cyan-500 text-cyan-800 ring-2 ring-cyan-500/30'
+                            : 'bg-white border-slate-200 text-slate-700 hover:border-cyan-400'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between font-mono text-[11px] font-bold sm:text-xs">
+                          <span>{slot.start_time} - {slot.end_time}</span>
+                        </div>
+                        <div className="mt-1 flex items-center gap-1 text-[10px] text-emerald-600">
+                          <Users className="h-3 w-3" /> {slot.available_seats} seats left
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <form onSubmit={handleConfirmAddToCart} className="space-y-2.5 border-t border-slate-100 pt-2.5 sm:space-y-3 sm:pt-3">
+                <h4 className="text-[11px] font-bold text-slate-600 sm:text-xs">Lead Passenger Details (For Turnstile Entry):</h4>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
+                  <input
+                    type="text"
+                    placeholder="Full Name as on ID"
+                    value={passengerName}
+                    onChange={(e) => setPassengerName(e.target.value)}
+                    className="w-full min-w-0 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] text-navy-800 sm:px-3 sm:py-2 sm:text-xs"
+                    required
+                  />
+                  <input
+                    type="text"
+                    placeholder={nationality === 'INDIAN' ? 'Aadhaar / Voter ID' : 'Passport Number'}
+                    value={passengerId}
+                    onChange={(e) => setPassengerId(e.target.value)}
+                    className="w-full min-w-0 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] text-navy-800 sm:px-3 sm:py-2 sm:text-xs"
+                    required
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={bookingLoading}
+                  className="mt-1 flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-700 py-2.5 text-xs font-bold text-white hover:bg-cyan-600 sm:mt-2 sm:py-3 sm:text-sm"
+                >
+                  {bookingLoading ? 'Holding Slot in Redis...' : 'Confirm & Add to Trip Cart'}
+                </button>
+              </form>
+            </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

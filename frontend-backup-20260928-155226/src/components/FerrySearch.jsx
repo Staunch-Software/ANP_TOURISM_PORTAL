@@ -237,9 +237,10 @@ export function FerrySearch({ onAddToCart, onRequireLogin, user }) {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 bg-cyan-700 hover:bg-cyan-600 font-bold rounded-lg text-xs text-white shadow-md transition-all flex items-center justify-center gap-2"
+              className="w-full px-3 py-2.5 bg-cyan-700 hover:bg-cyan-600 font-bold rounded-lg text-xs text-white shadow-md transition-all flex items-center justify-center gap-2 whitespace-nowrap text-center leading-tight"
             >
-              <Ship className="w-4 h-4" /> {loading ? 'Checking Sailings...' : 'Find Sailings'}
+              <Ship className="w-4 h-4 shrink-0" />
+              <span className="whitespace-nowrap">{loading ? 'Checking Sailings...' : 'Find Sailings'}</span>
             </button>
           </div>
         </form>
@@ -312,9 +313,10 @@ export function FerrySearch({ onAddToCart, onRequireLogin, user }) {
             <div>
               <button
                 onClick={() => openSeatMap(trip)}
-                className="w-full md:w-auto px-5 py-2.5 bg-cyan-700 hover:bg-cyan-600 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-2 shadow-md transition-all"
+                className="w-full md:w-auto px-5 py-2.5 bg-cyan-700 hover:bg-cyan-600 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-2 shadow-md transition-all whitespace-nowrap text-center leading-tight"
               >
-                <Armchair className="w-4 h-4" /> Select Cabin Seats
+                <Armchair className="w-4 h-4 shrink-0" />
+                <span className="whitespace-nowrap">Select Cabin Seats</span>
               </button>
             </div>
           </div>
