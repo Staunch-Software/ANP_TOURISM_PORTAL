@@ -1,0 +1,39 @@
+.bg-slate-100[data-portal-page="FERRY"],
+.bg-slate-100[data-portal-page="PASSES"],
+.bg-slate-100[data-portal-page="GROUP_BOOKINGS"],
+.bg-slate-100[data-portal-page="SUPPORT"] {
+  background-color: #b8dbe2;
+  background-image:
+    linear-gradient(180deg, rgba(197, 230, 234, 0.38), rgba(186, 224, 230, 0.44)),
+    var(--page-ocean-image);
+  background-position: center, center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+.bg-slate-100[data-portal-page="FERRY"] {
+  --page-ocean-image: url('/images/neil-island-natural-bridge.jpg');
+}
+
+.bg-slate-100[data-portal-page="PASSES"] {
+  --page-ocean-image: url('/images/home-hero-beach.jpg');
+}
+
+.bg-slate-100[data-portal-page="GROUP_BOOKINGS"] {
+  --page-ocean-image: url('/images/footer-coconut-beach.jpg');
+}
+
+.bg-slate-100[data-portal-page="SUPPORT"] {
+  --page-ocean-image: url('/images/home-hero-nature.jpg');
+}
+
+@media (max-width: 767px) {
+  .bg-slate-100[data-portal-page="FERRY"],
+  .bg-slate-100[data-portal-page="PASSES"],
+  .bg-slate-100[data-portal-page="GROUP_BOOKINGS"],
+  .bg-slate-100[data-portal-page="SUPPORT"] {
+    background-image:
+      linear-gradient(180deg, rgba(197, 230, 234, 0.5), rgba(186, 224, 230, 0.56)),
+      var(--page-ocean-image);
+  }
+}

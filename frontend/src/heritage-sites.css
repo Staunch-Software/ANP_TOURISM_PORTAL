@@ -1,0 +1,350 @@
+.portal-trust-strip {
+  background: linear-gradient(180deg, #f1fbfc 0%, #e3f7fa 72%, #d9f2f6 100%);
+}
+
+.portal-trust-grid {
+  position: relative;
+  z-index: 30;
+}
+
+.portal-trust-grid > .portal-trust-item {
+  position: relative;
+  min-width: 0;
+  padding: 0.25rem 1rem;
+}
+
+.portal-trust-grid > .portal-trust-item:first-child { padding-left: 0.75rem; }
+.portal-trust-grid > .portal-trust-item:last-child { padding-right: 0.75rem; }
+
+.portal-trust-grid > .portal-trust-item:not(:last-child)::after {
+  position: absolute;
+  top: 18%;
+  right: 0;
+  width: 1px;
+  height: 64%;
+  background: rgba(34, 211, 238, 0.24);
+  content: '';
+}
+
+.portal-heritage-trigger {
+  position: relative;
+}
+
+.portal-heritage-trigger-button {
+  display: flex;
+  width: 100%;
+  min-height: 3.5rem;
+  align-items: center;
+  gap: 0.75rem;
+  border: 0;
+  border-radius: 0.5rem;
+  padding: 0.25rem;
+  background: transparent;
+  color: #0f2944;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: left;
+  transition: background-color 180ms ease, transform 180ms ease;
+}
+
+.portal-heritage-trigger-button:hover,
+.portal-heritage-trigger-button:focus-visible {
+  background: #ecfeff;
+}
+
+.portal-heritage-trigger-button:focus-visible,
+.portal-heritage-view-all:focus-visible,
+.portal-heritage-back:focus-visible,
+.portal-heritage-close:focus-visible {
+  outline: 3px solid #22d3ee;
+  outline-offset: 3px;
+}
+
+.portal-heritage-trigger-icon {
+  display: inline-flex;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(34, 211, 238, 0.24);
+  border-radius: 50%;
+  background: linear-gradient(145deg, #ecfeff, #dff8fb);
+  color: #0e7490;
+  transition: background-color 220ms ease, color 220ms ease, transform 220ms ease;
+}
+
+.portal-heritage-trigger-button:hover .portal-heritage-trigger-icon,
+.portal-heritage-trigger-button:focus-visible .portal-heritage-trigger-icon {
+  transform: translateY(-2px);
+  background: #0e7490;
+  color: #fff;
+}
+
+.portal-trust-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.1rem;
+  color: #0f2944;
+  font-style: italic;
+}
+
+.portal-trust-copy strong {
+  color: #073b66;
+  font-size: 1.35rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.portal-trust-copy span {
+  font-size: 0.75rem;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.portal-trust-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.portal-heritage-preview {
+  position: absolute;
+  z-index: 45;
+  top: calc(100% + 0.75rem);
+  left: 50%;
+  width: min(21rem, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  padding: 1rem;
+  transform: translateX(-50%);
+  border: 1px solid #bae6fd;
+  border-radius: 0.75rem;
+  background: #fff;
+  box-shadow: 0 16px 36px rgba(15, 41, 68, 0.22);
+  animation: heritage-preview-enter 200ms ease-out both;
+}
+
+.portal-heritage-preview-centered {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  animation: heritage-centered-preview-enter 200ms ease-out both;
+}
+
+@keyframes heritage-preview-enter {
+  from { opacity: 0; transform: translate(-50%, -0.4rem); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+@keyframes heritage-centered-preview-enter {
+  from { opacity: 0; transform: translate(-50%, calc(-50% - 0.4rem)); }
+  to { opacity: 1; transform: translate(-50%, -50%); }
+}
+
+.portal-heritage-preview::before {
+  position: absolute;
+  top: -0.45rem;
+  left: 50%;
+  width: 0.8rem;
+  height: 0.8rem;
+  transform: translateX(-50%) rotate(45deg);
+  border-top: 1px solid #bae6fd;
+  border-left: 1px solid #bae6fd;
+  background: #fff;
+  content: '';
+}
+
+.portal-heritage-close {
+  position: absolute;
+  top: 0.65rem;
+  right: 0.65rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 0.25rem;
+  padding: 0.2rem;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.portal-heritage-eyebrow,
+.portal-heritage-page-header > span,
+.portal-heritage-site-card span {
+  margin: 0;
+  color: #0e7490;
+  font-size: 0.625rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.portal-heritage-preview h3,
+.portal-heritage-page-header h1,
+.portal-heritage-site-card h2 {
+  margin: 0.2rem 0 0;
+  font-family: Georgia, 'Times New Roman', serif;
+  color: #0f2944;
+}
+
+.portal-heritage-preview h3 { font-size: 1.1rem; }
+
+.portal-heritage-image-wrap {
+  aspect-ratio: 16 / 9;
+  margin-top: 0.75rem;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  background: #e2e8f0;
+}
+
+.portal-heritage-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  animation: heritage-image-enter 320ms ease-out both;
+}
+
+@keyframes heritage-image-enter {
+  from { opacity: 0.45; transform: scale(1.025); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.portal-heritage-copy {
+  animation: heritage-copy-enter 220ms ease-out both;
+}
+
+@keyframes heritage-copy-enter {
+  from { opacity: 0.4; transform: translateY(0.2rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.portal-heritage-copy h4 {
+  margin: 0.75rem 0 0.25rem;
+  color: #0f2944;
+  font-size: 0.85rem;
+}
+
+.portal-heritage-copy p,
+.portal-heritage-page-header p,
+.portal-heritage-site-card p {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.portal-heritage-preview-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.portal-heritage-dots {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.portal-heritage-dots span {
+  width: 0.3rem;
+  height: 0.3rem;
+  border-radius: 999px;
+  background: #cbd5e1;
+}
+
+.portal-heritage-dots .is-active {
+  width: 0.8rem;
+  background: #0891b2;
+}
+
+.portal-heritage-view-all,
+.portal-heritage-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #0e7490;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.portal-heritage-view-all svg,
+.portal-heritage-back svg {
+  transition: transform 180ms ease;
+}
+
+.portal-heritage-view-all:hover { text-decoration: underline; }
+.portal-heritage-view-all:hover svg { transform: translateX(0.2rem); }
+.portal-heritage-back { margin-bottom: 1.5rem; color: #475569; }
+.portal-heritage-back:hover { color: #0e7490; }
+.portal-heritage-back:hover svg { transform: translateX(-0.2rem); }
+
+.portal-heritage-page { min-height: calc(100vh - 7rem); }
+.portal-heritage-page-header { max-width: 42rem; margin-bottom: 2rem; }
+.portal-heritage-page-header h1 { font-size: 2rem; }
+.portal-heritage-page-header p { margin-top: 0.5rem; font-size: 0.875rem; }
+.portal-heritage-site-list { display: grid; gap: 1rem; }
+
+.portal-heritage-site-card {
+  display: grid;
+  grid-template-columns: minmax(12rem, 18rem) 1fr;
+  gap: 1.25rem;
+  align-items: center;
+  padding: 0.75rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  background: #fff;
+}
+
+.portal-heritage-site-card img {
+  width: 100%;
+  height: 10rem;
+  border-radius: 0.5rem;
+  object-fit: cover;
+}
+
+.portal-heritage-site-card h2 { font-size: 1.2rem; }
+.portal-heritage-site-card p { margin-top: 0.5rem; font-size: 0.85rem; }
+
+@media (max-width: 1023px) {
+  .portal-heritage-preview {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    width: min(21rem, calc(100vw - 32px));
+    transform: translate(-50%, -50%);
+  }
+
+  .portal-heritage-preview::before { display: none; }
+}
+
+@media (max-width: 640px) {
+  .portal-trust-grid > .portal-trust-item { padding: 0.55rem 0.5rem; }
+  .portal-trust-grid > .portal-trust-item:first-child { padding-left: 0.5rem; }
+  .portal-trust-grid > .portal-trust-item:last-child { padding-right: 0.5rem; }
+  .portal-heritage-site-card { grid-template-columns: 1fr; }
+  .portal-heritage-preview h3 { font-size: 1rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .portal-heritage-preview,
+  .portal-heritage-image,
+  .portal-heritage-copy,
+  .portal-heritage-trigger-button,
+  .portal-heritage-trigger-icon,
+  .portal-heritage-view-all svg,
+  .portal-heritage-back svg {
+    animation: none;
+    transition: none;
+  }
+}

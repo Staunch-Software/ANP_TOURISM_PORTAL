@@ -1,5 +1,5 @@
 import React from 'react';
-import { LogOut } from 'lucide-react';
+import { LogOut, X } from 'lucide-react';
 import { ROLE_BADGE } from './Navbar';
 
 const ROLE_LABEL = {
@@ -14,9 +14,12 @@ const ROLE_LABEL = {
 // [{ label: 'OVERVIEW', items: [{ key, label, icon }] }, ...]; the caller
 // owns activeSection/onSelectSection so this stays a dumb presentation
 // component, not another place role logic could drift out of sync.
-export function DashboardSidebar({ portalLabel, portalIcon: PortalIcon, groups, activeSection, onSelectSection, user, onLogout }) {
+export function DashboardSidebar({ portalLabel, portalIcon: PortalIcon, groups, activeSection, onSelectSection, user, onLogout, isOpen = false, onClose }) {
   return (
-    <aside className="hidden md:flex md:flex-col w-64 shrink-0 bg-navy-900 border-r border-navy-700 fixed left-0 top-[112px] h-[calc(100vh-112px)] z-30">
+    <>
+    {isOpen && <button type="button" aria-label="Close sidebar" onClick={onClose} className="portal-dashboard-backdrop lg:hidden" />}
+    <aside id={user?.role === 'ADMIN' || user?.role === 'VENDOR' ? `${user.role.toLowerCase()}-dashboard-sidebar` : undefined} className={`portal-dashboard-sidebar ${user?.role === 'ADMIN' || user?.role === 'VENDOR' ? 'portal-dashboard-sidebar-staff' : ''} ${isOpen ? 'portal-dashboard-sidebar-open' : ''} bg-navy-900 border-r border-navy-700 shrink-0`}>
+      {isOpen && <button type="button" aria-label="Close sidebar" onClick={onClose} className="portal-dashboard-close lg:hidden"><X className="w-5 h-5" /></button>}
       <div className="px-4 py-4 border-b border-navy-700 flex items-center gap-2.5">
         <div className="w-8 h-8 rounded-lg bg-cyan-600/20 text-cyan-300 border border-cyan-600/40 flex items-center justify-center shrink-0">
           <PortalIcon className="w-4 h-4" />
@@ -27,7 +30,7 @@ export function DashboardSidebar({ portalLabel, portalIcon: PortalIcon, groups, 
         </div>
       </div>
 
-      <nav className="flex-1 p-3 space-y-4 overflow-y-auto">
+      <nav className="flex-1 min-h-0 p-3 space-y-4 overflow-y-auto">
         {groups.map((group) => (
           <div key={group.label}>
             <div className="px-3 pb-1.5 text-[10px] font-extrabold uppercase tracking-widest text-slate-500">
@@ -77,5 +80,6 @@ export function DashboardSidebar({ portalLabel, portalIcon: PortalIcon, groups, 
         </div>
       </div>
     </aside>
+    </>
   );
 }

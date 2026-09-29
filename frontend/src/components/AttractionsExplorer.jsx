@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import API from '../api/client';
+import * as Select from '@radix-ui/react-select';
 import {
-  MapPin, Users, ArrowRight, Calendar, Landmark, Sparkles, Waves, SearchX
+  MapPin, Users, ArrowRight, Calendar, ChevronDown, Landmark, Sparkles, Waves, SearchX, X
 } from 'lucide-react';
+import { DayPicker } from 'react-day-picker';
+import 'react-day-picker/style.css';
 
 export const ATTRACTION_IMAGES = {
   "Cellular Jail National Memorial": "/images/cellular-jail.jpg",
@@ -33,12 +36,14 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
   const [selectedAttraction, setSelectedAttraction] = useState(null);
   const [availableSlots, setAvailableSlots] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+    const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [passengerName, setPassengerName] = useState('');
   const [passengerAge, setPassengerAge] = useState('28');
   const [passengerId, setPassengerId] = useState('');
   const [loading, setLoading] = useState(false);
   const [bookingLoading, setBookingLoading] = useState(false);
+  const selectedVisitDate = new Date(`${selectedDate}T00:00:00`);
 
   useEffect(() => {
     fetchAttractions();
@@ -76,6 +81,7 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
   const openSlotDrawer = async (item) => {
     setSelectedAttraction(item);
     setSelectedSlot(null);
+    setIsCalendarOpen(false);
     try {
       const res = await API.get(`/attractions/${item.id}/slots?target_date=${selectedDate}`);
       setAvailableSlots(res.data);
@@ -86,6 +92,7 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
 
   const handleDateChange = async (newDate) => {
     setSelectedDate(newDate);
+    setSelectedSlot(null);
     if (selectedAttraction) {
       try {
         const res = await API.get(`/attractions/${selectedAttraction.id}/slots?target_date=${newDate}`);
@@ -134,9 +141,9 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
   return (
     <div className="space-y-8">
       {/* Island & Filter Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200">
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200">
         {/* Island Pills */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
+        <div className="flex flex-wrap items-center gap-2 xl:flex-nowrap xl:overflow-x-auto xl:pb-0">
           {[
             { id: 'ALL', label: 'All Destinations' },
             { id: 'PORT_BLAIR', label: 'Port Blair' },
@@ -158,7 +165,7 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
         </div>
 
         {/* Nationality Toggle */}
-        <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-lg border border-slate-200 self-end md:self-auto">
+        <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-lg border border-slate-200 self-end xl:self-auto">
           <span className="text-[11px] font-semibold text-slate-500 px-2">Pricing:</span>
           <button
             onClick={() => setNationality('INDIAN')}
@@ -213,7 +220,7 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
                   <img
                     src={img}
                     alt={item.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    className="w-full h-full object-cover brightness-110 group-hover:scale-105 transition-transform duration-500"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent"></div>
 
@@ -261,7 +268,7 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
       {/* Interactive Slot Drawer Modal */}
       {selectedAttraction && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-900/70 backdrop-blur-sm p-4">
-          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-xl p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-xl p-6 shadow-2xl relative max-h-[90vh] max-h-[90dvh] overflow-y-auto">
             <div className="flex justify-between items-start mb-4 pb-3 border-b border-slate-100">
               <div>
                 <span className="text-[10px] font-bold text-cyan-700 uppercase tracking-wider">Select Time Slot</span>
@@ -283,18 +290,64 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
               <label className="block text-xs font-semibold text-slate-600 mb-1.5 flex items-center gap-1.5">
                 <Calendar className="w-3.5 h-3.5 text-cyan-600" /> Select Visit Date:
               </label>
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => handleDateChange(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-navy-800 font-mono focus:border-cyan-500 focus:outline-none"
-              />
+              <button
+                type="button"
+                aria-expanded={isCalendarOpen}
+                aria-controls="attraction-date-calendar"
+                onClick={() => setIsCalendarOpen((open) => !open)}
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-navy-800 font-mono text-left flex items-center justify-between focus:border-cyan-500 focus:outline-none"
+              >
+                {selectedVisitDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                <Calendar className="w-4 h-4 text-cyan-700" />
+              </button>
+              {isCalendarOpen && (
+                <div id="attraction-date-calendar" className="slot-booking-calendar-panel" role="group" aria-label="Visit date calendar">
+                  <button type="button" className="slot-booking-calendar-close" aria-label="Close calendar" onClick={() => setIsCalendarOpen(false)}>
+                    <X className="w-4 h-4" />
+                  </button>
+                  <DayPicker
+                    mode="single"
+                    selected={selectedVisitDate}
+                    defaultMonth={selectedVisitDate}
+                    onSelect={(date) => {
+                      if (!date) return;
+                      const newDate = [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+                      setIsCalendarOpen(false);
+                      handleDateChange(newDate);
+                    }}
+                    className="slot-booking-calendar"
+                  />
+                </div>
+              )}
             </div>
 
-            {/* Available Slots Grid */}
+            {/* Available Slots */}
             <div className="mb-5">
-              <label className="block text-xs font-semibold text-slate-600 mb-2">Available Hourly Slots:</label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+              <span className="block text-xs font-semibold text-slate-600 mb-2">Available Hourly Slots:</span>
+              <div className="lg:hidden">
+                <Select.Root
+                  value={selectedSlot ? String(selectedSlot.slot_id) : ''}
+                  onValueChange={(value) => setSelectedSlot(availableSlots.find((slot) => String(slot.slot_id) === value) || null)}
+                  disabled={availableSlots.length === 0}
+                >
+                  <Select.Trigger className="slot-booking-select-trigger" aria-label="Available Hourly Slots">
+                    <Select.Value placeholder={availableSlots.length ? 'Select a time slot' : 'No slots available'} />
+                    <Select.Icon><ChevronDown className="w-4 h-4" /></Select.Icon>
+                  </Select.Trigger>
+                  <Select.Portal>
+                    <Select.Content position="popper" sideOffset={4} collisionPadding={16} className="slot-booking-select-content">
+                      <Select.Viewport className="slot-booking-select-viewport">
+                        {availableSlots.map((slot) => (
+                          <Select.Item key={slot.slot_id} value={String(slot.slot_id)} disabled={slot.available_seats <= 0} className="slot-booking-select-item">
+                            <Select.ItemText>{slot.start_time} - {slot.end_time} ({slot.available_seats} seats left)</Select.ItemText>
+                          </Select.Item>
+                        ))}
+                      </Select.Viewport>
+                    </Select.Content>
+                  </Select.Portal>
+                </Select.Root>
+              </div>
+              <div className="hidden lg:grid grid-cols-3 gap-2.5">
                 {availableSlots.map((slot) => {
                   const isSelected = selectedSlot?.slot_id === slot.slot_id;
                   const isAvailable = slot.available_seats > 0;
@@ -313,9 +366,7 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
                           : 'bg-white border-slate-200 text-slate-700 hover:border-cyan-400'
                       }`}
                     >
-                      <div className="text-xs font-mono font-bold flex items-center justify-between">
-                        <span>{slot.start_time} - {slot.end_time}</span>
-                      </div>
+                      <div className="text-xs font-mono font-bold">{slot.start_time} - {slot.end_time}</div>
                       <div className="text-[10px] mt-1 flex items-center gap-1 text-emerald-600">
                         <Users className="w-3 h-3" /> {slot.available_seats} seats left
                       </div>
