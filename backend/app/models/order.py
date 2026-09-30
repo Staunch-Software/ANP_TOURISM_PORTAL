@@ -20,6 +20,10 @@ class Order(Base):
     net_payable = Column(Numeric(10, 2), nullable=False)
     status = Column(String(30), default="PENDING_PAYMENT")  # PENDING_PAYMENT, CONFIRMED, CANCELLED
     razorpay_payment_id = Column(String(100), nullable=True)
+    # RFP: e-wallet is a parallel payment rail alongside Razorpay card/UPI --
+    # a cancelled WALLET order's refund must credit the wallet back rather
+    # than calling Razorpay's refund API (see process_cancellation_refund).
+    payment_method = Column(String(20), default="RAZORPAY")  # RAZORPAY, WALLET
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Cancellation/refund tracking (RFP p.27 cancellation policy) -- the
@@ -61,6 +65,12 @@ class OrderItem(Base):
     passenger_gender = Column(String(10), nullable=True)
     id_type = Column(String(20), nullable=False)  # AADHAAR, PASSPORT, VOTER_ID
     id_number = Column(String(50), nullable=False)
+
+    # Previously computed transiently in cart.py to price attractions
+    # (Indian vs. foreign tariff) but never actually saved anywhere -- the
+    # Ad-hoc Report Builder needs a real, persisted field to filter/report
+    # on, not a guess reconstructed from id_type after the fact.
+    nationality = Column(String(20), nullable=True)  # INDIAN, FOREIGN
 
     # RFP Group Bookings Clause V: flags a booking that matches the
     # scalper/repeat-booking heuristic so ANIIDCO can review it — does not

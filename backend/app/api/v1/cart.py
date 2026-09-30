@@ -28,6 +28,40 @@ def get_cart_key(user_id: uuid.UUID) -> str:
     return f"cart:{str(user_id)}"
 
 
+# RFP p.25 "Individual Bookings: Up to 6 adult members and 12 children" --
+# the cap is on the whole booking (cart), not per attraction/ferry item,
+# so this counts every passenger already in the cart across every item
+# type before allowing one more.
+MAX_ADULTS_PER_BOOKING = 6
+MAX_CHILDREN_PER_BOOKING = 12
+ADULT_AGE_THRESHOLD = 18
+
+
+async def _check_headcount_cap(r, cart_key: str, new_passenger_age: int) -> None:
+    raw_items = await r.lrange(cart_key, 0, -1)
+    adults = 0
+    children = 0
+    for raw in raw_items:
+        item = json.loads(raw)
+        age = item.get("passenger", {}).get("age")
+        if age is not None and age < ADULT_AGE_THRESHOLD:
+            children += 1
+        else:
+            adults += 1
+
+    is_child = new_passenger_age is not None and new_passenger_age < ADULT_AGE_THRESHOLD
+    if is_child and children + 1 > MAX_CHILDREN_PER_BOOKING:
+        raise HTTPException(
+            status_code=400,
+            detail=f"A single booking can include at most {MAX_CHILDREN_PER_BOOKING} children. Please start a new booking for additional visitors.",
+        )
+    if not is_child and adults + 1 > MAX_ADULTS_PER_BOOKING:
+        raise HTTPException(
+            status_code=400,
+            detail=f"A single booking can include at most {MAX_ADULTS_PER_BOOKING} adults. Please start a new booking for additional visitors.",
+        )
+
+
 # -------------------------------------------------------------
 # 1. Add Monument / Water Sport Attraction to Cart
 # -------------------------------------------------------------
@@ -63,10 +97,12 @@ async def add_attraction_to_cart(
 
     price = float(attraction.foreign_price_inr if req.nationality.upper() == "FOREIGN" else attraction.base_price_inr)
 
+    cart_key = get_cart_key(current_user.id)
+    await _check_headcount_cap(r, cart_key, req.passenger.age)
+
     await r.incr(hold_key)
     await r.expire(hold_key, 600)
 
-    cart_key = get_cart_key(current_user.id)
     cart_item = {
         "cart_item_id": str(uuid.uuid4()),
         "item_type": "ATTRACTION",
@@ -75,6 +111,7 @@ async def add_attraction_to_cart(
         "slot_or_seat": f"{slot.slot_date} ({slot.start_time} - {slot.end_time})",
         "price": price,
         "passenger": req.passenger.model_dump(),
+        "nationality": req.nationality.upper(),
     }
 
     await r.rpush(cart_key, json.dumps(cart_item))
@@ -119,6 +156,9 @@ async def add_ferry_to_cart(
     if seat.is_booked:
         raise HTTPException(status_code=409, detail=f"Seat {req.seat_number} is already booked")
 
+    cart_key = get_cart_key(current_user.id)
+    await _check_headcount_cap(r, cart_key, req.passenger.age)
+
     seat_hold_key = f"ferry:hold:{str(schedule.id)}:{seat.seat_number}"
     acquired = await r.set(seat_hold_key, current_user.phone_number, nx=True, ex=600)
 
@@ -130,7 +170,6 @@ async def add_ferry_to_cart(
                 detail=f"Seat {req.seat_number} is currently locked by another customer",
             )
 
-    cart_key = get_cart_key(current_user.id)
     cart_item = {
         "cart_item_id": str(uuid.uuid4()),
         "item_type": "FERRY",
@@ -141,6 +180,10 @@ async def add_ferry_to_cart(
         "slot_or_seat": f"Seat {seat.seat_number} ({seat.cabin_class}) - {schedule.departure_date} at {schedule.departure_time.strftime('%H:%M')}",
         "price": float(seat.price_inr),
         "passenger": req.passenger.model_dump(),
+        # Ferry booking has no explicit nationality field (fare doesn't
+        # vary by it, unlike attractions) -- inferred from ID type so
+        # reports can still filter/segment by it.
+        "nationality": "FOREIGN" if req.passenger.id_type.upper() == "PASSPORT" else "INDIAN",
     }
 
     await r.rpush(cart_key, json.dumps(cart_item))
@@ -239,6 +282,7 @@ async def checkout_cart(
             passenger_gender=p_info.get("gender"),
             id_type=p_info["id_type"],
             id_number=p_info["id_number"],
+            nationality=item.get("nationality"),
         )
         order_items_to_create.append(oi)
 

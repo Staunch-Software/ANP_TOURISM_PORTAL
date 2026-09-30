@@ -5,7 +5,7 @@ import {
   Ship, CloudRain, CheckCircle2, FileSpreadsheet, RefreshCw, Sliders,
   UserPlus, ShieldAlert, MapPin, KeyRound, Trash2, Plus, ClipboardCheck,
   GraduationCap, Eye, X, LayoutDashboard, ClipboardList, ScanLine, Anchor, UserCog,
-  BarChart3, Bell, BellRing, CalendarClock, LifeBuoy, ArrowUpCircle, Receipt, RotateCcw
+  BarChart3, Bell, BellRing, CalendarClock, LifeBuoy, ArrowUpCircle, Receipt, RotateCcw, Filter, Wallet
 } from 'lucide-react';
 import { DashboardSidebar } from './DashboardSidebar';
 import { StaffGateScanner } from './StaffGateScanner';
@@ -31,6 +31,7 @@ const ADMIN_SECTION_GROUPS = [
       { key: 'ROSTER', label: 'Ferry Roster', icon: Anchor },
       { key: 'MANIFEST', label: 'Harbor Manifest', icon: FileSpreadsheet },
       { key: 'REPORTS', label: 'Validated Tickets', icon: ClipboardList },
+      { key: 'ADHOC_REPORT', label: 'Ad-hoc Report Builder', icon: Filter },
       { key: 'CAPACITY', label: 'Crowd & Capacity', icon: Sliders },
       { key: 'GATE_SCANNER', label: 'Gate Scanner', icon: ScanLine },
       { key: 'GATES', label: 'Gate / LPU Sites', icon: MapPin },
@@ -40,6 +41,7 @@ const ADMIN_SECTION_GROUPS = [
     label: 'Management',
     items: [
       { key: 'USERS', label: 'User Management', icon: Users },
+      { key: 'WALLETS', label: 'e-Wallets', icon: Wallet },
       { key: 'APPROVALS', label: 'Service Providers', icon: UserPlus },
       { key: 'GROUPS', label: 'Group Bookings', icon: GraduationCap },
       { key: 'RESCHEDULES', label: 'Reschedule Requests', icon: CalendarClock },
@@ -54,6 +56,12 @@ export function AdminDashboard({ user, onLogout }) {
   const [revenueData, setRevenueData] = useState(null);
   const [schedules, setSchedules] = useState([]);
   const [selectedScheduleId, setSelectedScheduleId] = useState('');
+  // Harbor Manifest voyage picker -- was hardcoded to today's PORT_BLAIR ->
+  // HAVELOCK sailings only, so an admin could never even select a sailing
+  // on another route or another date. Now sources from the same
+  // "every sailing, every route, one date" roster endpoint the Ferry
+  // Roster page already uses.
+  const [manifestDate, setManifestDate] = useState(new Date().toISOString().split('T')[0]);
   const [manifestData, setManifestData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [manifestLoading, setManifestLoading] = useState(false);
@@ -77,6 +85,14 @@ export function AdminDashboard({ user, onLogout }) {
   const [users, setUsers] = useState([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [savingUserId, setSavingUserId] = useState(null);
+
+  const [wallets, setWallets] = useState([]);
+  const [walletsSummary, setWalletsSummary] = useState(null);
+  const [walletsLoading, setWalletsLoading] = useState(false);
+  const [savingWalletId, setSavingWalletId] = useState(null);
+  const [walletHistoryFor, setWalletHistoryFor] = useState(null);
+  const [walletHistory, setWalletHistory] = useState(null);
+  const [walletHistoryLoading, setWalletHistoryLoading] = useState(false);
 
   // Direct User Creation (Path B) & Operator Application Approvals (Path A)
   // — RFP Clauses 7.2.1-1, 7.2.1-7, 7.2.1-III/IV
@@ -155,6 +171,20 @@ export function AdminDashboard({ user, onLogout }) {
   const [cancellationRefundFilter, setCancellationRefundFilter] = useState('ALL');
   const [retryingOrderRef, setRetryingOrderRef] = useState(null);
 
+  // Ad-hoc Report Builder (RFP p.23, Clause 7.1.13: "facilitate the
+  // generation of ad-hoc reports from the database according to specified
+  // parameters") -- every filter is admin-chosen at request time, unlike
+  // the fixed Validated Tickets / Analytics reports elsewhere.
+  const [adhocDateFrom, setAdhocDateFrom] = useState('');
+  const [adhocDateTo, setAdhocDateTo] = useState('');
+  const [adhocItemType, setAdhocItemType] = useState('ALL');
+  const [adhocAttractionTitle, setAdhocAttractionTitle] = useState('');
+  const [adhocNationality, setAdhocNationality] = useState('ALL');
+  const [adhocOrderStatus, setAdhocOrderStatus] = useState('ALL');
+  const [adhocResult, setAdhocResult] = useState(null);
+  const [adhocLoading, setAdhocLoading] = useState(false);
+  const [adhocExporting, setAdhocExporting] = useState(false);
+
   const fetchGroupBookings = async () => {
     setGroupBookingsLoading(true);
     try {
@@ -222,6 +252,7 @@ export function AdminDashboard({ user, onLogout }) {
     fetchSchedules();
     fetchAttractionsList();
     fetchUsers();
+    fetchWallets();
     fetchApplications();
     fetchGates();
     fetchValidatedTicketsReport(reportDate);
@@ -252,6 +283,20 @@ export function AdminDashboard({ user, onLogout }) {
   useEffect(() => {
     fetchCancellations(cancellationRefundFilter);
   }, [cancellationRefundFilter]);
+
+  // Live refresh while the Harbor Manifest is actually open -- PMB
+  // clearance needs the freshest passenger list right up to cast-off, so
+  // this can't wait on someone remembering to click "Refresh Metrics".
+  // Only polls while this section is the one on screen, and stops the
+  // moment the admin navigates away.
+  useEffect(() => {
+    if (activeSection !== 'MANIFEST') return;
+    const interval = setInterval(() => {
+      if (selectedScheduleId) fetchManifest(selectedScheduleId, { silent: true });
+      refreshScheduleCounts(manifestDate);
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [activeSection, selectedScheduleId, manifestDate]);
 
   const fetchAnalytics = async (days) => {
     setAnalyticsLoading(true);
@@ -397,6 +442,52 @@ export function AdminDashboard({ user, onLogout }) {
     }
   };
 
+  const buildAdhocParams = () => {
+    const params = new URLSearchParams();
+    if (adhocDateFrom) params.set('date_from', adhocDateFrom);
+    if (adhocDateTo) params.set('date_to', adhocDateTo);
+    if (adhocItemType !== 'ALL') params.set('item_type', adhocItemType);
+    if (adhocAttractionTitle) params.set('attraction_title', adhocAttractionTitle);
+    if (adhocNationality !== 'ALL') params.set('nationality', adhocNationality);
+    if (adhocOrderStatus !== 'ALL') params.set('order_status', adhocOrderStatus);
+    return params;
+  };
+
+  const runAdhocReport = async () => {
+    setAdhocLoading(true);
+    try {
+      const res = await API.get(`/admin/reports/ad-hoc?${buildAdhocParams().toString()}`);
+      setAdhocResult(res.data);
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Could not run report');
+      setAdhocResult(null);
+    } finally {
+      setAdhocLoading(false);
+    }
+  };
+
+  const exportAdhocReport = async () => {
+    setAdhocExporting(true);
+    try {
+      const response = await API.get(`/admin/reports/ad-hoc/export-excel?${buildAdhocParams().toString()}`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `ANIIDCO_AdHoc_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('Failed to export report');
+    } finally {
+      setAdhocExporting(false);
+    }
+  };
+
   const handleRetryRefund = async (orderId) => {
     setRetryingOrderRef(orderId);
     try {
@@ -434,17 +525,24 @@ export function AdminDashboard({ user, onLogout }) {
     }
   };
 
-  const handleRosterTransition = async (scheduleId, nextStatus) => {
+  const handleRosterTransition = async (scheduleId, nextStatus, reason) => {
     setTransitioningScheduleId(scheduleId);
     setRosterMessage(null);
     try {
-      await API.patch(`/admin/ferry-roster/${scheduleId}/status`, { status: nextStatus });
+      await API.patch(`/admin/ferry-roster/${scheduleId}/status`, { status: nextStatus, reason });
       fetchFerryRoster(ferryRosterDate);
     } catch (err) {
       setRosterMessage({ type: 'error', text: err.response?.data?.detail || 'Could not update voyage status' });
     } finally {
       setTransitioningScheduleId(null);
     }
+  };
+
+  const handleCancelVoyageWeather = (scheduleId) => {
+    const reason = window.prompt('Reason for weather cancellation (shown to every affected passenger, e.g. "IMD Cyclone Warning"):');
+    if (!reason || !reason.trim()) return;
+    if (!window.confirm('This will cancel every booking on this voyage and issue a full refund to each passenger. Continue?')) return;
+    handleRosterTransition(scheduleId, 'CANCELLED_WEATHER', reason.trim());
   };
 
   const handleAssignRoster = async (e) => {
@@ -682,6 +780,60 @@ export function AdminDashboard({ user, onLogout }) {
     }
   };
 
+  const fetchWallets = async () => {
+    setWalletsLoading(true);
+    try {
+      const res = await API.get('/admin/wallets');
+      setWallets(res.data.wallets);
+      setWalletsSummary({ total_wallets: res.data.total_wallets, total_balance: res.data.total_balance });
+    } catch (err) {
+      console.error("Failed to load wallets", err);
+    } finally {
+      setWalletsLoading(false);
+    }
+  };
+
+  const handleWalletStatusChange = async (walletId, nextStatus) => {
+    if (nextStatus === 'SUSPENDED') {
+      const reason = window.prompt("Reason for suspending this wallet (shown in admin notes):", "");
+      if (reason === null) return; // cancelled
+      setSavingWalletId(walletId);
+      try {
+        const res = await API.patch(`/admin/wallets/${walletId}/status`, { status: 'SUSPENDED', reason });
+        setWallets((prev) => prev.map((w) => (w.wallet_id === walletId ? res.data : w)));
+      } catch (err) {
+        alert(err.response?.data?.detail || "Failed to suspend wallet");
+      } finally {
+        setSavingWalletId(null);
+      }
+      return;
+    }
+
+    setSavingWalletId(walletId);
+    try {
+      const res = await API.patch(`/admin/wallets/${walletId}/status`, { status: nextStatus });
+      setWallets((prev) => prev.map((w) => (w.wallet_id === walletId ? res.data : w)));
+    } catch (err) {
+      alert(err.response?.data?.detail || "Failed to update wallet status");
+    } finally {
+      setSavingWalletId(null);
+    }
+  };
+
+  const handleViewWalletHistory = async (wallet) => {
+    setWalletHistoryFor(wallet);
+    setWalletHistoryLoading(true);
+    try {
+      const res = await API.get(`/admin/wallets/${wallet.wallet_id}/transactions`);
+      setWalletHistory(res.data);
+    } catch (err) {
+      alert(err.response?.data?.detail || "Failed to load wallet history");
+      setWalletHistoryFor(null);
+    } finally {
+      setWalletHistoryLoading(false);
+    }
+  };
+
   const fetchMISData = async () => {
     setLoading(true);
     try {
@@ -694,14 +846,17 @@ export function AdminDashboard({ user, onLogout }) {
     }
   };
 
-  const fetchSchedules = async () => {
+  const fetchSchedules = async (dateForManifest) => {
+    const d = dateForManifest || manifestDate;
     try {
-      const today = new Date().toISOString().split('T')[0];
-      const res = await API.get(`/ferry/schedules?source_port=PORT_BLAIR&destination_port=HAVELOCK&travel_date=${today}`);
+      const res = await API.get(`/admin/ferry-roster?roster_date=${d}`);
       setSchedules(res.data);
       if (res.data.length > 0) {
         setSelectedScheduleId(res.data[0].schedule_id);
         fetchManifest(res.data[0].schedule_id);
+      } else {
+        setSelectedScheduleId('');
+        setManifestData(null);
       }
     } catch (err) {
       console.error("Failed to load schedules", err);
@@ -747,16 +902,29 @@ export function AdminDashboard({ user, onLogout }) {
     }
   };
 
-  const fetchManifest = async (scheduleId) => {
+  const fetchManifest = async (scheduleId, { silent = false } = {}) => {
     if (!scheduleId) return;
-    setManifestLoading(true);
+    if (!silent) setManifestLoading(true);
     try {
       const res = await API.get(`/admin/manifest/${scheduleId}`);
       setManifestData(res.data);
     } catch (err) {
-      setManifestData(null);
+      if (!silent) setManifestData(null);
     } finally {
-      setManifestLoading(false);
+      if (!silent) setManifestLoading(false);
+    }
+  };
+
+  // Refreshes each voyage's booked-seat count in the dropdown without
+  // resetting which voyage is currently selected (unlike fetchSchedules,
+  // which is also used for the initial load / date change and always
+  // jumps to the first sailing on that date).
+  const refreshScheduleCounts = async (dateForManifest) => {
+    try {
+      const res = await API.get(`/admin/ferry-roster?roster_date=${dateForManifest}`);
+      setSchedules(res.data);
+    } catch (err) {
+      // silent -- this is a background refresh, the visible data just stays as-is
     }
   };
 
@@ -764,6 +932,12 @@ export function AdminDashboard({ user, onLogout }) {
     const id = e.target.value;
     setSelectedScheduleId(id);
     fetchManifest(id);
+  };
+
+  const handleManifestDateChange = (e) => {
+    const d = e.target.value;
+    setManifestDate(d);
+    fetchSchedules(d);
   };
 
   // Authenticated CSV Download (fixes the missing Authorization header error
@@ -777,12 +951,13 @@ export function AdminDashboard({ user, onLogout }) {
         responseType: 'blob',
       });
 
-      const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8;' });
+      const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
       const vesselName = manifestData?.vessel_name?.replace(/\s+/g, '_') || 'Vessel';
-      link.setAttribute('download', `PMB_Manifest_${vesselName}_${new Date().toISOString().split('T')[0]}.csv`);
+      const voyageDate = manifestData?.departure_date || manifestDate;
+      link.setAttribute('download', `PMB_Manifest_${vesselName}_${voyageDate}.xlsx`);
       document.body.appendChild(link);
       link.click();
       link.parentNode.removeChild(link);
@@ -1626,17 +1801,29 @@ export function AdminDashboard({ user, onLogout }) {
                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${statusColor}`}>{r.status}</span>
                       </td>
                       <td className="p-3">
-                        {nextAction ? (
-                          <button
-                            onClick={() => handleRosterTransition(r.schedule_id, nextAction.next)}
-                            disabled={transitioningScheduleId === r.schedule_id}
-                            className="px-3 py-1.5 bg-navy-800 hover:bg-navy-700 text-white font-bold text-[11px] rounded-lg disabled:opacity-50 whitespace-nowrap"
-                          >
-                            {transitioningScheduleId === r.schedule_id ? 'Updating...' : nextAction.label}
-                          </button>
-                        ) : (
-                          <span className="text-[10px] text-slate-400">Voyage complete</span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {nextAction ? (
+                            <button
+                              onClick={() => handleRosterTransition(r.schedule_id, nextAction.next)}
+                              disabled={transitioningScheduleId === r.schedule_id}
+                              className="px-3 py-1.5 bg-navy-800 hover:bg-navy-700 text-white font-bold text-[11px] rounded-lg disabled:opacity-50 whitespace-nowrap"
+                            >
+                              {transitioningScheduleId === r.schedule_id ? 'Updating...' : nextAction.label}
+                            </button>
+                          ) : (
+                            <span className="text-[10px] text-slate-400">Voyage complete</span>
+                          )}
+                          {(r.status === 'SCHEDULED' || r.status === 'BOARDING') && (
+                            <button
+                              onClick={() => handleCancelVoyageWeather(r.schedule_id)}
+                              disabled={transitioningScheduleId === r.schedule_id}
+                              title="Cancel due to weather -- refunds and notifies every booked passenger"
+                              className="px-3 py-1.5 bg-white border border-red-300 hover:bg-red-50 text-red-700 font-bold text-[11px] rounded-lg disabled:opacity-50 whitespace-nowrap"
+                            >
+                              Cancel (Weather)
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1667,22 +1854,35 @@ export function AdminDashboard({ user, onLogout }) {
             </span>
             <h3 className="font-serif text-lg font-black text-navy-800 flex items-center gap-2">
               <FileSpreadsheet className="w-5 h-5 text-cyan-600" /> Maritime Passenger Manifest
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Live
+              </span>
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Official passenger roster required by Harbor Marine Police prior to vessel cast-off.
+              Official passenger roster required by Harbor Marine Police prior to vessel cast-off. Auto-refreshes every 30 seconds.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            {/* Voyage Dropdown */}
+            {/* Voyage Date */}
+            <input
+              type="date"
+              value={manifestDate}
+              onChange={handleManifestDateChange}
+              className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-mono text-navy-800 focus:border-cyan-500 focus:outline-none"
+            />
+
+            {/* Voyage Dropdown -- every route, not just PORT_BLAIR -> HAVELOCK */}
             <select
               value={selectedScheduleId}
               onChange={handleScheduleChange}
-              className="px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-navy-800 focus:border-cyan-500 focus:outline-none"
+              disabled={schedules.length === 0}
+              className="px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-navy-800 focus:border-cyan-500 focus:outline-none disabled:opacity-50"
             >
+              {schedules.length === 0 && <option value="">No sailings on this date</option>}
               {schedules.map((s) => (
                 <option key={s.schedule_id} value={s.schedule_id}>
-                  {s.vessel_name} ({s.departure_time} - {s.source_port} → {s.destination_port})
+                  {s.vessel_name} ({s.departure_time} - {s.source_port} → {s.destination_port}) · {s.booked_seats}/{s.total_seats} booked
                 </option>
               ))}
             </select>
@@ -1694,7 +1894,7 @@ export function AdminDashboard({ user, onLogout }) {
               onClick={handleDownloadCSV}
               className="px-4 py-2 bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs rounded-lg flex items-center gap-2 shadow-md transition-all"
             >
-              <Download className="w-4 h-4" /> {downloadingCsv ? 'Generating...' : 'Download PMB CSV'}
+              <Download className="w-4 h-4" /> {downloadingCsv ? 'Generating...' : 'Download PMB Excel'}
             </button>
 
             {/* Emergency Weather Halt Button */}
@@ -1845,6 +2045,175 @@ export function AdminDashboard({ user, onLogout }) {
               </tbody>
             </table>
           </div>
+        )}
+      </div>
+      </>
+      )}
+
+      {activeSection === 'ADHOC_REPORT' && (
+      <>
+      {/* Ad-hoc Report Builder -- RFP p.23, Clause 7.1.13: "facilitate the
+          generation of ad-hoc reports from the database according to
+          specified parameters." Every filter below is admin-chosen at
+          request time, unlike the fixed reports elsewhere in Admin MIS. */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
+        <div>
+          <span className="text-[10px] font-extrabold uppercase tracking-widest text-cyan-700">
+            RFP Clause 7.1.13 Compliance
+          </span>
+          <h3 className="font-serif text-lg font-black text-navy-800 flex items-center gap-2">
+            <Filter className="w-5 h-5 text-cyan-600" /> Ad-hoc Report Builder
+          </h3>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Build a custom report from any combination of filters below, preview it, then export to Excel.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">From Date</label>
+            <input
+              type="date"
+              value={adhocDateFrom}
+              onChange={(e) => setAdhocDateFrom(e.target.value)}
+              className="w-full px-2.5 py-2 border border-slate-300 rounded-lg text-xs font-mono"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">To Date</label>
+            <input
+              type="date"
+              value={adhocDateTo}
+              onChange={(e) => setAdhocDateTo(e.target.value)}
+              className="w-full px-2.5 py-2 border border-slate-300 rounded-lg text-xs font-mono"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Item Type</label>
+            <select
+              value={adhocItemType}
+              onChange={(e) => setAdhocItemType(e.target.value)}
+              className="w-full px-2.5 py-2 border border-slate-300 rounded-lg text-xs font-bold"
+            >
+              <option value="ALL">All</option>
+              <option value="ATTRACTION">Attraction</option>
+              <option value="FERRY">Ferry</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Venue / Attraction</label>
+            <select
+              value={adhocAttractionTitle}
+              onChange={(e) => setAdhocAttractionTitle(e.target.value)}
+              className="w-full px-2.5 py-2 border border-slate-300 rounded-lg text-xs font-bold"
+            >
+              <option value="">All Venues</option>
+              {attractions.map((a) => (
+                <option key={a.id} value={a.title}>{a.title}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Nationality</label>
+            <select
+              value={adhocNationality}
+              onChange={(e) => setAdhocNationality(e.target.value)}
+              className="w-full px-2.5 py-2 border border-slate-300 rounded-lg text-xs font-bold"
+            >
+              <option value="ALL">All</option>
+              <option value="INDIAN">Indian</option>
+              <option value="FOREIGN">Foreign</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Payment Status</label>
+            <select
+              value={adhocOrderStatus}
+              onChange={(e) => setAdhocOrderStatus(e.target.value)}
+              className="w-full px-2.5 py-2 border border-slate-300 rounded-lg text-xs font-bold"
+            >
+              <option value="ALL">All</option>
+              <option value="CONFIRMED">Confirmed</option>
+              <option value="CANCELLED">Cancelled</option>
+              <option value="REFUNDED">Refunded</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={runAdhocReport}
+            disabled={adhocLoading}
+            className="px-5 py-2.5 bg-navy-800 hover:bg-navy-700 text-white font-bold text-xs rounded-lg flex items-center gap-2 disabled:opacity-50"
+          >
+            <Filter className="w-3.5 h-3.5" /> {adhocLoading ? 'Running...' : 'Run Report'}
+          </button>
+          {adhocResult && (
+            <button
+              onClick={exportAdhocReport}
+              disabled={adhocExporting}
+              className="px-5 py-2.5 bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs rounded-lg flex items-center gap-2 disabled:opacity-50"
+            >
+              <Download className="w-3.5 h-3.5" /> {adhocExporting ? 'Generating...' : 'Export Excel'}
+            </button>
+          )}
+        </div>
+
+        {adhocResult && (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block">Total Rows</span>
+                <span className="text-xl font-black text-navy-800">{adhocResult.summary.total_rows}</span>
+              </div>
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block">Gross Amount</span>
+                <span className="text-xl font-black text-navy-800">₹{adhocResult.summary.gross_amount.toLocaleString('en-IN')}</span>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto border border-slate-200 rounded-2xl">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-50 text-slate-500 uppercase text-[10px]">
+                  <tr>
+                    <th className="p-3 text-left">Order Ref</th>
+                    <th className="p-3 text-left">Ticket Ref</th>
+                    <th className="p-3 text-left">Type</th>
+                    <th className="p-3 text-left">Title</th>
+                    <th className="p-3 text-left">Passenger</th>
+                    <th className="p-3 text-left">Nationality</th>
+                    <th className="p-3 text-right">Price</th>
+                    <th className="p-3 text-left">Status</th>
+                    <th className="p-3 text-left">Refund</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {adhocResult.rows.length === 0 ? (
+                    <tr><td colSpan={9} className="p-6 text-center text-slate-400">No rows match these filters.</td></tr>
+                  ) : adhocResult.rows.map((r, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50">
+                      <td className="p-3 font-mono text-cyan-700">{r.order_ref}</td>
+                      <td className="p-3 font-mono text-slate-500">{r.ticket_ref || '—'}</td>
+                      <td className="p-3 text-slate-600">{r.item_type}</td>
+                      <td className="p-3 font-bold text-navy-800">{r.title}</td>
+                      <td className="p-3 text-slate-600">{r.passenger_name}</td>
+                      <td className="p-3 text-slate-500">{r.nationality || '—'}</td>
+                      <td className="p-3 text-right font-mono text-slate-700">₹{r.unit_price.toLocaleString('en-IN')}</td>
+                      <td className="p-3">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          r.order_status === 'CONFIRMED' ? 'bg-emerald-100 text-emerald-700' :
+                          r.order_status === 'CANCELLED' ? 'bg-red-100 text-red-700' : 'bg-slate-200 text-slate-600'
+                        }`}>
+                          {r.order_status}
+                        </span>
+                      </td>
+                      <td className="p-3 text-slate-500">{r.refund_status || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
       </>
@@ -2040,6 +2409,153 @@ export function AdminDashboard({ user, onLogout }) {
           </div>
         )}
       </div>
+      </>
+      )}
+
+      {activeSection === 'WALLETS' && (
+      <>
+      {/* e-Wallet Management -- admin approve/suspend wallets, add/edit
+          comments; feeds "wallet performance" into the Weekly Activity Report */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div>
+            <span className="text-[10px] font-extrabold uppercase tracking-widest text-cyan-700">
+              Stored-Value e-Wallets
+            </span>
+            <h3 className="font-serif text-base font-black text-navy-800 flex items-center gap-2">
+              <Wallet className="w-4 h-4 text-cyan-600" /> Tourist Wallet Balances
+            </h3>
+            <p className="text-xs text-slate-500">
+              {walletsSummary ? (
+                <>
+                  {walletsSummary.total_wallets} wallet{walletsSummary.total_wallets === 1 ? '' : 's'} · Total float: ₹
+                  {walletsSummary.total_balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                </>
+              ) : 'Loading...'}
+            </p>
+          </div>
+
+          <button
+            onClick={fetchWallets}
+            disabled={walletsLoading}
+            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg text-xs font-bold text-navy-800 flex items-center gap-2 self-start sm:self-auto"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${walletsLoading ? 'animate-spin' : ''}`} /> Refresh
+          </button>
+        </div>
+
+        {walletsLoading ? (
+          <div className="text-center py-12 text-slate-400 text-xs">Loading wallets...</div>
+        ) : wallets.length === 0 ? (
+          <div className="text-center py-12 text-slate-400 text-xs">No wallets have been created yet.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 text-slate-500 font-mono text-[11px] uppercase tracking-wider border-b border-slate-200">
+                <tr>
+                  <th className="p-3">Mobile Number</th>
+                  <th className="p-3">Full Legal Name</th>
+                  <th className="p-3">Balance</th>
+                  <th className="p-3">Status</th>
+                  <th className="p-3">Admin Notes</th>
+                  <th className="p-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {wallets.map((w) => {
+                  const isSaving = savingWalletId === w.wallet_id;
+                  return (
+                    <tr key={w.wallet_id} className="hover:bg-slate-50 transition-colors">
+                      <td className="p-3 font-mono font-bold text-navy-800">{w.phone_number || '—'}</td>
+                      <td className="p-3 font-bold text-navy-800">{w.full_name}</td>
+                      <td className="p-3 font-mono font-black text-navy-800">
+                        ₹{w.balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="p-3">
+                        {w.status === 'ACTIVE' ? (
+                          <span className="text-emerald-700 font-bold flex items-center gap-1 text-[11px]">● Active</span>
+                        ) : (
+                          <span className="text-red-600 font-bold flex items-center gap-1 text-[11px]">● Suspended</span>
+                        )}
+                      </td>
+                      <td className="p-3 text-slate-500 max-w-[220px] truncate" title={w.admin_notes || ''}>
+                        {w.admin_notes || '—'}
+                      </td>
+                      <td className="p-3 text-right space-x-1.5 whitespace-nowrap">
+                        <button
+                          onClick={() => handleViewWalletHistory(w)}
+                          className="px-2.5 py-1 rounded-lg text-[11px] font-medium border bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200"
+                        >
+                          History
+                        </button>
+                        <button
+                          disabled={isSaving}
+                          onClick={() => handleWalletStatusChange(w.wallet_id, w.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE')}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border disabled:opacity-50 ${
+                            w.status === 'ACTIVE'
+                              ? 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200'
+                              : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                          }`}
+                        >
+                          {w.status === 'ACTIVE' ? 'Suspend' : 'Reactivate'}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Wallet Transaction History Modal */}
+      {walletHistoryFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto p-6 shadow-2xl">
+            <div className="flex justify-between items-start pb-3 border-b border-slate-100 mb-4">
+              <div>
+                <span className="text-[10px] font-bold text-cyan-700 uppercase tracking-widest">Wallet Ledger</span>
+                <h3 className="font-serif text-base font-extrabold text-navy-800">
+                  {walletHistoryFor.full_name} ({walletHistoryFor.phone_number || '—'})
+                </h3>
+              </div>
+              <button
+                onClick={() => { setWalletHistoryFor(null); setWalletHistory(null); }}
+                className="text-slate-400 hover:text-navy-800 p-1 text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {walletHistoryLoading ? (
+              <div className="text-center py-12 text-slate-400 text-xs">Loading history...</div>
+            ) : !walletHistory || walletHistory.transactions.length === 0 ? (
+              <div className="text-center py-12 text-slate-400 text-xs">No transactions recorded.</div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {walletHistory.transactions.map((t, idx) => (
+                  <div key={idx} className="flex items-center justify-between py-2.5 text-xs">
+                    <div>
+                      <div className="font-bold text-navy-800">{t.txn_type.replace('_', ' ')}</div>
+                      <div className="text-slate-400 text-[10px]">{new Date(t.created_at).toLocaleString('en-IN')}</div>
+                      {t.description && <div className="text-slate-500 text-[10px]">{t.description}</div>}
+                    </div>
+                    <div className="text-right">
+                      <div className="font-mono font-black text-navy-800">
+                        ₹{t.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </div>
+                      <div className="text-slate-400 text-[10px] font-mono">
+                        Bal: ₹{t.balance_after.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       </>
       )}
 

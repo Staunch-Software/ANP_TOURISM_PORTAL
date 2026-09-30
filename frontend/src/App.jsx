@@ -6,6 +6,7 @@ import { AttractionsExplorer, ATTRACTION_IMAGES, FALLBACK_IMAGE, ISLAND_LABELS }
 import { FerrySearch } from './components/FerrySearch';
 import { CartDrawer } from './components/CartDrawer';
 import { DigitalWallet } from './components/DigitalWallet';
+import { MyWallet } from './components/MyWallet';
 import { AgentConsole } from './components/AgentConsole';
 import { AdminDashboard } from './components/AdminDashboard';
 import { OperatorDashboard } from './components/OperatorDashboard';
@@ -488,6 +489,13 @@ export default function App() {
 
           {activeTab === 'PASSES' && (
             <DigitalWallet
+              user={currentUser}
+              onRequireLogin={() => openLogin('VISITOR')}
+            />
+          )}
+
+          {activeTab === 'WALLET' && (
+            <MyWallet
               user={currentUser}
               onRequireLogin={() => openLogin('VISITOR')}
             />

@@ -142,3 +142,19 @@ async def send_whatsapp_ticket_confirmation(phone_number: str, order_ref: str, t
         qr_data = f"{head.qr_payload_json}|SIG:{head.qr_signature_b64}"
         caption = f"Boarding Pass QR - Order {order_ref}"
         await asyncio.to_thread(_send_qr_image_sync, phone_number, qr_data, caption)
+
+
+async def send_whatsapp_voyage_cancellation(phone_number: str, order_ref: str, route: str, reason: str, refund_amount: float) -> None:
+    text = (
+        f"*SAILING CANCELLED*\n\n"
+        f"Your ferry booking {order_ref} ({route}) has been cancelled by ANIIDCO due to: {reason}.\n\n"
+        f"A full refund of Rs.{refund_amount:.2f} has been automatically initiated to your original payment method.\n\n"
+        f"We apologise for the inconvenience."
+    )
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": _to_e164(phone_number),
+        "type": "text",
+        "text": {"body": text},
+    }
+    await asyncio.to_thread(_post_sync, payload, phone_number, "voyage cancellation notice")

@@ -359,7 +359,7 @@ async def cancel_group_booking(
         order = order_res.scalars().first()
         if order:
             order.status = "CANCELLED"
-            await process_cancellation_refund(order, float(order.net_payable), payload.reason)
+            await process_cancellation_refund(db, order, float(order.net_payable), payload.reason)
             # Tickets only exist once the group's organizer has paid (see
             # payments.py); an approved-but-unpaid request has none yet.
             tickets_res = await db.execute(select(Ticket).where(Ticket.order_id == order.id))

@@ -156,6 +156,7 @@ class FerryRosterEntry(BaseModel):
 
 class RosterStatusUpdateRequest(BaseModel):
     status: str  # BOARDING, CAST_OFF, BERTHED, CANCELLED_WEATHER
+    reason: Optional[str] = None  # required in practice when status == CANCELLED_WEATHER
 
 
 class RosterAssignRequest(BaseModel):

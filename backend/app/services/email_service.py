@@ -56,3 +56,15 @@ async def send_pre_visit_reminder(user_email: str, title: str, slot_or_seat_info
     subject = f"Reminder: Your visit to {title} is coming up"
     html_content = f"<html><body><h2>Upcoming Visit Reminder</h2><p>This is a reminder that your booking for <strong>{title}</strong> is scheduled soon:</p><p><strong>{slot_or_seat_info}</strong></p><p>Ticket Ref: {ticket_ref}</p><p>Please have your Unified QR Boarding Pass ready for entry. Access it anytime in the portal's Digital Pass Wallet.</p></body></html>"
     await asyncio.to_thread(_send_email_sync, user_email, subject, html_content)
+
+async def send_voyage_cancellation_notice(user_email: str, order_ref: str, route: str, departure_label: str, reason: str, refund_amount: float):
+    subject = f"URGENT: Your Ferry Sailing Has Been Cancelled - {order_ref}"
+    html_content = (
+        f"<html><body><h2 style='color:#b91c1c;'>Sailing Cancelled</h2>"
+        f"<p>Your ferry booking <strong>{order_ref}</strong> ({route}, departing {departure_label}) "
+        f"has been cancelled by ANIIDCO due to: <strong>{reason}</strong>.</p>"
+        f"<p>A full refund of <strong>₹{refund_amount:.2f}</strong> has been automatically initiated to your original payment method.</p>"
+        f"<p>We apologise for the inconvenience. Please check the portal for alternative sailings.</p>"
+        f"</body></html>"
+    )
+    await asyncio.to_thread(_send_email_sync, user_email, subject, html_content)

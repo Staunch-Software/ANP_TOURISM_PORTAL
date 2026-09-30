@@ -4,8 +4,11 @@ import csv
 import secrets
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from fastapi.responses import StreamingResponse
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
+from openpyxl.utils import get_column_letter
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func
@@ -16,14 +19,25 @@ from app.models.user import User
 from app.models.order import Order, OrderItem
 from app.models.ticket import Ticket
 from app.models.ferry import FerrySchedule, FerrySeat, Vessel
+from app.services.email_service import send_voyage_cancellation_notice
+from app.services.whatsapp_service import send_whatsapp_voyage_cancellation
 from app.models.attraction import Attraction, AttractionSlot
 from app.models.admin_alert import AdminAlert
 from app.models.reschedule import RescheduleRequest
 from app.models.grievance import GrievanceTicket
+from app.models.wallet import Wallet, WalletTransaction
 from app.api.v1.auth import get_current_user
 from app.schemas.ticket import RescheduleRequestSummary, RescheduleDecisionRequest
 from app.schemas.payment import CancellationSummary
+from app.schemas.report import AdHocReportRow, AdHocReportSummary, AdHocReportResponse
 from app.api.v1.payments import process_cancellation_refund
+from app.schemas.wallet import (
+    AdminWalletRow,
+    AdminWalletListResponse,
+    AdminWalletStatusUpdateRequest,
+    WalletTransactionResponse,
+    WalletTransactionsResponse,
+)
 from app.schemas.grievance import (
     GrievanceSummary,
     GrievancePriorityUpdateRequest,
@@ -177,38 +191,85 @@ async def export_harbor_manifest_csv(
     admin_user: User = Depends(verify_admin_or_operator_role),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    A real .xlsx workbook, not a raw CSV -- the previous CSV mixed a
+    metadata block (2-4 columns per row) with an 11-column passenger
+    table in one file, which Excel renders as a ragged, misaligned mess
+    since a CSV has no way to express "this block has fewer columns than
+    that one." Endpoint name/route kept as -export-csv for compatibility
+    with the frontend link already pointing at it; only the file format
+    and its content-type/filename changed.
+    """
     manifest_data = await get_harbor_manifest(schedule_id, admin_user, db)
 
-    output = io.StringIO()
-    writer = csv.writer(output)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "PMB Manifest"
 
-    writer.writerow(["PORT MANAGEMENT BOARD / HARBOR MARINE POLICE - PASSENGER MANIFEST"])
-    writer.writerow(["VOYAGE REF:", manifest_data.schedule_id])
-    writer.writerow(["VESSEL:", manifest_data.vessel_name, "OPERATOR:", manifest_data.operator_name])
-    writer.writerow(["ROUTE:", f"{manifest_data.source_port} -> {manifest_data.destination_port}"])
-    writer.writerow(["DEPARTURE DATE:", manifest_data.departure_date, "TIME:", manifest_data.departure_time])
-    writer.writerow(["TOTAL EMBARKED PASSENGERS:", manifest_data.total_booked_pax])
-    writer.writerow([])
+    title_font = Font(bold=True, size=13)
+    label_font = Font(bold=True)
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid")
+    thin_border = Border(*(Side(style="thin", color="B0B0B0"),) * 4)
+    center = Alignment(horizontal="center", vertical="center")
 
-    writer.writerow([
+    ws.merge_cells("A1:D1")
+    ws["A1"] = "PORT MANAGEMENT BOARD / HARBOR MARINE POLICE - PASSENGER MANIFEST"
+    ws["A1"].font = title_font
+
+    meta_rows = [
+        ("Voyage Ref:", manifest_data.schedule_id),
+        ("Vessel:", manifest_data.vessel_name),
+        ("Operator:", manifest_data.operator_name),
+        ("Route:", f"{manifest_data.source_port} -> {manifest_data.destination_port}"),
+        ("Departure Date:", manifest_data.departure_date),
+        ("Departure Time:", manifest_data.departure_time),
+        ("Total Embarked Passengers:", manifest_data.total_booked_pax),
+    ]
+    row = 3
+    for label, value in meta_rows:
+        ws.cell(row=row, column=1, value=label).font = label_font
+        ws.merge_cells(start_row=row, start_column=2, end_row=row, end_column=4)
+        ws.cell(row=row, column=2, value=value)
+        row += 1
+
+    header_row = row + 1
+    headers = [
         "S.No", "Seat No", "Cabin Class", "Passenger Name",
         "Age", "Gender", "Nationality", "ID Type", "ID Number",
         "Ticket Reference", "Boarding Status",
-    ])
+    ]
+    for col, h in enumerate(headers, start=1):
+        cell = ws.cell(row=header_row, column=col, value=h)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = center
+        cell.border = thin_border
 
+    data_row = header_row + 1
     for p in manifest_data.manifest:
-        writer.writerow([
+        values = [
             p.serial_no, p.seat_number, p.cabin_class, p.passenger_name,
             p.age, p.gender, p.nationality, p.id_type, p.id_masked_number,
             p.ticket_ref, p.check_in_status,
-        ])
+        ]
+        for col, v in enumerate(values, start=1):
+            cell = ws.cell(row=data_row, column=col, value=v)
+            cell.border = thin_border
+        data_row += 1
 
+    column_widths = [28, 12, 14, 22, 6, 9, 11, 10, 16, 20, 14]
+    for col, width in enumerate(column_widths, start=1):
+        ws.column_dimensions[get_column_letter(col)].width = width
+
+    output = io.BytesIO()
+    wb.save(output)
     output.seek(0)
-    filename = f"PMB_Manifest_{manifest_data.vessel_name.replace(' ', '_')}_{manifest_data.departure_date}.csv"
+    filename = f"PMB_Manifest_{manifest_data.vessel_name.replace(' ', '_')}_{manifest_data.departure_date}.xlsx"
 
     return StreamingResponse(
-        io.BytesIO(output.getvalue().encode("utf-8")),
-        media_type="text/csv",
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
@@ -336,6 +397,7 @@ async def get_analytics(
 @router.post("/emergency-throttle", response_model=EmergencyThrottleResponse)
 async def emergency_weather_throttle(
     req: EmergencyThrottleRequest,
+    background_tasks: BackgroundTasks,
     admin_user: User = Depends(verify_admin_role),
     db: AsyncSession = Depends(get_db),
 ):
@@ -353,11 +415,14 @@ async def emergency_weather_throttle(
         sched.status = "CANCELLED_WEATHER"
         await db.commit()
 
+        affected = await _cancel_voyage_and_refund_passengers(db, background_tasks, sched, req.reason)
+        await db.commit()
+
         return EmergencyThrottleResponse(
             status="SUCCESS",
             entity_affected=f"Ferry Schedule: {sched.source_port} -> {sched.destination_port}",
             action_taken="CANCELLED_WEATHER",
-            message=f"Voyage cancelled due to {req.reason}. Automated 100% refund workflow triggered.",
+            message=f"Voyage cancelled due to {req.reason}. {affected} booking(s) refunded and notified.",
         )
 
     elif req.slot_id:
@@ -397,6 +462,68 @@ ROSTER_STATUS_FLOW = {
     "BERTHED": set(),
     "CANCELLED_WEATHER": set(),
 }
+
+
+async def _cancel_voyage_and_refund_passengers(
+    db: AsyncSession, background_tasks: BackgroundTasks, schedule: FerrySchedule, reason: str
+) -> int:
+    """
+    RFP p.27 Force Majeure clause: a weather-cancelled sailing needs every
+    affected booking fully refunded AND every affected passenger told --
+    previously this only flipped the schedule's status and printed a
+    message CLAIMING a refund had been triggered, with no code behind it
+    (no ticket was cancelled, no refund call was ever made, nobody was
+    notified). This is the real implementation, shared by both places a
+    voyage can be weather-cancelled from (the Roster page's own cancel
+    action, and the Emergency Throttle panel).
+    """
+    route = f"{schedule.source_port} -> {schedule.destination_port}"
+    departure_label = f"{schedule.departure_date} at {schedule.departure_time.strftime('%H:%M')}"
+
+    seats_res = await db.execute(select(FerrySeat).where(FerrySeat.schedule_id == schedule.id, FerrySeat.is_booked == True))
+    booked_seats = seats_res.scalars().all()
+    seat_ids = [s.id for s in booked_seats]
+    if not seat_ids:
+        return 0
+
+    items_res = await db.execute(select(OrderItem).where(OrderItem.ferry_seat_id.in_(seat_ids)))
+    order_items = items_res.scalars().all()
+    order_ids = {item.order_id for item in order_items}
+
+    affected = 0
+    for order_id in order_ids:
+        order_res = await db.execute(select(Order).where(Order.id == order_id))
+        order = order_res.scalars().first()
+        if not order or order.status == "CANCELLED":
+            continue
+
+        order.status = "CANCELLED"
+        await process_cancellation_refund(db, order, float(order.net_payable), f"Ferry weather cancellation: {reason}")
+
+        tickets_res = await db.execute(select(Ticket).where(Ticket.order_id == order.id))
+        for ticket in tickets_res.scalars().all():
+            ticket.check_in_status = "CANCELLED"
+            ticket.version = (ticket.version or 1) + 1
+
+        user_res = await db.execute(select(User).where(User.id == order.user_id))
+        user = user_res.scalars().first()
+        if user:
+            if user.email:
+                background_tasks.add_task(
+                    send_voyage_cancellation_notice,
+                    user.email, order.order_ref, route, departure_label, reason, float(order.net_payable),
+                )
+            if user.phone_number:
+                background_tasks.add_task(
+                    send_whatsapp_voyage_cancellation,
+                    user.phone_number, order.order_ref, route, reason, float(order.net_payable),
+                )
+        affected += 1
+
+    for seat in booked_seats:
+        seat.is_booked = False
+
+    return affected
 
 
 @router.get("/vessels", response_model=List[VesselSummary])
@@ -460,6 +587,7 @@ async def get_ferry_roster(
 async def update_roster_status(
     schedule_id: str,
     req: RosterStatusUpdateRequest,
+    background_tasks: BackgroundTasks,
     admin_user: User = Depends(verify_admin_role),
     db: AsyncSession = Depends(get_db),
 ):
@@ -484,9 +612,16 @@ async def update_roster_status(
             detail=f"Cannot move from {sched.status} to {req.status}. Allowed next states: {sorted(allowed_next) or 'none (voyage complete)'}",
         )
 
+    if req.status == "CANCELLED_WEATHER" and not (req.reason or "").strip():
+        raise HTTPException(status_code=400, detail="A reason is required to weather-cancel a voyage")
+
     sched.status = req.status
     await db.commit()
     await db.refresh(sched)
+
+    if req.status == "CANCELLED_WEATHER":
+        await _cancel_voyage_and_refund_passengers(db, background_tasks, sched, req.reason)
+        await db.commit()
 
     vessel_res = await db.execute(select(Vessel).where(Vessel.id == sched.vessel_id))
     vessel = vessel_res.scalars().first()
@@ -652,6 +787,124 @@ async def update_user_role(
         role=target_user.user_type,
         is_active=target_user.is_active,
         created_at=str(target_user.created_at),
+    )
+
+
+# -------------------------------------------------------------
+# 5b. e-Wallet Management (RFP: admin approve/suspend wallets, add/edit
+#     comments; wallet performance feeds the Weekly Activity Report)
+# -------------------------------------------------------------
+@router.get("/wallets", response_model=AdminWalletListResponse)
+async def list_wallets(
+    admin_user: User = Depends(verify_admin_role),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(
+        select(Wallet, User)
+        .join(User, Wallet.user_id == User.id)
+        .order_by(Wallet.updated_at.desc())
+    )
+    rows = res.all()
+
+    total_balance = sum(float(w.balance) for w, _ in rows)
+
+    return AdminWalletListResponse(
+        total_wallets=len(rows),
+        total_balance=total_balance,
+        wallets=[
+            AdminWalletRow(
+                wallet_id=str(w.id),
+                user_id=str(u.id),
+                phone_number=u.phone_number,
+                full_name=u.full_name,
+                balance=float(w.balance),
+                status=w.status,
+                admin_notes=w.admin_notes,
+            )
+            for w, u in rows
+        ],
+    )
+
+
+@router.patch("/wallets/{wallet_id}/status", response_model=AdminWalletRow)
+async def update_wallet_status(
+    wallet_id: str,
+    req: AdminWalletStatusUpdateRequest,
+    admin_user: User = Depends(verify_admin_role),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        wallet_uuid = uuid.UUID(wallet_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid Wallet UUID")
+
+    if req.status not in ("ACTIVE", "SUSPENDED"):
+        raise HTTPException(status_code=400, detail="Status must be ACTIVE or SUSPENDED")
+
+    res = await db.execute(
+        select(Wallet, User).join(User, Wallet.user_id == User.id).where(Wallet.id == wallet_uuid)
+    )
+    row = res.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Wallet not found")
+    wallet, target_user = row
+
+    wallet.status = req.status
+    if req.reason:
+        wallet.admin_notes = req.reason
+
+    await db.commit()
+    await db.refresh(wallet)
+
+    return AdminWalletRow(
+        wallet_id=str(wallet.id),
+        user_id=str(target_user.id),
+        phone_number=target_user.phone_number,
+        full_name=target_user.full_name,
+        balance=float(wallet.balance),
+        status=wallet.status,
+        admin_notes=wallet.admin_notes,
+    )
+
+
+@router.get("/wallets/{wallet_id}/transactions", response_model=WalletTransactionsResponse)
+async def get_wallet_transactions_admin(
+    wallet_id: str,
+    admin_user: User = Depends(verify_admin_role),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        wallet_uuid = uuid.UUID(wallet_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid Wallet UUID")
+
+    res = await db.execute(select(Wallet).where(Wallet.id == wallet_uuid))
+    wallet = res.scalars().first()
+    if not wallet:
+        raise HTTPException(status_code=404, detail="Wallet not found")
+
+    txn_res = await db.execute(
+        select(WalletTransaction)
+        .where(WalletTransaction.wallet_id == wallet.id)
+        .order_by(WalletTransaction.created_at.desc())
+        .limit(200)
+    )
+    txns = txn_res.scalars().all()
+
+    return WalletTransactionsResponse(
+        balance=float(wallet.balance),
+        status=wallet.status,
+        transactions=[
+            WalletTransactionResponse(
+                txn_type=t.txn_type,
+                amount=float(t.amount),
+                balance_after=float(t.balance_after),
+                description=t.description,
+                reference_order_id=str(t.reference_order_id) if t.reference_order_id else None,
+                created_at=t.created_at.isoformat(),
+            )
+            for t in txns
+        ],
     )
 
 
@@ -929,6 +1182,171 @@ async def get_validated_tickets_report_csv(
     return StreamingResponse(
         io.BytesIO(output.getvalue().encode("utf-8")),
         media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+# -------------------------------------------------------------
+# 7b. Ad-hoc Report Builder (RFP p.23, Clause 7.1.13: "facilitate the
+# generation of ad-hoc reports from the database according to specified
+# parameters") -- unlike the fixed Validated Tickets / Analytics reports
+# above, every filter here is admin-chosen at request time.
+# -------------------------------------------------------------
+async def _build_adhoc_report_query(
+    db: AsyncSession,
+    date_from: str = None,
+    date_to: str = None,
+    item_type: str = "ALL",
+    attraction_title: str = None,
+    nationality: str = "ALL",
+    order_status: str = "ALL",
+):
+    query = (
+        select(OrderItem, Order, Ticket)
+        .join(Order, OrderItem.order_id == Order.id)
+        .outerjoin(Ticket, Ticket.order_item_id == OrderItem.id)
+    )
+
+    if date_from:
+        query = query.where(Order.created_at >= datetime.strptime(date_from, "%Y-%m-%d"))
+    if date_to:
+        query = query.where(Order.created_at < datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1))
+    if item_type and item_type != "ALL":
+        query = query.where(OrderItem.item_type == item_type.upper())
+    if attraction_title:
+        query = query.where(OrderItem.title == attraction_title)
+    if nationality and nationality != "ALL":
+        query = query.where(OrderItem.nationality == nationality.upper())
+
+    if order_status == "CONFIRMED":
+        query = query.where(Order.status == "CONFIRMED")
+    elif order_status == "CANCELLED":
+        query = query.where(Order.status == "CANCELLED")
+    elif order_status == "REFUNDED":
+        query = query.where(Order.status == "CANCELLED", Order.refund_status == "PROCESSED")
+
+    query = query.order_by(Order.created_at.desc())
+    res = await db.execute(query)
+    return res.all()
+
+
+@router.get("/reports/ad-hoc", response_model=AdHocReportResponse)
+async def get_adhoc_report(
+    date_from: str = None,
+    date_to: str = None,
+    item_type: str = "ALL",  # ALL, ATTRACTION, FERRY
+    attraction_title: str = None,
+    nationality: str = "ALL",  # ALL, INDIAN, FOREIGN
+    order_status: str = "ALL",  # ALL, CONFIRMED, CANCELLED, REFUNDED
+    admin_user: User = Depends(verify_admin_role),
+    db: AsyncSession = Depends(get_db),
+):
+    rows = await _build_adhoc_report_query(
+        db, date_from, date_to, item_type, attraction_title, nationality, order_status
+    )
+
+    report_rows = [
+        AdHocReportRow(
+            order_ref=order.order_ref,
+            ticket_ref=ticket.ticket_ref if ticket else None,
+            item_type=item.item_type,
+            title=item.title,
+            slot_or_seat_info=item.slot_or_seat_info,
+            passenger_name=item.passenger_name,
+            nationality=item.nationality,
+            unit_price=float(item.unit_price),
+            order_status=order.status,
+            refund_status=order.refund_status,
+            created_at=order.created_at.isoformat(),
+        )
+        for item, order, ticket in rows
+    ]
+
+    return AdHocReportResponse(
+        summary=AdHocReportSummary(
+            total_rows=len(report_rows),
+            gross_amount=sum(r.unit_price for r in report_rows),
+        ),
+        rows=report_rows,
+    )
+
+
+@router.get("/reports/ad-hoc/export-excel")
+async def export_adhoc_report_excel(
+    date_from: str = None,
+    date_to: str = None,
+    item_type: str = "ALL",
+    attraction_title: str = None,
+    nationality: str = "ALL",
+    order_status: str = "ALL",
+    admin_user: User = Depends(verify_admin_role),
+    db: AsyncSession = Depends(get_db),
+):
+    rows = await _build_adhoc_report_query(
+        db, date_from, date_to, item_type, attraction_title, nationality, order_status
+    )
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Ad-hoc Report"
+
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid")
+    thin_border = Border(*(Side(style="thin", color="B0B0B0"),) * 4)
+    center = Alignment(horizontal="center", vertical="center")
+
+    ws.merge_cells("A1:J1")
+    ws["A1"] = "ANIIDCO -- Ad-hoc Report"
+    ws["A1"].font = Font(bold=True, size=13)
+    filters_label = f"Filters: {date_from or 'any'} to {date_to or 'any'} | {item_type} | {attraction_title or 'any venue'} | {nationality} | {order_status}"
+    ws.merge_cells("A2:J2")
+    ws["A2"] = filters_label
+    ws["A2"].font = Font(italic=True, size=9, color="666666")
+
+    headers = [
+        "Order Ref", "Ticket Ref", "Item Type", "Title", "Slot/Seat",
+        "Passenger", "Nationality", "Unit Price (INR)", "Order Status", "Refund Status", "Created At",
+    ]
+    header_row = 4
+    for col, h in enumerate(headers, start=1):
+        cell = ws.cell(row=header_row, column=col, value=h)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = center
+        cell.border = thin_border
+
+    data_row = header_row + 1
+    gross_total = 0.0
+    for item, order, ticket in rows:
+        values = [
+            order.order_ref, ticket.ticket_ref if ticket else "", item.item_type, item.title,
+            item.slot_or_seat_info, item.passenger_name, item.nationality or "",
+            float(item.unit_price), order.status, order.refund_status or "", order.created_at.isoformat(),
+        ]
+        gross_total += float(item.unit_price)
+        for col, v in enumerate(values, start=1):
+            cell = ws.cell(row=data_row, column=col, value=v)
+            cell.border = thin_border
+        data_row += 1
+
+    summary_row = data_row + 1
+    ws.cell(row=summary_row, column=1, value="Total Rows:").font = Font(bold=True)
+    ws.cell(row=summary_row, column=2, value=len(rows))
+    ws.cell(row=summary_row + 1, column=1, value="Gross Amount (INR):").font = Font(bold=True)
+    ws.cell(row=summary_row + 1, column=2, value=round(gross_total, 2))
+
+    column_widths = [20, 20, 12, 28, 26, 20, 12, 15, 14, 14, 22]
+    for col, width in enumerate(column_widths, start=1):
+        ws.column_dimensions[get_column_letter(col)].width = width
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    filename = f"ANIIDCO_AdHoc_Report_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
+
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
@@ -1324,7 +1742,7 @@ async def retry_refund(
         raise HTTPException(status_code=400, detail=f"Refund is not in a FAILED state (currently: {order.refund_status})")
 
     retry_amount = float(order.refund_amount) if order.refund_amount is not None else float(order.net_payable)
-    await process_cancellation_refund(order, retry_amount, "Manual retry by ANIIDCO admin")
+    await process_cancellation_refund(db, order, retry_amount, "Manual retry by ANIIDCO admin")
     await db.commit()
 
     user_res = await db.execute(select(User).where(User.id == order.user_id))

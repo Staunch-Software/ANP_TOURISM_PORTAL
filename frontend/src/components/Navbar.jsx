@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  ShieldCheck, ShoppingBag, LogOut, Anchor, Waves, Menu, X
+  ShieldCheck, ShoppingBag, LogOut, Anchor, Waves, Menu, X, Wallet
 } from 'lucide-react';
 
 // RFP 344: Admin/Regulatory Authority is a distinct user type from Service
@@ -131,6 +131,17 @@ export function Navbar({
             </button>
 
             <button
+              onClick={() => setActiveTab('WALLET')}
+              className={`px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                activeTab === 'WALLET'
+                  ? 'bg-cyan-700 text-white shadow-md'
+                  : 'text-slate-200 hover:text-white hover:bg-navy-600'
+              }`}
+            >
+              <Wallet className="w-3.5 h-3.5" /> My Wallet
+            </button>
+
+            <button
               onClick={() => setActiveTab('SUPPORT')}
               className={`px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all ${
                 activeTab === 'SUPPORT'
@@ -245,6 +256,14 @@ export function Navbar({
                   }`}
                 >
                   My Passes
+                </button>
+                <button
+                  onClick={() => { setActiveTab('WALLET'); setIsMobileMenuOpen(false); }}
+                  className={`w-full text-left px-4 py-3 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${
+                    activeTab === 'WALLET' ? 'bg-cyan-700 text-white' : 'text-slate-200 hover:bg-navy-700'
+                  }`}
+                >
+                  <Wallet className="w-4 h-4" /> My Wallet
                 </button>
                 <button
                   onClick={() => { setActiveTab('SUPPORT'); setIsMobileMenuOpen(false); }}

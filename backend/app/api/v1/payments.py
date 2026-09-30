@@ -22,6 +22,7 @@ from app.api.v1.auth import get_current_user
 from app.services.crypto_service import sign_ticket_payload
 from app.services.email_service import send_ticket_confirmation
 from app.services.whatsapp_service import send_whatsapp_ticket_confirmation
+from app.services.wallet_service import get_or_create_wallet, credit_wallet
 from app.schemas.payment import (
     PaymentConfirmRequest, PaymentConfirmResponse, 
     RazorpayOrderRequest, RazorpayOrderResponse, RefundRequest
@@ -40,7 +41,7 @@ razorpay_client = razorpay.Client(
 )
 
 
-async def process_cancellation_refund(order: Order, refund_amount: float, reason: str) -> None:
+async def process_cancellation_refund(db: AsyncSession, order: Order, refund_amount: float, reason: str) -> None:
     """
     Shared by tickets.py's tourist self-cancel and group_bookings.py's
     admin cancel -- records the outcome on the Order itself instead of
@@ -49,6 +50,19 @@ async def process_cancellation_refund(order: Order, refund_amount: float, reason
     GET /admin/cancellations) rather than disappearing silently.
     """
     order.cancelled_at = datetime.utcnow()
+
+    if order.payment_method == "WALLET":
+        # No Razorpay payment exists for a wallet-funded booking -- credit
+        # the money straight back to the wallet it came from instead.
+        wallet = await get_or_create_wallet(db, order.user_id)
+        await credit_wallet(
+            db, wallet, refund_amount, "CREDIT_REFUND",
+            description=f"Refund for cancelled order {order.order_ref}: {reason}",
+            reference_order_id=order.id,
+        )
+        order.refund_status = "PROCESSED"
+        order.refund_amount = refund_amount
+        return
 
     if not order.razorpay_payment_id:
         order.refund_status = "NOT_APPLICABLE"
@@ -66,7 +80,11 @@ async def process_cancellation_refund(order: Order, refund_amount: float, reason
     except Exception as e:
         order.refund_status = "FAILED"
         order.refund_amount = refund_amount
-        order.refund_failure_reason = str(e)
+        # Razorpay's SDK can raise an exception whose str() is empty (e.g.
+        # ServerError on an unrecognized payment id) -- fall back to the
+        # exception's class name so the admin queue never shows a blank
+        # reason for a refund that visibly did fail.
+        order.refund_failure_reason = str(e) or f"{type(e).__name__} (no message returned by payment gateway)"
 
 
 # RFP Group Bookings Clause V: "alert and report to ANIIDCO regarding
@@ -146,41 +164,20 @@ async def create_razorpay_order(
         raise HTTPException(status_code=500, detail=f"Failed to create Razorpay order: {str(e)}")
 
 
-@router.post("/confirm", response_model=PaymentConfirmResponse)
-async def confirm_payment_and_issue_tickets(
-    req: PaymentConfirmRequest,
+async def issue_tickets_for_paid_order(
+    order: Order,
+    current_user: User,
+    db: AsyncSession,
+    r,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    r=Depends(get_redis),
-):
-    res = await db.execute(
-        select(Order).where(Order.order_ref == req.order_ref, Order.user_id == current_user.id)
-    )
-    order = res.scalars().first()
-    if not order:
-        raise HTTPException(status_code=404, detail="Order reference not found")
-
-    if order.status == "CONFIRMED":
-        raise HTTPException(status_code=400, detail="Order has already been paid and tickets are issued")
-
-    # Verify Razorpay signature
-    try:
-        msg = f"{req.razorpay_order_id}|{req.razorpay_payment_id}"
-        secret = settings.RAZORPAY_KEY_SECRET
-        expected_signature = hmac.new(
-            secret.encode(), 
-            msg.encode(), 
-            hashlib.sha256
-        ).hexdigest()
-
-        if expected_signature != req.razorpay_signature:
-            order.status = "FAILED"
-            await db.commit()
-            raise HTTPException(status_code=400, detail="Invalid payment signature")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Payment verification failed: {str(e)}")
-
+) -> list:
+    """
+    Shared by the Razorpay `/confirm` flow and the wallet `/wallet/pay` flow --
+    both land here once payment has actually been captured (signature
+    verified, or wallet debited), so ticket issuance/QR-signing/inventory
+    finalization only lives in one place. Caller is responsible for setting
+    order.status/payment_method and committing.
+    """
     items_res = await db.execute(
         select(OrderItem).where(OrderItem.order_id == order.id).order_by(OrderItem.position)
     )
@@ -261,11 +258,9 @@ async def confirm_payment_and_issue_tickets(
         )
         tickets_to_create.append(ticket)
 
-    order.status = "CONFIRMED"
-    order.razorpay_payment_id = req.razorpay_payment_id
     db.add_all(tickets_to_create)
     await db.commit()
-    
+
     # Send email + WhatsApp (demo sidecar) in background
     background_tasks.add_task(
         send_ticket_confirmation,
@@ -281,6 +276,50 @@ async def confirm_payment_and_issue_tickets(
     )
 
     await r.delete(f"cart:{str(current_user.id)}")
+
+    return tickets_to_create
+
+
+@router.post("/confirm", response_model=PaymentConfirmResponse)
+async def confirm_payment_and_issue_tickets(
+    req: PaymentConfirmRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    r=Depends(get_redis),
+):
+    res = await db.execute(
+        select(Order).where(Order.order_ref == req.order_ref, Order.user_id == current_user.id)
+    )
+    order = res.scalars().first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order reference not found")
+
+    if order.status == "CONFIRMED":
+        raise HTTPException(status_code=400, detail="Order has already been paid and tickets are issued")
+
+    # Verify Razorpay signature
+    try:
+        msg = f"{req.razorpay_order_id}|{req.razorpay_payment_id}"
+        secret = settings.RAZORPAY_KEY_SECRET
+        expected_signature = hmac.new(
+            secret.encode(),
+            msg.encode(),
+            hashlib.sha256
+        ).hexdigest()
+
+        if expected_signature != req.razorpay_signature:
+            order.status = "FAILED"
+            await db.commit()
+            raise HTTPException(status_code=400, detail="Invalid payment signature")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Payment verification failed: {str(e)}")
+
+    order.status = "CONFIRMED"
+    order.payment_method = "RAZORPAY"
+    order.razorpay_payment_id = req.razorpay_payment_id
+
+    tickets_to_create = await issue_tickets_for_paid_order(order, current_user, db, r, background_tasks)
 
     return PaymentConfirmResponse(
         order_ref=order.order_ref,

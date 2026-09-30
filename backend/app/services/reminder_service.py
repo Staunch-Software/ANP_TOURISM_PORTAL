@@ -17,6 +17,7 @@ from app.models.attraction import AttractionSlot
 from app.models.ferry import FerrySeat, FerrySchedule
 from app.models.user import User
 from app.services.email_service import send_pre_visit_reminder
+from app.services.time_service import now_ist
 
 logger = logging.getLogger("anp.reminders")
 
@@ -59,7 +60,7 @@ async def send_pending_reminders() -> None:
         )
         tickets = res.scalars().all()
 
-        now = datetime.utcnow()
+        now = now_ist()
         sent = 0
         for ticket in tickets:
             slot_start = await _get_slot_start(db, ticket)

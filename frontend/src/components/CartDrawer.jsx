@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import API from '../api/client';
 import {
   ShoppingBag, X, Trash2, Clock, ShieldCheck,
-  CreditCard, QrCode, ArrowRight, CheckCircle2, Building, Ship, Landmark
+  CreditCard, QrCode, ArrowRight, CheckCircle2, Building, Ship, Landmark, Wallet
 } from 'lucide-react';
 
 const ITEM_TYPE_ICON = { FERRY: Ship, ATTRACTION: Landmark };
@@ -18,6 +18,7 @@ export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed })
   const [paymentMethod, setPaymentMethod] = useState('UPI');
   const [paying, setPaying] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [walletBalance, setWalletBalance] = useState(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -68,10 +69,36 @@ export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed })
     try {
       const res = await API.post('/cart/checkout');
       setActiveOrder(res.data);
+      try {
+        const walletRes = await API.get('/wallet/me');
+        setWalletBalance(walletRes.data.status === 'ACTIVE' ? walletRes.data.balance : null);
+      } catch {
+        setWalletBalance(null);
+      }
     } catch (err) {
       alert(err.response?.data?.detail || "Checkout failed. Your session may have expired.");
     } finally {
       setCheckoutLoading(false);
+    }
+  };
+
+  const handlePayWithWallet = async () => {
+    setPaying(true);
+    try {
+      await API.post('/wallet/pay', { order_ref: activeOrder.order_ref });
+      setPaymentSuccess(true);
+      if (onCartUpdated) onCartUpdated();
+
+      setTimeout(() => {
+        setPaymentSuccess(false);
+        setActiveOrder(null);
+        onClose();
+        if (onOrderConfirmed) onOrderConfirmed();
+      }, 3000);
+    } catch (err) {
+      alert(err.response?.data?.detail || "Wallet payment failed");
+    } finally {
+      setPaying(false);
     }
   };
 
@@ -307,7 +334,7 @@ export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed })
                     </h3>
                   </div>
                   <button
-                    onClick={() => setActiveOrder(null)}
+                    onClick={() => { setActiveOrder(null); setWalletBalance(null); }}
                     className="text-slate-400 hover:text-navy-800 p-1 text-sm font-bold"
                   >
                     ✕
@@ -324,6 +351,26 @@ export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed })
 
                 {/* Payment Method Action Buttons */}
                 <div className="space-y-3 py-2 text-xs font-bold">
+                  {walletBalance !== null && (
+                    <button
+                      disabled={paying || walletBalance < activeOrder.net_payable}
+                      onClick={handlePayWithWallet}
+                      className="w-full p-4 rounded-xl flex items-center justify-between border hover:border-emerald-500 hover:bg-emerald-50 transition-all text-navy-800 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-slate-200 disabled:hover:bg-transparent"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Wallet className="w-5 h-5 text-emerald-600" />
+                        <div className="text-left">
+                          <span className="text-sm block">Pay from Wallet</span>
+                          <span className="text-[10px] font-normal text-slate-500">
+                            Balance: ₹{walletBalance.toLocaleString('en-IN')}
+                            {walletBalance < activeOrder.net_payable ? ' (insufficient)' : ''}
+                          </span>
+                        </div>
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-slate-400" />
+                    </button>
+                  )}
+
                   <button
                     disabled={paying}
                     onClick={() => launchRazorpay('upi')}

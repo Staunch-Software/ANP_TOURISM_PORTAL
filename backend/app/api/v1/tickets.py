@@ -8,6 +8,7 @@ from sqlalchemy.future import select
 
 from app.core.database import get_db
 from app.core.config import settings
+from app.services.time_service import now_ist
 from app.models.user import User
 from app.models.order import Order, OrderItem
 from app.models.ticket import Ticket
@@ -265,7 +266,7 @@ async def staff_check_in_ticket(
     entry_window = await _get_entry_window(db, ticket)
     if entry_window:
         window_start, window_end, start_label, end_label = entry_window
-        now = datetime.utcnow()
+        now = now_ist()
         if now < window_start:
             raise HTTPException(
                 status_code=400,
@@ -595,8 +596,7 @@ async def cancel_booking(
         entry_window = await _get_entry_window(db, ticket)
         if entry_window:
             window_start = entry_window[0]
-            from datetime import timedelta
-            if datetime.utcnow() > (window_start - timedelta(hours=24)):
+            if now_ist() > (window_start - timedelta(hours=24)):
                 raise HTTPException(status_code=400, detail="Cancellation is only permitted 24 hours prior to the slot.")
 
         ticket.check_in_status = "CANCELLED"
@@ -624,7 +624,7 @@ async def cancel_booking(
 
     # 50% penalty as per RFP Page 27, Clause 6 (simplified here)
     refund_amount = float(order.net_payable) * 0.5
-    await process_cancellation_refund(order, refund_amount, "Cancelled by tourist")
+    await process_cancellation_refund(db, order, refund_amount, "Cancelled by tourist")
 
     await db.commit()
 
