@@ -1,4 +1,6 @@
 import uuid
+from collections import defaultdict
+from datetime import date as date_type, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -9,8 +11,16 @@ from app.core.database import get_db
 from app.core.redis import get_redis
 from app.models.attraction import Attraction, AttractionSlot
 from app.schemas.attraction import AttractionResponse, SlotResponse
+from app.schemas.itinerary import ItineraryRequest, ItineraryResponse, ItineraryDay, ItineraryStop
 
 router = APIRouter(prefix="/attractions", tags=["Attractions & Activities"])
+
+# RFP p.24 Visitors Dashboard item (b): "visitors can depend on the website
+# or app to propose an itinerary based on available time slots and their
+# specified preferences" -- how many non-overlapping stops to suggest per
+# day, since a tourist's tolerance for a packed schedule varies.
+ITINERARY_STOPS_PER_DAY = {"RELAXED": 2, "STANDARD": 3, "PACKED": 4}
+ITINERARY_MAX_SPAN_DAYS = 14
 
 
 @router.get("", response_model=List[AttractionResponse])
@@ -111,3 +121,116 @@ async def get_attraction_slots(
         )
 
     return response_slots
+
+
+@router.post("/itinerary/suggest", response_model=ItineraryResponse)
+async def suggest_itinerary(
+    req: ItineraryRequest,
+    db: AsyncSession = Depends(get_db),
+    r=Depends(get_redis),
+):
+    try:
+        start = date_type.fromisoformat(req.start_date)
+        end = date_type.fromisoformat(req.end_date)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="start_date/end_date must be in YYYY-MM-DD format")
+
+    if end < start:
+        raise HTTPException(status_code=400, detail="end_date cannot be before start_date")
+    if (end - start).days + 1 > ITINERARY_MAX_SPAN_DAYS:
+        raise HTTPException(status_code=400, detail=f"An itinerary can span at most {ITINERARY_MAX_SPAN_DAYS} days")
+
+    stops_per_day = ITINERARY_STOPS_PER_DAY.get((req.pace or "STANDARD").upper(), ITINERARY_STOPS_PER_DAY["STANDARD"])
+    is_foreign = req.nationality.upper() == "FOREIGN"
+
+    query = (
+        select(AttractionSlot, Attraction)
+        .join(Attraction, AttractionSlot.attraction_id == Attraction.id)
+        .where(
+            Attraction.is_active == True,
+            AttractionSlot.slot_date >= req.start_date,
+            AttractionSlot.slot_date <= req.end_date,
+        )
+    )
+    if req.island:
+        query = query.where(Attraction.island == req.island.upper())
+    if req.categories:
+        query = query.where(Attraction.category.in_([c.upper() for c in req.categories]))
+    query = query.order_by(AttractionSlot.slot_date.asc(), AttractionSlot.start_time.asc())
+
+    rows = (await db.execute(query)).all()
+
+    # Bucket bookable candidates by date, same available-seats math as
+    # get_attraction_slots (total capacity minus confirmed bookings minus
+    # anyone currently holding a seat mid-checkout).
+    candidates_by_date = defaultdict(list)
+    for slot, attraction in rows:
+        redis_held = await r.get(f"slot_hold_count:{str(slot.id)}")
+        held = int(redis_held) if redis_held else 0
+        available = max(0, slot.total_capacity - slot.booked_count - held)
+        if available > 0:
+            candidates_by_date[slot.slot_date].append((slot, attraction, available))
+
+    def make_stop(slot, attraction, available):
+        price = float(attraction.foreign_price_inr if is_foreign else attraction.base_price_inr)
+        return ItineraryStop(
+            attraction_id=str(attraction.id),
+            title=attraction.title,
+            island=attraction.island,
+            category=attraction.category,
+            slot_id=str(slot.id),
+            start_time=slot.start_time,
+            end_time=slot.end_time,
+            price=price,
+            available_seats=available,
+        )
+
+    used_attraction_ids = set()
+    days = []
+    unplanned_dates = []
+
+    cur = start
+    while cur <= end:
+        date_str = cur.isoformat()
+        candidates = candidates_by_date.get(date_str, [])
+
+        stops = []
+        last_end_time = None
+        # First pass: only attractions not already suggested earlier in the
+        # trip, so a multi-day itinerary doesn't repeat the same stop.
+        for slot, attraction, available in candidates:
+            if len(stops) >= stops_per_day:
+                break
+            if attraction.id in used_attraction_ids:
+                continue
+            if last_end_time is not None and slot.start_time < last_end_time:
+                continue  # overlaps a stop already picked for this day
+            stops.append(make_stop(slot, attraction, available))
+            used_attraction_ids.add(attraction.id)
+            last_end_time = slot.end_time
+
+        # Second pass, only if the first found nothing for this day: allow
+        # repeating an attraction used on another day rather than leaving
+        # the day empty when the destination just has limited options.
+        if not stops:
+            for slot, attraction, available in candidates:
+                if len(stops) >= stops_per_day:
+                    break
+                if last_end_time is not None and slot.start_time < last_end_time:
+                    continue
+                stops.append(make_stop(slot, attraction, available))
+                last_end_time = slot.end_time
+
+        if stops:
+            days.append(ItineraryDay(date=date_str, stops=stops))
+        else:
+            unplanned_dates.append(date_str)
+
+        cur += timedelta(days=1)
+
+    return ItineraryResponse(
+        start_date=req.start_date,
+        end_date=req.end_date,
+        days=days,
+        unplanned_dates=unplanned_dates,
+    )
