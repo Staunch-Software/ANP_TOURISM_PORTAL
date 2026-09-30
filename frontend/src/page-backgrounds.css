@@ -37,3 +37,139 @@
       var(--page-ocean-image);
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Explore / Discover the Islands — premium "subtle ocean gradient + soft waves"
+   backdrop. Pure CSS gradients plus three tiny inline SVG wave layers (bottom,
+   left edge, right edge). No photo asset, no animation, no markup or layout
+   impact. Waves hug the edges so they never sit behind headings or cards.
+   --------------------------------------------------------------------------- */
+
+.bg-slate-100[data-portal-page="ATTRACTIONS"] {
+  /* Wide flowing wave bands along the bottom — fills at 5–8% opacity. */
+  --wave-bottom: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1440' height='360' viewBox='0 0 1440 360' preserveAspectRatio='none'%3E%3Cpath fill='%237dd3fc' fill-opacity='0.08' d='M0 214c182-48 302 30 472 18s300-78 500-56 282 96 468 74v110H0z'/%3E%3Cpath fill='%2322d3ee' fill-opacity='0.07' d='M0 266c202-40 292 34 502 26s300-70 480-48 260 78 458 60v56H0z'/%3E%3Cpath fill='%230891b2' fill-opacity='0.05' d='M0 312c212-30 302 26 522 20s280-52 460-34 258 52 458 40v22H0z'/%3E%3C/svg%3E");
+
+  /* Single soft curve hugging each side gutter. */
+  --wave-left: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='900' viewBox='0 0 320 900' preserveAspectRatio='none'%3E%3Cpath fill='%2338bdf8' fill-opacity='0.07' d='M0 0c76 142-42 224 6 352s92 208 24 332-34 148 20 216H0z'/%3E%3Cpath fill='%2367e8f9' fill-opacity='0.06' d='M0 0c40 120-58 196-16 318s70 214 6 322-22 154 24 260H0z'/%3E%3C/svg%3E");
+  --wave-right: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='900' viewBox='0 0 320 900' preserveAspectRatio='none'%3E%3Cpath fill='%2322d3ee' fill-opacity='0.06' d='M320 0c-76 142 42 224-6 352s-92 208-24 332 34 148-20 216h50z'/%3E%3Cpath fill='%237dd3fc' fill-opacity='0.05' d='M320 0c-40 120 58 196 16 318s-70 214-6 322 22 154-24 260h34z'/%3E%3C/svg%3E");
+
+  --wave-bottom-h: 36vh;
+  --wave-side-w: 20vw;
+  --wave-side-h: 78vh;
+
+  background-color: #eaf8fb;
+  background-image:
+    /* 3 — soft flowing wave layers, edges only */
+    var(--wave-bottom),
+    var(--wave-left),
+    var(--wave-right),
+    /* 2 — faint aqua glows and gentle radial light */
+    radial-gradient(ellipse 58% 34% at 20% 6%, rgba(255, 255, 255, 0.95), transparent 72%),
+    radial-gradient(ellipse 46% 30% at 92% 16%, rgba(207, 250, 254, 0.42), transparent 74%),
+    radial-gradient(ellipse 52% 32% at 6% 72%, rgba(186, 230, 253, 0.32), transparent 76%),
+    /* 1b — bright, almost-white core behind the content column */
+    radial-gradient(ellipse 78% 62% at 50% 32%, #ffffff 0%, rgba(255, 255, 255, 0.72) 42%, rgba(255, 255, 255, 0) 78%),
+    /* 1a — base ocean gradient: white → pale sky → soft aqua toward the edges */
+    linear-gradient(180deg, #ffffff 0%, #f5fbfd 24%, #eaf7fa 56%, #dff4f8 84%, #eaf8fb 100%);
+  background-position:
+    center bottom,
+    left bottom,
+    right top,
+    center, center, center,
+    center,
+    center;
+  background-size:
+    100% var(--wave-bottom-h),
+    var(--wave-side-w) var(--wave-side-h),
+    var(--wave-side-w) var(--wave-side-h),
+    100% 100%, 100% 100%, 100% 100%,
+    100% 100%,
+    100% 100%;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+/* The Discover band sits on the shared ocean canvas instead of a flat block. */
+.portal-explore-band {
+  position: relative;
+  background-color: transparent;
+  border-bottom-color: rgba(190, 233, 244, 0.75);
+}
+
+.portal-explore-band::before {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  background-image:
+    radial-gradient(ellipse 34% 70% at 96% 34%, rgba(103, 232, 249, 0.16), transparent 72%),
+    radial-gradient(ellipse 30% 65% at 2% 78%, rgba(186, 230, 253, 0.2), transparent 74%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0) 70%);
+  content: "";
+  pointer-events: none;
+}
+
+.portal-explore-band > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Laptop — slightly narrower side waves as the gutters shrink. */
+@media (max-width: 1279px) {
+  .bg-slate-100[data-portal-page="ATTRACTIONS"] {
+    --wave-bottom-h: 32vh;
+    --wave-side-w: 16vw;
+    --wave-side-h: 68vh;
+  }
+}
+
+/* Tablet — keep the bottom wave and one side curve only. */
+@media (max-width: 1023px) {
+  .bg-slate-100[data-portal-page="ATTRACTIONS"] {
+    --wave-right: none;
+    --wave-bottom-h: 26vh;
+    --wave-side-w: 34vw;
+    --wave-side-h: 52vh;
+    background-attachment: scroll;
+  }
+}
+
+/* Mobile — bottom wave only; decorative glows reduced, content stays clear. */
+@media (max-width: 639px) {
+  .bg-slate-100[data-portal-page="ATTRACTIONS"] {
+    --wave-left: none;
+    --wave-bottom-h: 18vh;
+    background-image:
+      var(--wave-bottom),
+      none,
+      none,
+      radial-gradient(ellipse 80% 26% at 50% 4%, rgba(255, 255, 255, 0.92), transparent 76%),
+      none,
+      none,
+      radial-gradient(ellipse 96% 52% at 50% 34%, #ffffff 0%, rgba(255, 255, 255, 0.7) 46%, rgba(255, 255, 255, 0) 82%),
+      linear-gradient(180deg, #ffffff 0%, #f5fbfd 30%, #eaf7fa 66%, #e6f6fa 100%);
+  }
+
+  .portal-explore-band::before {
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0) 70%);
+  }
+}
+
+/* Large desktop — larger waves and more breathing room around the content. */
+@media (min-width: 1536px) {
+  .bg-slate-100[data-portal-page="ATTRACTIONS"] {
+    --wave-bottom-h: 42vh;
+    --wave-side-w: 22vw;
+    --wave-side-h: 88vh;
+  }
+}
+
+@media (prefers-contrast: more), (forced-colors: active) {
+  .bg-slate-100[data-portal-page="ATTRACTIONS"] {
+    background-image: none;
+    background-color: #f5f7f9;
+  }
+
+  .portal-explore-band::before {
+    display: none;
+  }
+}

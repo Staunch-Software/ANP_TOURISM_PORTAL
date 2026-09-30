@@ -466,7 +466,7 @@ export default function App() {
 
 
       {/* Discover the Islands — editorial gallery of real Andaman landmarks */}
-      <div className="bg-slate-100 py-10 border-b border-slate-200">
+      <div className="portal-explore-band bg-slate-100 py-10 border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-end justify-between mb-5">
             <div>
