@@ -233,11 +233,11 @@ export function FerrySearch({ onAddToCart, onRequireLogin, user }) {
           </div>
 
           {/* Search Button */}
-          <div>
+          <div className="lg:min-w-32">
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 bg-cyan-700 hover:bg-cyan-600 font-bold rounded-lg text-xs text-white shadow-md transition-all flex items-center justify-center gap-2"
+              className="w-full min-w-32 px-4 py-2.5 bg-cyan-700 hover:bg-cyan-600 font-bold rounded-lg text-xs text-white shadow-md transition-all flex items-center justify-center gap-2"
             >
               <Ship className="w-4 h-4" /> {loading ? 'Checking Sailings...' : 'Find Sailings'}
             </button>

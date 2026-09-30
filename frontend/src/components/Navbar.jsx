@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  ShieldCheck, ShoppingBag, LogOut, Anchor, Waves, Menu, X, Wallet
+  ShieldCheck, ShoppingBag, LogOut, LogIn, Anchor, Waves, Menu, X, Wallet
 } from 'lucide-react';
 
 // RFP 344: Admin/Regulatory Authority is a distinct user type from Service
@@ -25,10 +25,33 @@ export function Navbar({
   activeTab,
   setActiveTab,
   cartCount,
-  onOpenCart
+  onOpenCart,
+  adminSidebarOpen,
+  onToggleAdminSidebar,
+  vendorSidebarOpen,
+  onToggleVendorSidebar
 }) {
   const [accessibleMode, setAccessibleMode] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const headerRef = useRef(null);
+
+  useEffect(() => {
+    const header = headerRef.current;
+    if (!header || !('ResizeObserver' in window)) return;
+
+    const updateHeaderHeight = () => {
+      document.documentElement.style.setProperty('--portal-header-height', `${header.getBoundingClientRect().height}px`);
+    };
+    updateHeaderHeight();
+    const observer = new ResizeObserver(updateHeaderHeight);
+    observer.observe(header);
+    window.addEventListener('resize', updateHeaderHeight);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateHeaderHeight);
+      document.documentElement.style.removeProperty('--portal-header-height');
+    };
+  }, [user, activeTab, accessibleMode]);
 
   const toggleAccessibleMode = () => {
     const next = !accessibleMode;
@@ -43,13 +66,25 @@ export function Navbar({
   // At desktop width their portal navigation lives in the persistent
   // each dashboard's own sidebar (DashboardSidebar) instead of this top bar.
   const isStaffUser = isStaffRole(user?.role);
+  const hasDashboardSidebar = (user?.role === 'ADMIN' && activeTab === 'ADMIN') || (user?.role === 'VENDOR' && activeTab === 'VENDOR');
+  const isDashboardSidebarOpen = activeTab === 'ADMIN' ? adminSidebarOpen : vendorSidebarOpen;
+  const toggleDashboardSidebar = activeTab === 'ADMIN' ? onToggleAdminSidebar : onToggleVendorSidebar;
   const homeTab = isStaffUser ? (staffTabs[0]?.key || 'ADMIN') : 'ATTRACTIONS';
+  const displayName = user?.full_name || user?.name || 'Visitor';
 
   return (
-    <header className="sticky top-0 z-40 bg-navy-800 border-b-[3px] border-cyan-600 shadow-lg">
+    <header
+      ref={headerRef}
+      className="sticky top-0 z-40 border-b-[3px] border-cyan-600 shadow-lg"
+      style={{
+        backgroundImage: "linear-gradient(rgba(7, 26, 46, 0.82), rgba(7, 26, 46, 0.86)), url('/images/footer-coconut-beach.jpg')",
+        backgroundPosition: 'center 58%',
+        backgroundSize: 'cover'
+      }}
+    >
       {/* Government identity strip */}
-      <div className="bg-navy-900 px-4 py-1.5 text-[11px] text-slate-300">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
+      <div className="bg-navy-900/65 px-4 py-1.5 text-[11px] text-slate-300">
+        <div className="w-full flex justify-between items-center">
           <span className="font-medium">भारत सरकार · Government of India &nbsp;|&nbsp; Andaman &amp; Nicobar Administration</span>
           <div className="hidden sm:flex items-center gap-4 text-xs">
             <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
@@ -75,18 +110,25 @@ export function Navbar({
       </div>
 
       {/* Main Nav Strip */}
-      <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between gap-6">
-        {/* Brand — min-w-0 + truncate so this shrinks instead of forcing
-            the header into horizontal overflow on narrow phones, where it
-            has to share the row with the hamburger/cart/account buttons. */}
+      <div className={`portal-header-row w-full px-4 sm:px-5 lg:px-6 h-20 flex items-center justify-between gap-3 lg:gap-5 ${!isStaffUser ? 'portal-header-tourist' : ''}`}>
+        <button
+          onClick={() => hasDashboardSidebar ? toggleDashboardSidebar() : setIsMobileMenuOpen((v) => !v)}
+          className="portal-header-menu lg:hidden p-2.5 rounded-lg text-white hover:bg-navy-700 transition-colors shrink-0"
+          aria-label={(hasDashboardSidebar ? isDashboardSidebarOpen : isMobileMenuOpen) ? 'Close menu' : 'Open menu'}
+          aria-expanded={hasDashboardSidebar ? isDashboardSidebarOpen : isMobileMenuOpen}
+          aria-controls={hasDashboardSidebar ? `${activeTab.toLowerCase()}-dashboard-sidebar` : undefined}
+        >
+          {(hasDashboardSidebar ? isDashboardSidebarOpen : isMobileMenuOpen) ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        </button>
+
         <div
-          className="flex items-center gap-3 cursor-pointer group min-w-0"
+          className="portal-header-brand flex items-center gap-3 cursor-pointer group min-w-0"
           onClick={() => { setActiveTab(homeTab); setIsMobileMenuOpen(false); }}
         >
           <img src="/images/govt-seal.png" alt="Emblem" className="w-11 h-11 object-contain bg-white rounded-lg p-1 shadow-md shrink-0" />
           <div className="min-w-0">
-            <div className="font-serif font-black text-base sm:text-xl tracking-tight text-white leading-tight truncate">ANIIDCO Tourism &amp; Ferry Portal</div>
-            <span className="text-[10px] text-cyan-200 tracking-wider uppercase font-semibold hidden sm:block truncate">
+            <div className="brand-title font-serif font-black text-base sm:text-xl tracking-tight text-white leading-tight truncate">ANIIDCO Tourism &amp; Ferry Portal</div>
+            <span className="brand-subtitle text-[10px] text-cyan-200 tracking-wider uppercase font-semibold hidden sm:block truncate">
               Official Single-Window Ticketing · A&amp;N Islands
             </span>
           </div>
@@ -96,38 +138,36 @@ export function Navbar({
             via each dashboard's own persistent sidebar at desktop width, and
             via the mobile drawer below on small screens. */}
         {!isStaffUser && (
-          <nav className="hidden md:flex items-center gap-1 bg-navy-700/60 p-1.5 rounded-xl">
+          <nav className="hidden lg:flex items-center gap-1">
             <button
               onClick={() => setActiveTab('ATTRACTIONS')}
-              className={`px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all ${
-                activeTab === 'ATTRACTIONS'
-                  ? 'bg-cyan-700 text-white shadow-md'
-                  : 'text-slate-200 hover:text-white hover:bg-navy-600'
+              className={`portal-nav-button px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap ${
+                activeTab === 'ATTRACTIONS' ? 'text-white' : 'text-slate-200'
               }`}
             >
-              Attractions
+              <span>Attractions</span>
             </button>
 
             <button
               onClick={() => setActiveTab('FERRY')}
-              className={`px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all ${
+              className={`portal-nav-button px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap ${
                 activeTab === 'FERRY'
-                  ? 'bg-cyan-700 text-white shadow-md'
-                  : 'text-slate-200 hover:text-white hover:bg-navy-600'
+                  ? 'is-current text-white shadow-md'
+                  : 'text-slate-200'
               }`}
             >
-              Ferries
+              <span>Ferries</span>
             </button>
 
             <button
               onClick={() => setActiveTab('PASSES')}
-              className={`px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all ${
+              className={`portal-nav-button px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap ${
                 activeTab === 'PASSES'
-                  ? 'bg-cyan-700 text-white shadow-md'
-                  : 'text-slate-200 hover:text-white hover:bg-navy-600'
+                  ? 'is-current text-white shadow-md'
+                  : 'text-slate-200'
               }`}
             >
-              My Passes
+              <span>My Passes</span>
             </button>
 
             <button
@@ -143,44 +183,45 @@ export function Navbar({
 
             <button
               onClick={() => setActiveTab('SUPPORT')}
-              className={`px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all ${
+              className={`portal-nav-button px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap ${
                 activeTab === 'SUPPORT'
-                  ? 'bg-cyan-700 text-white shadow-md'
-                  : 'text-slate-200 hover:text-white hover:bg-navy-600'
+                  ? 'is-current text-white shadow-md'
+                  : 'text-slate-200'
               }`}
             >
-              Support
+              <span>Support</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('GROUP_BOOKINGS')}
+              className={`portal-nav-button px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap ${
+                activeTab === 'GROUP_BOOKINGS' ? 'is-current text-white shadow-md' : 'text-slate-200'
+              }`}
+            >
+              <span>Group Booking</span>
             </button>
 
             {user?.role === 'AGENT' && (
               <button
                 onClick={() => setActiveTab('AGENT_CONSOLE')}
-                className={`px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all ${
+                className={`portal-nav-button px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap ${
                   activeTab === 'AGENT_CONSOLE'
-                    ? 'bg-cyan-700 text-white shadow-md'
-                    : 'text-amber-400 hover:text-amber-300 hover:bg-navy-600'
+                    ? 'is-current text-white shadow-md'
+                    : 'text-amber-400'
                 }`}
               >
-                Agent Console
+                <span>Agent Console</span>
               </button>
             )}
           </nav>
         )}
 
         {/* Right Section: Cart + Account */}
-        <div className="flex items-center gap-3 shrink-0">
-          <button
-            onClick={() => setIsMobileMenuOpen((v) => !v)}
-            className="md:hidden p-2.5 rounded-lg text-white hover:bg-navy-700 transition-colors"
-            aria-label={isMobileMenuOpen ? 'Close menu' : 'Open menu'}
-            aria-expanded={isMobileMenuOpen}
-          >
-            {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
-
+        <div className="portal-header-actions flex items-center gap-3 shrink-0">
           {!isStaffUser && (
             <button
               onClick={onOpenCart}
+              aria-label="Trip Cart"
               className="relative px-4 py-2.5 bg-transparent hover:bg-navy-700 border border-navy-600 rounded-lg text-sm font-bold flex items-center gap-2 text-white transition-all"
             >
               <ShoppingBag className="w-4 h-4 text-cyan-300" />
@@ -195,17 +236,21 @@ export function Navbar({
 
           {user ? (
             <div className="flex items-center gap-3 bg-navy-700 border border-navy-600 px-3 py-1.5 rounded-lg">
-              <div className="w-8 h-8 rounded-md bg-cyan-600/20 text-cyan-300 border border-cyan-600/40 flex items-center justify-center font-bold text-xs">
+              <div className="portal-account-badge w-8 h-8 rounded-md bg-cyan-600/20 text-cyan-300 border border-cyan-600/40 flex items-center justify-center font-bold text-xs">
                 {ROLE_BADGE[user.role] || 'TR'}
               </div>
+              <div className="portal-mobile-identity lg:hidden min-w-0" title={displayName}>
+                <span className="portal-mobile-name block text-xs font-bold text-white">{displayName}</span>
+                <span className="portal-mobile-status block text-emerald-400 font-medium">Verified Visitor</span>
+              </div>
               <div className="hidden lg:block text-left">
-                <div className="text-xs font-bold text-white leading-tight">{user.phone_number}</div>
+                <div className="text-xs font-bold text-white leading-tight max-w-36 break-words">{displayName}</div>
                 <div className="text-[10px] text-emerald-400 font-medium">Verified Visitor</div>
               </div>
               <button
                 onClick={onLogout}
                 title="Log Out"
-                className="text-slate-300 hover:text-red-400 p-1.5 rounded-lg hover:bg-navy-600 transition-colors"
+                className="text-slate-300 hover:text-red-400 p-1.5 rounded-lg hover:bg-navy-600 transition-colors shrink-0"
               >
                 <LogOut className="w-4 h-4" />
               </button>
@@ -217,45 +262,51 @@ export function Navbar({
             // modal itself instead of competing for space here.
             <button
               onClick={() => onOpenLogin('VISITOR')}
-              className="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-lg text-sm shadow-md transition-all whitespace-nowrap"
+              aria-label="Login / Sign Up"
+              className="px-4 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-lg text-sm shadow-md transition-all whitespace-nowrap flex items-center gap-2"
             >
-              Login / Sign Up
+              <LogIn className="w-4 h-4" />
+              <span className="portal-login-label">Login / Sign Up</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* Mobile menu — the center nav above is `hidden md:flex`, so this is
+      {/* Mobile menu — the center nav above is `hidden lg:flex`, so this is
           the only way to reach Attractions/Ferries/Passes (or a staff
           user's own portals) on a phone or narrow tablet. */}
-      {isMobileMenuOpen && (
-        <div className="md:hidden border-t border-navy-700 bg-navy-800">
+      {isMobileMenuOpen && !hasDashboardSidebar && (
+        <div className="lg:hidden border-t border-navy-700 bg-navy-800">
           <nav className="px-4 py-3 space-y-1">
             {!isStaffUser && (
               <>
                 <button
-                  onClick={() => { setActiveTab('ATTRACTIONS'); setIsMobileMenuOpen(false); }}
-                  className={`w-full text-left px-4 py-3 rounded-lg text-sm font-bold transition-all ${
-                    activeTab === 'ATTRACTIONS' ? 'bg-cyan-700 text-white' : 'text-slate-200 hover:bg-navy-700'
+                  onClick={() => {
+                    setActiveTab('ATTRACTIONS');
+                    setIsMobileMenuOpen(false);
+                    requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' }));
+                  }}
+                  className={`portal-nav-button w-full text-left px-4 py-3 rounded-lg text-sm font-bold ${
+                    activeTab === 'ATTRACTIONS' ? 'text-white' : 'text-slate-200'
                   }`}
                 >
-                  Attractions
+                  <span>Attractions</span>
                 </button>
                 <button
                   onClick={() => { setActiveTab('FERRY'); setIsMobileMenuOpen(false); }}
-                  className={`w-full text-left px-4 py-3 rounded-lg text-sm font-bold transition-all ${
-                    activeTab === 'FERRY' ? 'bg-cyan-700 text-white' : 'text-slate-200 hover:bg-navy-700'
+                  className={`portal-nav-button w-full text-left px-4 py-3 rounded-lg text-sm font-bold ${
+                    activeTab === 'FERRY' ? 'is-current text-white' : 'text-slate-200'
                   }`}
                 >
-                  Ferries
+                  <span>Ferries</span>
                 </button>
                 <button
                   onClick={() => { setActiveTab('PASSES'); setIsMobileMenuOpen(false); }}
-                  className={`w-full text-left px-4 py-3 rounded-lg text-sm font-bold transition-all ${
-                    activeTab === 'PASSES' ? 'bg-cyan-700 text-white' : 'text-slate-200 hover:bg-navy-700'
+                  className={`portal-nav-button w-full text-left px-4 py-3 rounded-lg text-sm font-bold ${
+                    activeTab === 'PASSES' ? 'is-current text-white' : 'text-slate-200'
                   }`}
                 >
-                  My Passes
+                  <span>My Passes</span>
                 </button>
                 <button
                   onClick={() => { setActiveTab('WALLET'); setIsMobileMenuOpen(false); }}
@@ -267,11 +318,19 @@ export function Navbar({
                 </button>
                 <button
                   onClick={() => { setActiveTab('SUPPORT'); setIsMobileMenuOpen(false); }}
-                  className={`w-full text-left px-4 py-3 rounded-lg text-sm font-bold transition-all ${
-                    activeTab === 'SUPPORT' ? 'bg-cyan-700 text-white' : 'text-slate-200 hover:bg-navy-700'
+                  className={`portal-nav-button w-full text-left px-4 py-3 rounded-lg text-sm font-bold ${
+                    activeTab === 'SUPPORT' ? 'is-current text-white' : 'text-slate-200'
                   }`}
                 >
-                  Support
+                  <span>Support</span>
+                </button>
+                <button
+                  onClick={() => { setActiveTab('GROUP_BOOKINGS'); setIsMobileMenuOpen(false); }}
+                  className={`portal-nav-button w-full text-left px-4 py-3 rounded-lg text-sm font-bold ${
+                    activeTab === 'GROUP_BOOKINGS' ? 'is-current text-white' : 'text-slate-200'
+                  }`}
+                >
+                  <span>Group Booking</span>
                 </button>
                 {user?.role === 'AGENT' && (
                   <button
@@ -293,11 +352,11 @@ export function Navbar({
                 <button
                   key={tab.key}
                   onClick={() => { setActiveTab(tab.key); setIsMobileMenuOpen(false); }}
-                  className={`w-full text-left px-4 py-3 rounded-lg text-sm font-bold flex items-center gap-2.5 transition-all ${
+                  className={`portal-nav-button w-full text-left px-4 py-3 rounded-lg text-sm font-bold flex items-center gap-2.5 ${
                     isActive ? 'bg-amber-700 text-white' : 'text-amber-400 hover:bg-navy-700'
                   }`}
                 >
-                  <Icon className="w-4 h-4" /> {tab.label}
+                  <span className="flex items-center gap-2.5"><Icon className="w-4 h-4" /> {tab.label}</span>
                 </button>
               );
             })}
@@ -317,47 +376,36 @@ export function Navbar({
               हिन्दी
             </button>
           </div>
-
-          <div className="border-t border-navy-700 px-4 py-4 space-y-3">
+          <div className="md:hidden border-t border-navy-700 px-4 py-4 space-y-3">
             {!isStaffUser && (
               <button
                 onClick={() => { onOpenCart(); setIsMobileMenuOpen(false); }}
-                className="w-full relative px-4 py-3 bg-transparent border border-navy-600 rounded-lg text-sm font-bold flex items-center justify-center gap-2 text-white"
+                className="w-full px-4 py-3 border border-navy-600 rounded-lg text-sm font-bold flex items-center justify-center gap-2 text-white"
               >
                 <ShoppingBag className="w-4 h-4 text-cyan-300" />
                 Trip Cart
-                {cartCount > 0 && (
-                  <span className="px-1.5 py-0.5 rounded-full bg-cyan-600 text-white text-[11px] font-extrabold leading-none">
-                    {cartCount}
-                  </span>
-                )}
+                {cartCount > 0 && <span className="px-1.5 py-0.5 rounded-full bg-cyan-600 text-white text-[11px] font-extrabold leading-none">{cartCount}</span>}
               </button>
             )}
-
             {user ? (
-              <div className="flex items-center justify-between gap-3 bg-navy-700 border border-navy-600 px-3 py-2.5 rounded-lg">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-md bg-cyan-600/20 text-cyan-300 border border-cyan-600/40 flex items-center justify-center font-bold text-xs shrink-0">
-                    {ROLE_BADGE[user.role] || 'TR'}
-                  </div>
-                  <div className="text-left">
-                    <div className="text-xs font-bold text-white leading-tight">{user.phone_number}</div>
-                    <div className="text-[10px] text-emerald-400 font-medium">Verified Visitor</div>
-                  </div>
+              <div className="flex items-center gap-3 bg-navy-700 border border-navy-600 px-3 py-2.5 rounded-lg">
+                <div className="w-8 h-8 rounded-md bg-cyan-600/20 text-cyan-300 border border-cyan-600/40 flex items-center justify-center font-bold text-xs shrink-0">
+                  {ROLE_BADGE[user.role] || 'TR'}
                 </div>
-                <button
-                  onClick={() => { onLogout(); setIsMobileMenuOpen(false); }}
-                  title="Log Out"
-                  className="text-slate-300 hover:text-red-400 p-1.5 rounded-lg hover:bg-navy-600 transition-colors shrink-0"
-                >
+                <div className="min-w-0 flex-1 text-left">
+                  <div className="text-xs font-bold text-white leading-tight break-words">{displayName}</div>
+                  <div className="text-[10px] text-emerald-400 font-medium">Verified Visitor</div>
+                </div>
+                <button onClick={() => { onLogout(); setIsMobileMenuOpen(false); }} title="Log Out" aria-label="Log Out" className="text-slate-300 hover:text-red-400 p-1.5 rounded-lg hover:bg-navy-600 transition-colors shrink-0">
                   <LogOut className="w-4 h-4" />
                 </button>
               </div>
             ) : (
               <button
                 onClick={() => { onOpenLogin('VISITOR'); setIsMobileMenuOpen(false); }}
-                className="w-full px-5 py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-lg text-sm shadow-md"
+                className="w-full px-5 py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-lg text-sm shadow-md flex items-center justify-center gap-2"
               >
+                <LogIn className="w-4 h-4" />
                 Login / Sign Up
               </button>
             )}

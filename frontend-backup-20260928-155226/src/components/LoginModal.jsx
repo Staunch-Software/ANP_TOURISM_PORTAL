@@ -1,0 +1,674 @@
+import React, { useState, useEffect, useRef } from 'react';
+import API from '../api/client';
+import {
+  ShieldCheck, Landmark, Phone, KeyRound, User, Mail, Globe, ArrowRight,
+  AlertCircle, Lock, Ship, Store,
+} from 'lucide-react';
+
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+
+// Purely a presentational split — both contexts hit the exact same auth
+// endpoints and the backend decides the real role from the phone number.
+// This just tailors the copy/icon so a tourist never sees government-staff
+// language and staff get an entry point that doesn't look like a generic
+// "sign in" button.
+const CONTEXT_COPY = {
+  VISITOR: {
+    icon: ShieldCheck,
+    title: 'Visitor Login',
+    subtitle: 'Strict Single-Session Concurrency (RFP 7.1.12)',
+  },
+  STAFF: {
+    icon: Landmark,
+    title: 'Staff & Government Login',
+    subtitle: 'Authorized Ferry Operators, Activity Vendors & Administrators only',
+  },
+};
+
+const LOGIN_ROLES = [
+  { id: 'ADMIN', label: 'Admin', description: 'Administration portal access', context: 'STAFF', loginTitle: 'Admin Login', subtitle: 'Authorized administrators only', icon: ShieldCheck },
+  { id: 'VISITOR', label: 'Tourist', description: 'Book ferries and island experiences', context: 'VISITOR', loginTitle: 'Tourist Login', subtitle: 'Access bookings and digital passes', icon: User },
+  { id: 'VENDOR', label: 'Vendor', description: 'Manage activities and services', context: 'STAFF', loginTitle: 'Vendor Login', subtitle: 'Authorized activity vendors only', icon: Store },
+  { id: 'SERVICE_PROVIDER', label: 'Service Provider', description: 'Ferry operators and business partners', context: 'STAFF', loginTitle: 'Service Provider Login', subtitle: 'Authorized service providers only', icon: Ship },
+];
+
+export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VISITOR', onSwitchContext, onOpenOperatorRegister }) {
+  // CREDENTIALS: phone + password (RFP 7.2.1-1 default subsequent login)
+  // PHONE -> OTP: first-time registration, or the "Login with OTP" /
+  //   "Forgot Password" fallback (otpIntent distinguishes the two)
+  // SET_PASSWORD: shown once right after OTP if the account has no
+  //   password yet, or whenever the OTP path was entered via "Forgot
+  //   Password" (otpIntent === 'RESET')
+  // PROFILE: RFP 7.2.1-1 mandatory profile fields, if still incomplete
+  const [step, setStep] = useState('ROLE');
+  const [selectedRole, setSelectedRole] = useState(null);
+  const [otpIntent, setOtpIntent] = useState('REGISTER'); // 'REGISTER' | 'RESET'
+
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [password, setPassword] = useState('');
+  const [otp, setOtp] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Profile Fields (RFP Page 24)
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [nationality, setNationality] = useState('INDIAN');
+  const [stateOrCountry, setStateOrCountry] = useState('');
+  const [profilePhone, setProfilePhone] = useState('');
+  const [needsPhone, setNeedsPhone] = useState(false);
+
+  const googleButtonRef = useRef(null);
+
+  // Reset to a fresh sign-in flow every time the modal is (re)opened —
+  // otherwise it re-mounts hidden and remembers whatever step/error state
+  // was left over from the previous session.
+  useEffect(() => {
+    if (isOpen) {
+      setStep('ROLE');
+      setSelectedRole(null);
+      setOtpIntent('REGISTER');
+      setPhoneNumber('');
+      setPassword('');
+      setOtp('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setError(null);
+      setFullName('');
+      setEmail('');
+      setNationality('INDIAN');
+      setStateOrCountry('');
+      setProfilePhone('');
+      setNeedsPhone(false);
+    }
+  }, [isOpen]);
+
+  // Google Identity Services is only needed on the tourist login screen —
+  // load the script lazily rather than on every app page load, and only
+  // once a Client ID has actually been configured (frontend/.env).
+  useEffect(() => {
+    if (!isOpen || step !== 'CREDENTIALS' || loginContext !== 'VISITOR' || !GOOGLE_CLIENT_ID) return;
+
+    const renderButton = () => {
+      if (!window.google || !googleButtonRef.current) return;
+      window.google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleGoogleCredential,
+      });
+      window.google.accounts.id.renderButton(googleButtonRef.current, {
+        theme: 'outline', size: 'large', width: 336, text: 'continue_with',
+      });
+    };
+
+    if (window.google?.accounts?.id) {
+      renderButton();
+    } else {
+      const script = document.createElement('script');
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.onload = renderButton;
+      document.body.appendChild(script);
+    }
+  }, [isOpen, step, loginContext]);
+
+  if (!isOpen) return null;
+
+  const afterAuthenticated = (profile) => {
+    localStorage.setItem('aniidco_user', JSON.stringify(profile));
+
+    if (otpIntent === 'RESET' || !profile.has_password) {
+      setStep('SET_PASSWORD');
+      return;
+    }
+    goToProfileOrFinish(profile);
+  };
+
+  // RFP Section 7.2.1-1: registration must capture full legal name, email,
+  // nationality, and a contact number before a booking can proceed.
+  const goToProfileOrFinish = (profile) => {
+    if (!profile.profile_complete) {
+      setFullName(profile.full_name === 'Valued Tourist' ? '' : profile.full_name);
+      setEmail(profile.email || '');
+      setNationality(profile.nationality || 'INDIAN');
+      setNeedsPhone(!profile.phone_number);
+      setStep('PROFILE');
+      return;
+    }
+    onLoginSuccess(profile);
+    onClose();
+  };
+
+  // Google already proved who this person is, so there's no password step
+  // to force — straight to profile completion (if anything's missing) or
+  // straight into the portal.
+  const handleGoogleCredential = async (response) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await API.post('/auth/google', { credential: response.credential });
+      localStorage.setItem('aniidco_token', res.data.access_token);
+      const profileRes = await API.get('/auth/me');
+      localStorage.setItem('aniidco_user', JSON.stringify(profileRes.data));
+      goToProfileOrFinish(profileRes.data);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Google sign-in failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePasswordLogin = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await API.post('/auth/login-password', { phone_number: phoneNumber, password });
+      localStorage.setItem('aniidco_token', res.data.access_token);
+      const profileRes = await API.get('/auth/me');
+      afterAuthenticated(profileRes.data);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Invalid mobile number or password.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const goToOtpFlow = (intent) => {
+    setOtpIntent(intent);
+    setError(null);
+    setStep('PHONE');
+  };
+
+  const selectRole = (role) => {
+    setSelectedRole(role.id);
+    onSwitchContext?.(role.context);
+    setError(null);
+    setStep('CREDENTIALS');
+  };
+
+  const returnToRoleSelection = () => {
+    setSelectedRole(null);
+    setError(null);
+    setStep('ROLE');
+  };
+
+  const handleSendOtp = (e) => {
+    e.preventDefault();
+    if (!phoneNumber || phoneNumber.length < 10) {
+      setError('Please enter a valid 10-digit mobile number');
+      return;
+    }
+    setError(null);
+    setStep('OTP');
+    // Best-effort: fire the WhatsApp send in the background without
+    // blocking the OTP screen -- the fixed demo code (123456) still works
+    // regardless of whether this actually reaches WhatsApp.
+    API.post('/auth/request-otp', { phone_number: phoneNumber }).catch(() => {});
+  };
+
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await API.post('/auth/verify-otp', {
+        phone_number: phoneNumber,
+        otp: otp,
+      });
+      localStorage.setItem('aniidco_token', res.data.access_token);
+      const profileRes = await API.get('/auth/me');
+      afterAuthenticated(profileRes.data);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Authentication failed. Please check OTP.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSetPassword = async (e) => {
+    e.preventDefault();
+    setError(null);
+    if (newPassword.length < 8) {
+      setError('Password must be at least 8 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const endpoint = otpIntent === 'RESET' ? '/auth/reset-password' : '/auth/set-password';
+      const res = await API.post(endpoint, { password: newPassword });
+      localStorage.setItem('aniidco_user', JSON.stringify(res.data));
+
+      if (!res.data.profile_complete) {
+        setFullName(res.data.full_name === 'Valued Tourist' ? '' : res.data.full_name);
+        setNationality(res.data.nationality || 'INDIAN');
+        setStep('PROFILE');
+      } else {
+        onLoginSuccess(res.data);
+        onClose();
+      }
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Could not set password.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveProfile = async (e) => {
+    e.preventDefault();
+    if (needsPhone && (!profilePhone || profilePhone.length < 10)) {
+      setError('Please enter a valid 10-digit mobile number.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await API.patch('/auth/me', {
+        full_name: fullName,
+        email: email,
+        nationality: nationality,
+        state_or_country: stateOrCountry,
+        phone_number: needsPhone ? profilePhone : undefined,
+      });
+
+      localStorage.setItem('aniidco_user', JSON.stringify(res.data));
+      onLoginSuccess(res.data);
+      onClose();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to save profile');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const headerTitle = {
+    ROLE: 'Choose your account type',
+    CREDENTIALS: LOGIN_ROLES.find((role) => role.id === selectedRole)?.loginTitle || CONTEXT_COPY[loginContext]?.title,
+    PHONE: otpIntent === 'RESET' ? 'Reset Password' : 'Register / Login with OTP',
+    OTP: otpIntent === 'RESET' ? 'Reset Password' : 'Register / Login with OTP',
+    SET_PASSWORD: otpIntent === 'RESET' ? 'Set a New Password' : 'Create Your Password',
+    PROFILE: 'Complete Tourist Profile',
+  }[step];
+
+  const headerSubtitle = {
+    ROLE: 'Select the account you want to sign in or register with.',
+    CREDENTIALS: LOGIN_ROLES.find((role) => role.id === selectedRole)?.subtitle || CONTEXT_COPY[loginContext]?.subtitle,
+    PHONE: 'Verified via One-Time Password (SMS)',
+    OTP: 'Verified via One-Time Password (SMS)',
+    SET_PASSWORD: 'RFP 7.2.1-1: no OTP needed for future logins once this is set',
+    PROFILE: 'Required for port clearance & turnstile pass issuance (RFP 7.2.1)',
+  }[step];
+
+  return (
+    <div className="portal-auth-overlay fixed inset-0 z-50 flex items-center justify-center bg-navy-900/70 backdrop-blur-sm p-4">
+      <div className="portal-auth-modal bg-white border border-slate-200 rounded-2xl w-full shadow-2xl relative overflow-hidden">
+        {/* Government banner strip with official seal */}
+        <div
+          className="relative h-20 bg-cover bg-center"
+          style={{ backgroundImage: "url('/images/hero-lagoon.jpg')" }}
+        >
+          <div className="absolute inset-0 bg-gradient-to-r from-navy-900/95 via-navy-800/90 to-navy-900/95" />
+          <div className="relative h-full flex items-center gap-3 px-6">
+            <img
+              src="/images/govt-seal.png"
+              alt="Andaman & Nicobar Administration Seal"
+              className="w-12 h-12 object-contain bg-white rounded-full p-1 shadow-lg"
+            />
+            <div>
+              <div className="text-xs font-bold text-white tracking-wide">GOVERNMENT OF INDIA</div>
+              <div className="text-[10px] text-slate-300">Andaman &amp; Nicobar Administration</div>
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 text-white/80 hover:text-white p-1 rounded-lg"
+        >
+          ✕
+        </button>
+
+        <div className="p-7">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="p-2.5 bg-cyan-50 text-cyan-700 border border-cyan-200 rounded-xl">
+              {(() => {
+                const ContextIcon = step === 'ROLE'
+                  ? Landmark
+                  : step === 'CREDENTIALS'
+                    ? LOGIN_ROLES.find((role) => role.id === selectedRole)?.icon || CONTEXT_COPY[loginContext]?.icon || ShieldCheck
+                    : Lock;
+                return <ContextIcon className="w-6 h-6" />;
+              })()}
+            </div>
+            <div>
+              <h3 className="font-serif text-lg font-bold text-navy-800">{headerTitle}</h3>
+              <p className="text-xs text-slate-500">{headerSubtitle}</p>
+            </div>
+          </div>
+
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-xs text-red-700">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {step === 'ROLE' && (
+            <div className="portal-auth-role-grid">
+              {LOGIN_ROLES.map((role) => {
+                const RoleIcon = role.icon;
+                return (
+                  <button key={role.id} type="button" className="portal-auth-role-card" onClick={() => selectRole(role)}>
+                    <span className="portal-auth-role-icon"><RoleIcon className="w-5 h-5" /></span>
+                    <span className="portal-auth-role-label">{role.label}</span>
+                    <span className="portal-auth-role-description">{role.description}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* STEP 1: Mobile Number + Password (RFP 7.2.1-1 default login) */}
+          {step === 'CREDENTIALS' && (
+            <div className="space-y-5">
+              {loginContext === 'VISITOR' && GOOGLE_CLIENT_ID && (
+                <>
+                  <div ref={googleButtonRef} className="flex justify-center [&>div]:!w-full"></div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-px bg-slate-200"></div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Or</span>
+                    <div className="flex-1 h-px bg-slate-200"></div>
+                  </div>
+                </>
+              )}
+
+              <form onSubmit={handlePasswordLogin} className="space-y-4">
+                <div className="space-y-3">
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-mono">+91</span>
+                    <input
+                      type="tel"
+                      maxLength="10"
+                      value={phoneNumber}
+                      onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, ''))}
+                      placeholder="Mobile Number"
+                      className="w-full pl-12 pr-4 py-3 bg-white border border-slate-300 rounded-full text-sm text-navy-800 focus:outline-none focus:border-cyan-500 font-mono"
+                      required
+                    />
+                  </div>
+
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Password"
+                      className="w-full pl-11 pr-4 py-3 bg-white border border-slate-300 rounded-full text-sm text-navy-800 focus:outline-none focus:border-cyan-500"
+                      required
+                    />
+                  </div>
+                  <div className="text-right -mt-1">
+                    <button
+                      type="button"
+                      onClick={() => goToOtpFlow('RESET')}
+                      className="text-[11px] text-slate-400 hover:text-cyan-700 hover:underline"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3 bg-cyan-700 hover:bg-cyan-600 font-bold rounded-full text-sm text-white shadow-md transition-all flex items-center justify-center gap-2"
+                >
+                  {loading ? 'Signing in...' : 'Login'}
+                </button>
+
+                <p className="text-center text-xs text-slate-500">
+                  New here?{' '}
+                  <button type="button" onClick={() => goToOtpFlow('REGISTER')} className="text-cyan-700 font-bold hover:underline">
+                    Register with OTP
+                  </button>
+                </p>
+              </form>
+
+              <div className="portal-auth-role-actions">
+                {selectedRole === 'VENDOR' && onOpenOperatorRegister && (
+                  <button type="button" onClick={onOpenOperatorRegister} className="text-cyan-700 font-semibold hover:underline">
+                    Register as a Vendor
+                  </button>
+                )}
+                {selectedRole === 'SERVICE_PROVIDER' && onOpenOperatorRegister && (
+                  <button type="button" onClick={onOpenOperatorRegister} className="text-cyan-700 font-semibold hover:underline">
+                    Register as a Service Provider
+                  </button>
+                )}
+                <button type="button" onClick={returnToRoleSelection} className="text-navy-700 font-semibold hover:underline">
+                  Change account type
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 2a: Phone entry for the OTP path (registration or forgot-password) */}
+          {step === 'PHONE' && (
+            <form onSubmit={handleSendOtp} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Mobile Number</label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-2.5 text-xs text-slate-400 font-mono">+91</span>
+                  <input
+                    type="tel"
+                    maxLength="10"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, ''))}
+                    placeholder="Enter 10-digit number"
+                    className="w-full pl-12 pr-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-navy-800 focus:outline-none focus:border-cyan-500 font-mono"
+                    required
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-2.5 bg-cyan-700 hover:bg-cyan-600 font-bold rounded-lg text-sm text-white shadow-md transition-all flex items-center justify-center gap-2"
+              >
+                <Phone className="w-4 h-4" /> Send OTP
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStep('CREDENTIALS')}
+                className="w-full text-center text-[11px] text-slate-500 hover:underline"
+              >
+                ← Back to Login
+              </button>
+            </form>
+          )}
+
+          {/* STEP 2b: OTP entry */}
+          {step === 'OTP' && (
+            <form onSubmit={handleVerifyOtp} className="space-y-4">
+              <div>
+                <div className="flex justify-between items-center mb-1.5">
+                  <label className="text-xs font-semibold text-slate-600">Enter 6-Digit OTP</label>
+                  <button
+                    type="button"
+                    onClick={() => setStep('PHONE')}
+                    className="text-[11px] text-cyan-700 hover:underline"
+                  >
+                    Change number
+                  </button>
+                </div>
+                <div className="relative">
+                  <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type="text"
+                    maxLength="6"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value)}
+                    placeholder="123456"
+                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-navy-800 tracking-widest font-mono text-center focus:outline-none focus:border-cyan-500"
+                    required
+                  />
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1.5">For demo evaluation, default OTP is <strong className="text-cyan-700">123456</strong>.</p>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2.5 bg-emerald-700 hover:bg-emerald-600 font-bold rounded-lg text-sm text-white shadow-md transition-all flex items-center justify-center gap-2"
+              >
+                {loading ? 'Verifying...' : 'Verify & Continue'}
+              </button>
+            </form>
+          )}
+
+          {/* STEP 3: Set/Reset Password (RFP 7.2.1-1) */}
+          {step === 'SET_PASSWORD' && (
+            <form onSubmit={handleSetPassword} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">New Password</label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="At least 8 characters"
+                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-navy-800 focus:outline-none focus:border-cyan-500"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Confirm Password</label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Re-enter password"
+                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-navy-800 focus:outline-none focus:border-cyan-500"
+                    required
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2.5 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-lg text-sm shadow-md flex items-center justify-center gap-2"
+              >
+                {loading ? 'Saving...' : 'Save Password & Continue'} <ArrowRight className="w-4 h-4" />
+              </button>
+            </form>
+          )}
+
+          {/* STEP 4: Profile Completion (RFP Section 7.2.1-1) */}
+          {step === 'PROFILE' && (
+            <form onSubmit={handleSaveProfile} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1 flex items-center gap-1">
+                  <User className="w-3.5 h-3.5 text-cyan-600" /> Full Legal Name (As per Govt ID)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Rahul Sharma"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1 flex items-center gap-1">
+                  <Mail className="w-3.5 h-3.5 text-cyan-600" /> Email ID (For E-Ticket Dispatch)
+                </label>
+                <input
+                  type="email"
+                  placeholder="rahul.sharma@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+                  required
+                />
+              </div>
+
+              {needsPhone && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1 flex items-center gap-1">
+                    <Phone className="w-3.5 h-3.5 text-cyan-600" /> Mobile Number (For Booking Alerts)
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2 text-[11px] text-slate-400 font-mono">+91</span>
+                    <input
+                      type="tel"
+                      maxLength="10"
+                      placeholder="Enter 10-digit number"
+                      value={profilePhone}
+                      onChange={(e) => setProfilePhone(e.target.value.replace(/\D/g, ''))}
+                      className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800 font-mono"
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1 flex items-center gap-1">
+                    <Globe className="w-3.5 h-3.5 text-cyan-600" /> Nationality
+                  </label>
+                  <select
+                    value={nationality}
+                    onChange={(e) => setNationality(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+                  >
+                    <option value="INDIAN">Indian Citizen</option>
+                    <option value="FOREIGN">Foreign National</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">
+                    State / Country
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Delhi or UK"
+                    value={stateOrCountry}
+                    onChange={(e) => setStateOrCountry(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+                    required
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2.5 mt-2 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-lg text-sm shadow-md flex items-center justify-center gap-2"
+              >
+                {loading ? 'Saving...' : 'Complete Profile & Enter Portal'} <ArrowRight className="w-4 h-4" />
+              </button>
+            </form>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

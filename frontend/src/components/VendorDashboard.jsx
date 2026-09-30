@@ -24,7 +24,7 @@ const VENDOR_SECTION_GROUPS = [
   },
 ];
 
-export function VendorDashboard({ user, onLogout }) {
+export function VendorDashboard({ user, onLogout, isSidebarOpen, onCloseSidebar }) {
   const [activeSection, setActiveSection] = useState('OVERVIEW');
   const [attractions, setAttractions] = useState([]);
   const [selectedAttractionId, setSelectedAttractionId] = useState('');
@@ -138,12 +138,14 @@ export function VendorDashboard({ user, onLogout }) {
         portalIcon={Waves}
         groups={VENDOR_SECTION_GROUPS}
         activeSection={activeSection}
-        onSelectSection={setActiveSection}
+        onSelectSection={(section) => { setActiveSection(section); onCloseSidebar(); }}
         user={user}
         onLogout={onLogout}
+        isOpen={isSidebarOpen}
+        onClose={onCloseSidebar}
       />
 
-      <div className="md:ml-64 min-w-0 p-4 md:p-6 space-y-8 max-w-7xl">
+      <div className="lg:ml-64 min-w-0 p-4 md:p-6 space-y-8 max-w-7xl">
       {/* 1. Header Strip */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -225,7 +227,7 @@ export function VendorDashboard({ user, onLogout }) {
       {activeSection === 'ACTIVITIES' && (
       <>
       {/* 3. Attraction Picker & Slot Occupancy */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 2xl:grid-cols-3 gap-6">
         {/* Left: Attraction & Slot Picker */}
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
           <h3 className="font-serif text-base font-black text-navy-800 flex items-center gap-2">
@@ -246,8 +248,8 @@ export function VendorDashboard({ user, onLogout }) {
                       : 'bg-slate-50 border-slate-200 hover:border-slate-300'
                   }`}
                 >
-                  <div className="flex justify-between items-start">
-                    <strong className="text-sm font-black text-navy-800">{a.title}</strong>
+                  <div className="flex flex-col items-start gap-2">
+                    <strong className="text-sm font-black text-navy-800 break-words">{a.title}</strong>
                     <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">
                       {a.category}
                     </span>
@@ -287,20 +289,20 @@ export function VendorDashboard({ user, onLogout }) {
         </div>
 
         {/* Right: Slot Occupancy + Visitor Manifest */}
-        <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
-          <div className="flex justify-between items-center border-b border-slate-100 pb-4">
-            <div>
+        <div className="2xl:col-span-2 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+            <div className="min-w-0">
               <span className="text-[10px] font-extrabold uppercase tracking-widest text-cyan-700">
                 Slot Occupancy
               </span>
-              <h3 className="font-serif text-lg font-black text-navy-800">
+              <h3 className="font-serif text-lg font-black text-navy-800 break-words">
                 {manifest ? `${manifest.attraction_title} · ${manifest.start_time}–${manifest.end_time}` : 'Select a Slot'}
               </h3>
             </div>
 
             <button
               onClick={() => window.print()}
-              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-navy-800 text-xs font-bold rounded-lg flex items-center gap-1.5"
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-navy-800 text-xs font-bold rounded-lg flex items-center gap-1.5 self-start sm:self-auto shrink-0"
             >
               <FileSpreadsheet className="w-3.5 h-3.5" /> Print Visitor Roster
             </button>
@@ -350,7 +352,7 @@ export function VendorDashboard({ user, onLogout }) {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
+                <table className="portal-vendor-manifest-table w-full text-left text-xs">
                   <thead className="bg-slate-50 text-slate-500 font-mono text-[10px] uppercase border-b border-slate-200">
                     <tr>
                       <th className="p-2.5">#</th>
@@ -363,11 +365,11 @@ export function VendorDashboard({ user, onLogout }) {
                   <tbody className="divide-y divide-slate-100 text-slate-700">
                     {manifest.manifest.map((p) => (
                       <tr key={p.ticket_ref} className="hover:bg-slate-50">
-                        <td className="p-2.5 font-mono font-bold text-cyan-700">{p.serial_no}</td>
-                        <td className="p-2.5 font-semibold text-navy-800">{p.passenger_name}</td>
-                        <td className="p-2.5 text-slate-500">{p.age ?? '—'} / {p.gender ?? '—'}</td>
-                        <td className="p-2.5 font-mono text-slate-500">{p.id_type}: {p.id_masked_number}</td>
-                        <td className="p-2.5">
+                        <td data-label="#" className="p-2.5 font-mono font-bold text-cyan-700">{p.serial_no}</td>
+                        <td data-label="Visitor" className="p-2.5 font-semibold text-navy-800">{p.passenger_name}</td>
+                        <td data-label="Age/Gender" className="p-2.5 text-slate-500">{p.age ?? '—'} / {p.gender ?? '—'}</td>
+                        <td data-label="Govt ID" className="p-2.5 font-mono text-slate-500">{p.id_type}: {p.id_masked_number}</td>
+                        <td data-label="Status" className="p-2.5">
                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                             p.check_in_status === 'CHECKED_IN'
                               ? 'bg-emerald-50 text-emerald-700'

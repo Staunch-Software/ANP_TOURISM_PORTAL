@@ -51,7 +51,7 @@ const ADMIN_SECTION_GROUPS = [
   },
 ];
 
-export function AdminDashboard({ user, onLogout }) {
+export function AdminDashboard({ user, onLogout, isSidebarOpen, onCloseSidebar }) {
   const [activeSection, setActiveSection] = useState('OVERVIEW');
   const [revenueData, setRevenueData] = useState(null);
   const [schedules, setSchedules] = useState([]);
@@ -1081,12 +1081,14 @@ export function AdminDashboard({ user, onLogout }) {
         portalIcon={ShieldCheck}
         groups={ADMIN_SECTION_GROUPS}
         activeSection={activeSection}
-        onSelectSection={setActiveSection}
+        onSelectSection={(section) => { setActiveSection(section); onCloseSidebar(); }}
         user={user}
         onLogout={onLogout}
+        isOpen={isSidebarOpen}
+        onClose={onCloseSidebar}
       />
 
-      <div className="md:ml-64 min-w-0 p-4 md:p-6 space-y-8 max-w-7xl">
+      <div className="lg:ml-64 min-w-0 p-4 md:p-6 space-y-8 max-w-7xl">
       {/* 1. Header Banner */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -1800,7 +1802,7 @@ export function AdminDashboard({ user, onLogout }) {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="portal-admin-roster-table w-full text-left text-xs">
               <thead className="bg-slate-50 text-slate-500 font-mono text-[10px] uppercase tracking-wider border-b border-slate-200">
                 <tr>
                   <th className="p-3">Vessel</th>
@@ -1824,15 +1826,15 @@ export function AdminDashboard({ user, onLogout }) {
                   }[r.status] || 'bg-slate-100 text-slate-600';
                   return (
                     <tr key={r.schedule_id} className="hover:bg-slate-50">
-                      <td className="p-3 font-bold text-navy-800">{r.vessel_name}</td>
-                      <td className="p-3 text-slate-600">{r.captain_name || '—'}</td>
-                      <td className="p-3 font-mono text-slate-500">{r.source_port.replace('_', ' ')} → {r.destination_port.replace('_', ' ')}</td>
-                      <td className="p-3 font-mono text-slate-500">{r.departure_time}</td>
-                      <td className="p-3 font-mono text-slate-500">{r.booked_seats}/{r.total_seats}</td>
-                      <td className="p-3">
+                      <td data-label="Vessel" className="p-3 font-bold text-navy-800">{r.vessel_name}</td>
+                      <td data-label="Captain / Master" className="p-3 text-slate-600">{r.captain_name || '—'}</td>
+                      <td data-label="Route" className="p-3 font-mono text-slate-500">{r.source_port.replace('_', ' ')} → {r.destination_port.replace('_', ' ')}</td>
+                      <td data-label="Departure" className="p-3 font-mono text-slate-500">{r.departure_time}</td>
+                      <td data-label="Seats" className="p-3 font-mono text-slate-500">{r.booked_seats}/{r.total_seats}</td>
+                      <td data-label="Status" className="p-3">
                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${statusColor}`}>{r.status}</span>
                       </td>
-                      <td className="p-3">
+                      <td data-label="Action" className="p-3">
                         <div className="flex items-center gap-2">
                           {nextAction ? (
                             <button
@@ -2372,7 +2374,7 @@ export function AdminDashboard({ user, onLogout }) {
           <div className="text-center py-12 text-slate-400 text-xs">Loading registered users...</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="portal-admin-users-table w-full text-left text-xs">
               <thead className="bg-slate-50 text-slate-500 font-mono text-[11px] uppercase tracking-wider border-b border-slate-200">
                 <tr>
                   <th className="p-3">Mobile Number</th>
@@ -2390,13 +2392,13 @@ export function AdminDashboard({ user, onLogout }) {
                   const isSaving = savingUserId === u.user_id;
                   return (
                     <tr key={u.user_id} className="hover:bg-slate-50 transition-colors">
-                      <td className="p-3 font-mono font-bold text-navy-800">{u.phone_number}</td>
-                      <td className="p-3 font-bold text-navy-800">{u.full_name}</td>
-                      <td className="p-3 text-slate-500">{u.email || '—'}</td>
-                      <td className="p-3 text-slate-400 font-mono text-[11px]">
+                      <td data-label="Mobile Number" className="p-3 font-mono font-bold text-navy-800">{u.phone_number}</td>
+                      <td data-label="Full Legal Name" className="p-3 font-bold text-navy-800">{u.full_name}</td>
+                      <td data-label="Email" className="p-3 text-slate-500">{u.email || '—'}</td>
+                      <td data-label="Registered" className="p-3 text-slate-400 font-mono text-[11px]">
                         {new Date(u.created_at).toLocaleDateString('en-IN')}
                       </td>
-                      <td className="p-3">
+                      <td data-label="Assigned Role" className="p-3">
                         <select
                           value={u.role}
                           disabled={isSelf || isSaving}
@@ -2409,14 +2411,14 @@ export function AdminDashboard({ user, onLogout }) {
                           <option value="ADMIN">ADMIN</option>
                         </select>
                       </td>
-                      <td className="p-3">
+                      <td data-label="Account Status" className="p-3">
                         {u.is_active ? (
                           <span className="text-emerald-700 font-bold flex items-center gap-1 text-[11px]">● Active</span>
                         ) : (
                           <span className="text-red-600 font-bold flex items-center gap-1 text-[11px]">● Suspended</span>
                         )}
                       </td>
-                      <td className="p-3 text-right">
+                      <td data-label="Action" className="p-3 text-right">
                         {isSelf ? (
                           <span className="text-slate-400 text-[11px]">Protected (You)</span>
                         ) : (
