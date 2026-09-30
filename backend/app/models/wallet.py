@@ -33,7 +33,7 @@ class WalletTransaction(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     wallet_id = Column(UUID(as_uuid=True), ForeignKey("wallets.id"), nullable=False)
 
-    txn_type = Column(String(30), nullable=False)  # TOPUP, DEBIT_PURCHASE, CREDIT_REFUND, ADMIN_ADJUSTMENT
+    txn_type = Column(String(30), nullable=False)  # TOPUP, DEBIT_PURCHASE, CREDIT_REFUND, ADMIN_CREDIT, ADMIN_DEBIT
     amount = Column(Numeric(10, 2), nullable=False)  # always a positive magnitude; txn_type gives direction
     balance_after = Column(Numeric(10, 2), nullable=False)
 

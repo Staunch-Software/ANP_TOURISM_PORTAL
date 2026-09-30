@@ -35,9 +35,11 @@ from app.schemas.wallet import (
     AdminWalletRow,
     AdminWalletListResponse,
     AdminWalletStatusUpdateRequest,
+    AdminWalletAdjustRequest,
     WalletTransactionResponse,
     WalletTransactionsResponse,
 )
+from app.services.wallet_service import credit_wallet
 from app.schemas.grievance import (
     GrievanceSummary,
     GrievancePriorityUpdateRequest,
@@ -852,6 +854,67 @@ async def update_wallet_status(
     wallet.status = req.status
     if req.reason:
         wallet.admin_notes = req.reason
+
+    await db.commit()
+    await db.refresh(wallet)
+
+    return AdminWalletRow(
+        wallet_id=str(wallet.id),
+        user_id=str(target_user.id),
+        phone_number=target_user.phone_number,
+        full_name=target_user.full_name,
+        balance=float(wallet.balance),
+        status=wallet.status,
+        admin_notes=wallet.admin_notes,
+    )
+
+
+@router.post("/wallets/{wallet_id}/adjust", response_model=AdminWalletRow)
+async def adjust_wallet_balance(
+    wallet_id: str,
+    req: AdminWalletAdjustRequest,
+    admin_user: User = Depends(verify_admin_role),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Manual credit/debit for cases with no Razorpay payment behind them --
+    e.g. a tourist recharging with cash at a counter, or correcting a
+    wrongly-applied charge. Works even on a SUSPENDED wallet (an admin
+    fixing a balance is exactly the kind of action suspension shouldn't
+    block), unlike the tourist-initiated top-up/pay endpoints.
+    """
+    try:
+        wallet_uuid = uuid.UUID(wallet_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid Wallet UUID")
+
+    if req.amount == 0:
+        raise HTTPException(status_code=400, detail="Adjustment amount cannot be zero")
+    if not req.reason.strip():
+        raise HTTPException(status_code=400, detail="A reason is required for a manual wallet adjustment")
+
+    res = await db.execute(
+        select(Wallet, User).join(User, Wallet.user_id == User.id).where(Wallet.id == wallet_uuid)
+    )
+    row = res.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Wallet not found")
+    wallet, target_user = row
+
+    if req.amount > 0:
+        await credit_wallet(db, wallet, req.amount, "ADMIN_CREDIT", description=req.reason)
+    else:
+        debit_amount = abs(req.amount)
+        if debit_amount > float(wallet.balance):
+            raise HTTPException(status_code=400, detail="Debit exceeds current wallet balance")
+        wallet.balance = float(wallet.balance) - debit_amount
+        db.add(WalletTransaction(
+            wallet_id=wallet.id,
+            txn_type="ADMIN_DEBIT",
+            amount=debit_amount,
+            balance_after=wallet.balance,
+            description=req.reason,
+        ))
 
     await db.commit()
     await db.refresh(wallet)

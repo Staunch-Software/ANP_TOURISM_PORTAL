@@ -820,6 +820,38 @@ export function AdminDashboard({ user, onLogout }) {
     }
   };
 
+  const handleAdjustWallet = async (wallet) => {
+    const raw = window.prompt(
+      `Manual adjustment for ${wallet.full_name} (${wallet.phone_number || '—'}).\n` +
+      `Current balance: ₹${wallet.balance.toLocaleString('en-IN')}.\n\n` +
+      `Enter amount (positive to credit, e.g. cash recharge; negative to debit, e.g. correction):`,
+      ""
+    );
+    if (raw === null) return; // cancelled
+    const amount = parseFloat(raw);
+    if (!amount || isNaN(amount)) {
+      alert("Enter a non-zero numeric amount");
+      return;
+    }
+
+    const reason = window.prompt("Reason for this adjustment (required):", "");
+    if (reason === null) return;
+    if (!reason.trim()) {
+      alert("A reason is required for a manual wallet adjustment");
+      return;
+    }
+
+    setSavingWalletId(wallet.wallet_id);
+    try {
+      const res = await API.post(`/admin/wallets/${wallet.wallet_id}/adjust`, { amount, reason });
+      setWallets((prev) => prev.map((w) => (w.wallet_id === wallet.wallet_id ? res.data : w)));
+    } catch (err) {
+      alert(err.response?.data?.detail || "Failed to adjust wallet balance");
+    } finally {
+      setSavingWalletId(null);
+    }
+  };
+
   const handleViewWalletHistory = async (wallet) => {
     setWalletHistoryFor(wallet);
     setWalletHistoryLoading(true);
@@ -2487,6 +2519,13 @@ export function AdminDashboard({ user, onLogout }) {
                           className="px-2.5 py-1 rounded-lg text-[11px] font-medium border bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200"
                         >
                           History
+                        </button>
+                        <button
+                          disabled={isSaving}
+                          onClick={() => handleAdjustWallet(w)}
+                          className="px-2.5 py-1 rounded-lg text-[11px] font-medium border bg-cyan-50 hover:bg-cyan-100 text-cyan-700 border-cyan-200 disabled:opacity-50"
+                        >
+                          Adjust
                         </button>
                         <button
                           disabled={isSaving}

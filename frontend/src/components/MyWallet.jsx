@@ -6,10 +6,11 @@ const TXN_LABEL = {
   TOPUP: 'Wallet Top-up',
   DEBIT_PURCHASE: 'Booking Payment',
   CREDIT_REFUND: 'Refund Credit',
-  ADMIN_ADJUSTMENT: 'Admin Adjustment',
+  ADMIN_CREDIT: 'Admin Credit',
+  ADMIN_DEBIT: 'Admin Debit',
 };
 
-const TXN_IS_CREDIT = { TOPUP: true, CREDIT_REFUND: true, DEBIT_PURCHASE: false, ADMIN_ADJUSTMENT: null };
+const TXN_IS_CREDIT = { TOPUP: true, CREDIT_REFUND: true, DEBIT_PURCHASE: false, ADMIN_CREDIT: true, ADMIN_DEBIT: false };
 
 const TOPUP_PRESETS = [500, 1000, 2000, 5000];
 

@@ -63,3 +63,10 @@ class AdminWalletListResponse(BaseModel):
 class AdminWalletStatusUpdateRequest(BaseModel):
     status: str  # ACTIVE, SUSPENDED
     reason: Optional[str] = None
+
+
+class AdminWalletAdjustRequest(BaseModel):
+    # Positive credits the wallet (e.g. cash received at a counter),
+    # negative debits it (e.g. correcting an erroneous top-up). Never zero.
+    amount: float
+    reason: str
