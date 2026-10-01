@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Building2, Phone, KeyRound, FileText, Mail, ArrowRight, AlertCircle, CheckCircle2 } from 'lucide-react';
 
@@ -20,6 +20,18 @@ export function OperatorRegisterModal({ isOpen, onClose }) {
   const [tradeLicense, setTradeLicense] = useState('');
   const [serviceCategory, setServiceCategory] = useState('FERRY_OPERATOR');
   const [email, setEmail] = useState('');
+
+  const [resendTimer, setResendTimer] = useState(0);
+
+  useEffect(() => {
+    let interval;
+    if (resendTimer > 0) {
+      interval = setInterval(() => {
+        setResendTimer((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [resendTimer]);
 
   if (!isOpen) return null;
 
@@ -45,6 +57,8 @@ export function OperatorRegisterModal({ isOpen, onClose }) {
     }
     setError(null);
     setStep('OTP');
+    setResendTimer(30);
+    axios.post(`${API_BASE_URL}/auth/request-otp`, { phone_number: phoneNumber }).catch(() => {});
   };
 
   const handleVerifyOtp = async (e) => {
@@ -170,11 +184,20 @@ export function OperatorRegisterModal({ isOpen, onClose }) {
                   maxLength="6"
                   value={otp}
                   onChange={(e) => setOtp(e.target.value)}
-                  placeholder="123456"
+                  placeholder="------"
                   className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm font-mono text-center tracking-widest text-navy-800"
                   required
                 />
-                <p className="text-[11px] text-slate-500 mt-1.5">For demo evaluation, default OTP is <strong className="text-cyan-700">123456</strong>.</p>
+                <div className="flex justify-end mt-2">
+                  <button
+                    type="button"
+                    disabled={resendTimer > 0}
+                    onClick={(e) => { e.preventDefault(); handleSendOtp(e); }}
+                    className={`text-[11px] font-semibold ${resendTimer > 0 ? 'text-slate-400 cursor-not-allowed' : 'text-emerald-700 hover:underline'}`}
+                  >
+                    {resendTimer > 0 ? `Resend OTP in ${resendTimer}s` : 'Resend OTP'}
+                  </button>
+                </div>
               </div>
               <button
                 type="submit"

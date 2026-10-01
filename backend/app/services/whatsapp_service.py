@@ -43,10 +43,12 @@ def _to_e164(phone_number: str) -> str:
 
 def _post_sync(payload: dict, phone_number: str, label: str) -> None:
     if not _is_configured():
-        logger.info(f"Skipping WhatsApp {label} to {phone_number} (WHATSAPP_CLOUD_API_TOKEN/WHATSAPP_PHONE_NUMBER_ID not configured)")
+        # SECURITY: Do not name specific env variable keys in logs
+        logger.warning(f"Skipping WhatsApp {label} — API credentials not configured")
         return
 
     url = f"https://graph.facebook.com/{GRAPH_API_VERSION}/{settings.WHATSAPP_PHONE_NUMBER_ID}/messages"
+    # SECURITY: Authorization token is in headers only — never logged anywhere
     headers = {"Authorization": f"Bearer {settings.WHATSAPP_CLOUD_API_TOKEN}"}
 
     try:
@@ -54,13 +56,17 @@ def _post_sync(payload: dict, phone_number: str, label: str) -> None:
         if resp.status_code == 200:
             logger.info(f"Sent WhatsApp {label} to {phone_number}")
         else:
-            logger.warning(f"WhatsApp Cloud API returned {resp.status_code} for {label} to {phone_number}: {resp.text}")
+            # SECURITY: Do NOT log resp.text — Meta API error responses can contain
+            # auth context, token fragments, or user phone data
+            logger.error(f"WhatsApp Cloud API returned HTTP {resp.status_code} for {label} (response body hidden)")
     except Exception as e:
-        logger.warning(f"Failed to reach WhatsApp Cloud API for {label} to {phone_number}: {e}")
+        logger.error(f"Failed to reach WhatsApp Cloud API for {label}: {e}")
 
 
 def _make_qr_png_bytes(qr_data: str) -> bytes:
     img = qrcode.make(qr_data)
+    # Convert to RGB to satisfy Meta's strict requirement for 8-bit/channel
+    img = img.convert("RGB")
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
@@ -82,14 +88,14 @@ def _upload_media_sync(image_bytes: bytes) -> str:
 
 def _send_qr_image_sync(phone_number: str, qr_data: str, caption: str) -> None:
     if not _is_configured():
-        logger.info(f"Skipping WhatsApp QR image to {phone_number} (WHATSAPP_CLOUD_API_TOKEN/WHATSAPP_PHONE_NUMBER_ID not configured)")
+        logger.warning("Skipping WhatsApp QR image — API credentials not configured")
         return
 
     try:
         image_bytes = _make_qr_png_bytes(qr_data)
         media_id = _upload_media_sync(image_bytes)
     except Exception as e:
-        logger.warning(f"Failed to generate/upload QR image for {phone_number}: {e}")
+        logger.error(f"Failed to generate/upload QR image: {e}")
         return
 
     payload = {
@@ -102,47 +108,72 @@ def _send_qr_image_sync(phone_number: str, qr_data: str, caption: str) -> None:
 
 
 async def send_whatsapp_otp(phone_number: str, otp_code: str) -> None:
-    # Requires an approved "auth_otp_code" template in Meta Business
-    # Manager with one body parameter. Template name is configurable so a
-    # differently-named approved template can be swapped in without a
-    # code change.
     payload = {
         "messaging_product": "whatsapp",
         "to": _to_e164(phone_number),
         "type": "template",
         "template": {
             "name": settings.WHATSAPP_OTP_TEMPLATE_NAME,
-            "language": {"code": "en_US"},
-            "components": [{"type": "body", "parameters": [{"type": "text", "text": otp_code}]}],
+            "language": {"code": settings.WHATSAPP_OTP_TEMPLATE_LANG},
+            "components": [
+                {
+                    "type": "body",
+                    "parameters": [{"type": "text", "text": otp_code}]
+                }
+            ],
         },
     }
-    await asyncio.to_thread(_post_sync, payload, phone_number, "OTP")
+    await asyncio.to_thread(_post_sync, payload, phone_number, "OTP template")
 
 
 async def send_whatsapp_ticket_confirmation(phone_number: str, order_ref: str, tickets: list) -> None:
-    lines = [f"- {t.title} ({t.item_type}) - {t.passenger_name} - Ref: {t.ticket_ref}" for t in tickets]
-    text = (
-        f"*Payment Successful*\n\n"
-        f"Your order {order_ref} is confirmed.\n\n"
-        f"Tickets:\n" + "\n".join(lines) + "\n\n"
-        f"Your Unified QR Boarding Pass is attached below -- also available anytime in the portal's Digital Pass Wallet."
-    )
+    if not tickets:
+        return
+        
+    head = tickets[0]
+    qr_data = f"{head.qr_payload_json}|SIG:{head.qr_signature_b64}"
+    
+    # The template requires an image header, so upload the QR code first.
+    try:
+        def _get_media_id():
+            return _upload_media_sync(_make_qr_png_bytes(qr_data))
+        media_id = await asyncio.to_thread(_get_media_id)
+    except Exception as e:
+        logger.error(f"Failed to generate/upload QR image for ticket confirmation: {e}")
+        return
+
+    # Template variables based on the 'ticket_confirmation' template format:
+    # {{1}}: Passenger Name
+    # {{2}}: Attraction Name
+    # {{3}}: Order Reference
     payload = {
         "messaging_product": "whatsapp",
         "to": _to_e164(phone_number),
-        "type": "text",
-        "text": {"body": text},
+        "type": "template",
+        "template": {
+            "name": settings.WHATSAPP_TICKET_TEMPLATE_NAME,
+            "language": {"code": settings.WHATSAPP_TICKET_TEMPLATE_LANG},
+            "components": [
+                {
+                    "type": "header",
+                    "parameters": [
+                        {
+                            "type": "image",
+                            "image": {"id": media_id}
+                        }
+                    ]
+                },
+                {
+                    "type": "body",
+                    "parameters": [
+                        {"type": "text", "text": order_ref},
+                        {"type": "text", "text": head.passenger_name}
+                    ]
+                }
+            ]
+        }
     }
-    await asyncio.to_thread(_post_sync, payload, phone_number, "ticket confirmation")
-
-    # Every ticket in one booking shares the same signed QR (see
-    # payments.py's "Unified QR" comment) -- one image covers the order.
-    if tickets:
-        head = tickets[0]
-        qr_data = f"{head.qr_payload_json}|SIG:{head.qr_signature_b64}"
-        caption = f"Boarding Pass QR - Order {order_ref}"
-        await asyncio.to_thread(_send_qr_image_sync, phone_number, qr_data, caption)
-
+    await asyncio.to_thread(_post_sync, payload, phone_number, "ticket confirmation template")
 
 async def send_whatsapp_voyage_cancellation(phone_number: str, order_ref: str, route: str, reason: str, refund_amount: float) -> None:
     text = (
@@ -158,3 +189,4 @@ async def send_whatsapp_voyage_cancellation(phone_number: str, order_ref: str, r
         "text": {"body": text},
     }
     await asyncio.to_thread(_post_sync, payload, phone_number, "voyage cancellation notice")
+

@@ -43,4 +43,5 @@ class StaffChangesResponse(BaseModel):
     staff: List[StaffSyncEntry]
     allowed_titles: List[str]
     allowed_slots: dict = {}
+    allowed_prices: dict = {}
     server_time: datetime

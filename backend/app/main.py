@@ -8,7 +8,7 @@ from app.core.config import settings
 from app.core.database import engine, Base, sync_missing_columns
 from app.services.availability_service import ensure_rolling_availability
 from app.services.reminder_service import send_pending_reminders
-from app.api.v1 import auth, attractions, ferry, cart, payments, tickets, admin, sync, operator, gates, vendor, group_bookings, agent, grievances, wallet
+from app.api.v1 import auth, attractions, ferry, cart, payments, tickets, admin, sync, operator, gates, vendor, group_bookings, agent, grievances, wallet, whatsapp_webhook, chat
 
 scheduler = AsyncIOScheduler()
 
@@ -76,6 +76,8 @@ app.include_router(group_bookings.admin_router, prefix=settings.API_V1_STR)
 app.include_router(agent.router, prefix=settings.API_V1_STR)
 app.include_router(grievances.router, prefix=settings.API_V1_STR)
 app.include_router(wallet.router, prefix=settings.API_V1_STR)
+app.include_router(whatsapp_webhook.router, prefix=settings.API_V1_STR)
+app.include_router(chat.router, prefix=settings.API_V1_STR)
 
 
 @app.get("/api/health")
