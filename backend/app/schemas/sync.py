@@ -68,12 +68,17 @@ class CheckinResponse(BaseModel):
     message: str
 
 
+class CounterTicketItemReq(BaseModel):
+    item_type: str
+    title: str
+    slot_or_seat_info: str
+    price_inr: float
+
 class CounterTicketRequest(BaseModel):
     ticket_ref: str
     site_id: str
-    item_type: str  # ATTRACTION or FERRY
-    title: str
-    slot_or_seat_info: str
+    items: List[CounterTicketItemReq]
+    pax_count: int = 1
     passenger_name: str
     passenger_age: Optional[int] = None
     passenger_gender: Optional[str] = None

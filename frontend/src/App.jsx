@@ -14,6 +14,7 @@ import { OperatorRegisterModal } from './components/OperatorRegisterModal';
 import { GroupBookingModal } from './components/GroupBookingModal';
 import { MyGroupBookings } from './components/MyGroupBookings';
 import { SupportCenter } from './components/SupportCenter';
+import { AIChatWidget } from './components/AIChatWidget';
 import {
   Waves, ArrowUpRight, Users2, MapPin, Search, ShieldCheck,
   Landmark, Clock3, Ship, ArrowRight
@@ -605,6 +606,8 @@ export default function App() {
         onRequireLogin={() => { setIsGroupBookingOpen(false); openLogin('VISITOR'); }}
         onViewMyBookings={() => { setIsGroupBookingOpen(false); setActiveTab('GROUP_BOOKINGS'); }}
       />
+
+      <AIChatWidget user={currentUser} />
     </div>
   );
 }

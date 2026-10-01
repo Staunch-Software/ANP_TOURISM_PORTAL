@@ -23,6 +23,8 @@ class User(Base):
     state_or_country = Column(String(100), nullable=True)
     user_type = Column(String(30), default="TOURIST")  # TOURIST, ADMIN, OPERATOR, VENDOR, AGENT
     nationality = Column(String(20), default="INDIAN")  # INDIAN, FOREIGN
+    id_type = Column(String(30), nullable=True)      # Aadhaar, Passport, Voter ID, Driving License
+    id_number = Column(String(50), nullable=True)    # Document number
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 

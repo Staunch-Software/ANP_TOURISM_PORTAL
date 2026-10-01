@@ -47,9 +47,17 @@ class Settings(BaseSettings):
     WHATSAPP_PHONE_NUMBER_ID: str = ""
     # Name of the approved message template used for OTP delivery (Meta
     # requires OTP-style templates to be pre-approved in Business Manager).
-    WHATSAPP_OTP_TEMPLATE_NAME: str = "auth_otp_code"
-
-
+    WHATSAPP_OTP_TEMPLATE_NAME: str = "tourism_login_otp_v2"
+    WHATSAPP_OTP_TEMPLATE_LANG: str = "en"
+    
+    WHATSAPP_TICKET_TEMPLATE_NAME: str = "ticket_booking_confirmation"
+    WHATSAPP_TICKET_TEMPLATE_LANG: str = "en_GB"
+    
+    WHATSAPP_WEBHOOK_VERIFY_TOKEN: str = "AndamanDemoWebhook2026"
+    
+    # --- AI Settings ---
+    GEMINI_API_KEY: str = ""
+    
     class Config:
         env_file = ".env"
         extra = "ignore"

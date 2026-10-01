@@ -15,7 +15,9 @@ import logging
 import random
 from datetime import datetime, timezone
 from typing import List
-
+import asyncio
+from app.services.email_service import send_ticket_confirmation
+from app.services.whatsapp_service import send_whatsapp_ticket_confirmation
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy import select, text
 
@@ -273,49 +275,65 @@ async def push_counter_ticket(req: CounterTicketRequest, db: AsyncSession = Depe
     db.add(order)
     await db.flush()
 
-    order_item = OrderItem(
-        order_id=order.id,
-        item_type=req.item_type,
-        title=req.title,
-        slot_or_seat_info=req.slot_or_seat_info,
-        unit_price=req.price_inr,
-        quantity=1,
-        subtotal=req.price_inr,
-        passenger_name=req.passenger_name,
-        passenger_age=req.passenger_age,
-        passenger_gender=req.passenger_gender,
-        id_type=req.id_type,
-        id_number=req.id_number,
-    )
-    db.add(order_item)
-    await db.flush()
+    tickets = []
+    for idx, item in enumerate(req.items):
+        order_item = OrderItem(
+            order_id=order.id,
+            item_type=item.item_type,
+            title=item.title,
+            slot_or_seat_info=item.slot_or_seat_info,
+            unit_price=item.price_inr,
+            quantity=req.pax_count,
+            subtotal=item.price_inr * req.pax_count,
+            passenger_name=req.passenger_name,
+            passenger_age=req.passenger_age,
+            passenger_gender=req.passenger_gender,
+            id_type=req.id_type,
+            id_number=req.id_number,
+        )
+        db.add(order_item)
+        await db.flush()
 
-    ticket = Ticket(
-        ticket_ref=req.ticket_ref,
-        booking_ref=req.ticket_ref,  # counter sales are always single-item, see LPU's counter.py
-        item_index=0,
-        order_id=order.id,
-        order_item_id=order_item.id,
-        user_id=tourist_user.id,
-        item_type=req.item_type,
-        title=req.title,
-        slot_or_seat_info=req.slot_or_seat_info,
-        passenger_name=req.passenger_name,
-        passenger_age=req.passenger_age,
-        passenger_gender=req.passenger_gender,
-        id_type=req.id_type,
-        id_number=req.id_number,
-        qr_payload_json=req.qr_payload_json,
-        qr_signature_b64=req.qr_signature_b64,
-        check_in_status="ISSUED",
-        issued_by="COUNTER",
-        site_id=req.site_id,
-        created_at=req.issued_at.replace(tzinfo=None) if req.issued_at.tzinfo else req.issued_at,
-    )
-    db.add(ticket)
+        ticket = Ticket(
+            ticket_ref=req.ticket_ref,
+            booking_ref=req.ticket_ref,
+            item_index=idx,
+            order_id=order.id,
+            order_item_id=order_item.id,
+            user_id=tourist_user.id,
+            item_type=item.item_type,
+            title=item.title,
+            slot_or_seat_info=item.slot_or_seat_info,
+            passenger_name=req.passenger_name,
+            passenger_age=req.passenger_age,
+            passenger_gender=req.passenger_gender,
+            id_type=req.id_type,
+            id_number=req.id_number,
+            qr_payload_json=req.qr_payload_json,
+            qr_signature_b64=req.qr_signature_b64,
+            check_in_status="ISSUED",
+            issued_by="COUNTER",
+            site_id=req.site_id,
+            created_at=req.issued_at.replace(tzinfo=None) if req.issued_at.tzinfo else req.issued_at,
+        )
+        db.add(ticket)
+        tickets.append(ticket)
+
+    # Update user email if they provided one now but didn't have one before
+    if not tourist_user.email and req.contact_email:
+        tourist_user.email = req.contact_email
+        db.add(tourist_user)
+
     await db.commit()
 
-    return CounterTicketResponse(status="OK", ticket_ref=req.ticket_ref, message="Counter ticket adopted by cloud")
+    # Trigger async notifications using the exact contact details provided in the offline booking
+    if req.contact_email:
+        asyncio.create_task(send_ticket_confirmation(req.contact_email, order.order_ref, tickets))
+    if req.contact_phone:
+        asyncio.create_task(send_whatsapp_ticket_confirmation(req.contact_phone, order.order_ref, tickets))
+
+    return CounterTicketResponse(status="OK", ticket_ref=req.ticket_ref, message="Counter ticket adopted by cloud and notifications triggered")
+
 
 
 # -------------------------------------------------------------
@@ -381,10 +399,19 @@ async def get_staff_changes(
     end_str = (date.today() + timedelta(days=7)).isoformat()
     
     allowed_slots = {}
+    allowed_prices = {}
     if allowed_titles:
+        # Fetch attraction prices and slots
+        attr_res = await db.execute(
+            text("SELECT title, base_price_inr FROM attractions WHERE title = ANY(:titles)"),
+            {"titles": allowed_titles}
+        )
+        for row in attr_res:
+            allowed_prices[row[0]] = float(row[1])
+            
         slots_res = await db.execute(
             text("""
-                SELECT a.title, s.slot_date, s.start_time, s.end_time 
+                SELECT a.title, s.slot_date, s.start_time, s.end_time, s.total_capacity - s.booked_count
                 FROM attraction_slots s
                 JOIN attractions a ON a.id = s.attraction_id
                 WHERE a.title = ANY(:titles) AND s.slot_date >= :today AND s.slot_date <= :end_date
@@ -392,10 +419,12 @@ async def get_staff_changes(
             {"titles": allowed_titles, "today": today_str, "end_date": end_str}
         )
         for row in slots_res:
-            title, sdate, stime, etime = row
+            title, sdate, stime, etime, avail = row
             if title not in allowed_slots:
-                allowed_slots[title] = []
-            allowed_slots[title].append({"date": sdate, "start": stime, "end": etime})
+                allowed_slots[title] = {}
+            if sdate not in allowed_slots[title]:
+                allowed_slots[title][sdate] = []
+            allowed_slots[title][sdate].append({"start": stime, "end": etime, "capacity": max(0, avail)})
 
     return StaffChangesResponse(
         staff=[
@@ -412,6 +441,7 @@ async def get_staff_changes(
         ],
         allowed_titles=allowed_titles,
         allowed_slots=allowed_slots,
+        allowed_prices=allowed_prices,
         server_time=datetime.now(timezone.utc),
     )
-# Trigger reload
+

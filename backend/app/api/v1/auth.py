@@ -64,16 +64,18 @@ async def _issue_session_token(user: User, r) -> TokenResponse:
     )
 
 
+import random
+
 @router.post("/request-otp", response_model=OTPRequestResponse)
-async def request_otp(req: OTPRequestOnly):
+async def request_otp(req: OTPRequestOnly, r=Depends(get_redis)):
     """
-    Demo-only: sends the (fixed) demo OTP via the WhatsApp sidecar
-    (whatsapp-service/) as a stand-in for a paid SMS gateway. Always
-    returns success even if WhatsApp delivery fails -- verify-otp still
-    accepts the fixed demo code regardless, so this endpoint existing or
-    not, working or not, never blocks login.
+    Sends a randomly generated OTP via the WhatsApp sidecar.
+    Stores the OTP in Redis for 5 minutes.
     """
-    await send_whatsapp_otp(req.phone_number, "123456")
+    otp_code = str(random.randint(100000, 999999))
+    await r.set(f"otp:{req.phone_number}", otp_code, ex=300)
+    
+    await send_whatsapp_otp(req.phone_number, otp_code)
     return OTPRequestResponse(message="OTP sent")
 
 
@@ -84,8 +86,12 @@ async def verify_otp(req: OTPRequest, db: AsyncSession = Depends(get_db), r=Depe
     path, and also remains available afterwards as the "Login with OTP"
     fallback for users who forget their password.
     """
-    if req.otp != "123456":
-        raise HTTPException(status_code=400, detail="Invalid OTP code")
+    stored_otp = await r.get(f"otp:{req.phone_number}")
+    if stored_otp:
+        stored_otp = stored_otp.decode("utf-8") if isinstance(stored_otp, bytes) else stored_otp
+
+    if not stored_otp or stored_otp != req.otp:
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP code")
 
     res = await db.execute(select(User).where(User.phone_number == req.phone_number))
     user = res.scalars().first()
@@ -169,10 +175,13 @@ async def login_password(req: PasswordLoginRequest, db: AsyncSession = Depends(g
 
 # The RFP 7.1.12 Enforcement Dependency
 async def get_current_user(
-    authorization: str = Header(...),
+    authorization: str = Header(None),
     db: AsyncSession = Depends(get_db),
     r=Depends(get_redis),
 ):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
+
     try:
         scheme, token = authorization.split()
         if scheme.lower() != "bearer":

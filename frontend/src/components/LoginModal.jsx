@@ -51,6 +51,18 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
   const [stateOrCountry, setStateOrCountry] = useState('');
   const [profilePhone, setProfilePhone] = useState('');
   const [needsPhone, setNeedsPhone] = useState(false);
+  
+  const [resendTimer, setResendTimer] = useState(0);
+
+  useEffect(() => {
+    let interval;
+    if (resendTimer > 0) {
+      interval = setInterval(() => {
+        setResendTimer((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [resendTimer]);
 
   const googleButtonRef = useRef(null);
 
@@ -180,9 +192,8 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
     }
     setError(null);
     setStep('OTP');
-    // Best-effort: fire the WhatsApp send in the background without
-    // blocking the OTP screen -- the fixed demo code (123456) still works
-    // regardless of whether this actually reaches WhatsApp.
+    setResendTimer(30);
+    // Best-effort: fire the WhatsApp send in the background
     API.post('/auth/request-otp', { phone_number: phoneNumber }).catch(() => {});
   };
 
@@ -485,12 +496,21 @@ export function LoginModal({ isOpen, onClose, onLoginSuccess, loginContext = 'VI
                     maxLength="6"
                     value={otp}
                     onChange={(e) => setOtp(e.target.value)}
-                    placeholder="123456"
+                    placeholder="------"
                     className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-navy-800 tracking-widest font-mono text-center focus:outline-none focus:border-cyan-500"
                     required
                   />
                 </div>
-                <p className="text-[11px] text-slate-500 mt-1.5">For demo evaluation, default OTP is <strong className="text-cyan-700">123456</strong>.</p>
+                <div className="flex justify-end mt-2">
+                  <button
+                    type="button"
+                    disabled={resendTimer > 0}
+                    onClick={(e) => { e.preventDefault(); handleSendOtp(e); }}
+                    className={`text-[11px] font-semibold ${resendTimer > 0 ? 'text-slate-400 cursor-not-allowed' : 'text-emerald-700 hover:underline'}`}
+                  >
+                    {resendTimer > 0 ? `Resend OTP in ${resendTimer}s` : 'Resend OTP'}
+                  </button>
+                </div>
               </div>
 
               <button
