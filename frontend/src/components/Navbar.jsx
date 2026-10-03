@@ -207,7 +207,7 @@ export function Navbar({
                 className={`portal-nav-button px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap ${
                   activeTab === 'AGENT_CONSOLE'
                     ? 'is-current text-white shadow-md'
-                    : 'text-amber-400'
+                    : 'text-cyan-200'
                 }`}
               >
                 <span>Agent Console</span>
@@ -336,7 +336,7 @@ export function Navbar({
                   <button
                     onClick={() => { setActiveTab('AGENT_CONSOLE'); setIsMobileMenuOpen(false); }}
                     className={`w-full text-left px-4 py-3 rounded-lg text-sm font-bold transition-all ${
-                      activeTab === 'AGENT_CONSOLE' ? 'bg-cyan-700 text-white' : 'text-amber-400 hover:bg-navy-700'
+                      activeTab === 'AGENT_CONSOLE' ? 'bg-cyan-700 text-white' : 'text-cyan-200 hover:bg-navy-700'
                     }`}
                   >
                     Agent Console
@@ -353,7 +353,7 @@ export function Navbar({
                   key={tab.key}
                   onClick={() => { setActiveTab(tab.key); setIsMobileMenuOpen(false); }}
                   className={`portal-nav-button w-full text-left px-4 py-3 rounded-lg text-sm font-bold flex items-center gap-2.5 ${
-                    isActive ? 'bg-amber-700 text-white' : 'text-amber-400 hover:bg-navy-700'
+                    isActive ? 'bg-cyan-600 text-white' : 'text-cyan-200 hover:bg-navy-700'
                   }`}
                 >
                   <span className="flex items-center gap-2.5"><Icon className="w-4 h-4" /> {tab.label}</span>

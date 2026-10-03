@@ -277,12 +277,27 @@ export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed })
     }
   };
 
+  // One card per attraction slot (or ferry seat), one row per visitor: a
+  // family of four is one compact card instead of four tall ones.
+  const cartGroups = [];
+  if (cart) {
+    const byKey = {};
+    cart.items.forEach((it) => {
+      const key = `${it.item_type}|${it.title}|${it.slot_or_seat}`;
+      if (byKey[key] === undefined) {
+        byKey[key] = cartGroups.length;
+        cartGroups.push({ key, first: it, items: [] });
+      }
+      cartGroups[byKey[key]].items.push(it);
+    });
+  }
+
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden bg-navy-900/60 backdrop-blur-sm flex justify-end">
       {/* Slide-over Drawer Panel */}
-      <div className="w-full max-w-md bg-white border-l border-slate-200 shadow-2xl flex flex-col h-full">
+      <div className="w-full max-w-md lg:max-w-4xl bg-white border-l border-slate-200 shadow-2xl flex flex-col h-full">
 
         {/* Header */}
         <div className="p-5 border-b border-slate-100 flex items-center justify-between">
@@ -316,8 +331,9 @@ export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed })
           </div>
         )}
 
+        <div className="flex-1 min-h-0 flex flex-col lg:flex-row">
         {/* Cart Item List */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-3.5">
+        <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-3">
           {loading ? (
             <div className="text-center py-16 text-slate-400 text-xs">Loading reserved items...</div>
           ) : !cart || cart.items.length === 0 ? (
@@ -331,28 +347,32 @@ export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed })
               </p>
             </div>
           ) : (
-            cart.items.map((item) => {
+            cartGroups.map((g) => {
+              const item = g.first;
+              const groupTotal = g.items.reduce((sum, it) => sum + it.price, 0);
               const TypeIcon = ITEM_TYPE_ICON[item.item_type] || ShoppingBag;
               return (
               <div
-                key={item.cart_item_id}
-                className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2 relative group hover:border-cyan-300 transition-colors"
+                key={g.key}
+                className="bg-slate-50 border border-slate-200 rounded-2xl p-4 relative group hover:border-cyan-300 transition-colors"
               >
-                <div className="flex justify-between items-start">
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider bg-white text-cyan-700 border border-cyan-200 flex items-center gap-1.5 w-fit">
-                    <TypeIcon className="w-3 h-3" /> {item.item_type}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-black text-navy-800">
-                      ₹{item.price.toLocaleString('en-IN')}
+                <div className="flex justify-between items-start gap-3">
+                  <div className="min-w-0">
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider bg-white text-cyan-700 border border-cyan-200 inline-flex items-center gap-1.5">
+                      <TypeIcon className="w-3 h-3" /> {item.item_type}
                     </span>
+                    <h4 className="mt-1.5 text-sm font-bold text-navy-800 leading-snug">{item.title}</h4>
+                    <p className="text-xs font-mono text-cyan-700 mt-0.5">{item.slot_or_seat}</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-sm font-black text-navy-800">₹{groupTotal.toLocaleString('en-IN')}</span>
                     {item.item_type === 'ATTRACTION' && item.slot_id && (
                       <button
                         type="button"
                         onClick={() => toggleAddTicket(item)}
                         aria-label={`Add another ticket for ${item.title}`}
                         aria-expanded={addingFor === item.cart_item_id}
-                        title={addingFor === item.cart_item_id ? 'Cancel' : 'Add another ticket for this slot'}
+                        title={addingFor === item.cart_item_id ? 'Cancel' : 'Add another visitor for this slot'}
                         className={`w-6 h-6 rounded-full border flex items-center justify-center transition-colors ${
                           addingFor === item.cart_item_id
                             ? 'bg-cyan-700 border-cyan-700 text-white'
@@ -362,33 +382,35 @@ export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed })
                         {addingFor === item.cart_item_id ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
                       </button>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => removeTicket(item)}
-                      disabled={removingId === item.cart_item_id}
-                      aria-label={`Remove ${item.passenger_name}'s ticket for ${item.title}`}
-                      title="Remove this ticket"
-                      className="w-6 h-6 rounded-full border border-slate-200 bg-white text-slate-400 hover:bg-red-50 hover:border-red-300 hover:text-red-600 flex items-center justify-center transition-colors disabled:opacity-50"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
                   </div>
                 </div>
 
-                <h4 className="text-sm font-bold text-navy-800 pr-2">{item.title}</h4>
-                <p className="text-xs font-mono text-cyan-700">{item.slot_or_seat}</p>
-
-                <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500">
-                  <span>Passenger: <strong className="text-slate-700">{item.passenger_name}</strong></span>
-                  <span className="font-mono text-[10px] bg-white px-1.5 py-0.5 rounded text-slate-500 border border-slate-200">
-                    {item.id_type}: •••• {item.id_number.slice(-4)}
-                  </span>
-                </div>
+                <ul className="mt-2.5 border-t border-slate-200 divide-y divide-slate-200">
+                  {g.items.map((it) => (
+                    <li key={it.cart_item_id} className="flex items-center gap-2 py-1.5 text-[11px]">
+                      <span className="flex-1 min-w-0 truncate text-slate-700 font-semibold">{it.passenger_name}</span>
+                      <span className="font-mono text-[10px] text-slate-400 hidden sm:inline">
+                        {it.id_type}: •••• {it.id_number.slice(-4)}
+                      </span>
+                      <span className="font-bold text-navy-800 w-14 text-right">₹{it.price.toLocaleString('en-IN')}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeTicket(it)}
+                        disabled={removingId === it.cart_item_id}
+                        aria-label={`Remove ${it.passenger_name}'s ticket for ${it.title}`}
+                        title="Remove this ticket"
+                        className="w-6 h-6 rounded-full border border-slate-200 bg-white text-slate-400 hover:bg-red-50 hover:border-red-300 hover:text-red-600 flex items-center justify-center transition-colors disabled:opacity-50"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
 
                 {addingFor === item.cart_item_id && (
                   <form
                     onSubmit={(e) => submitAddTicket(e, item)}
-                    className="pt-3 mt-1 border-t border-dashed border-cyan-300 space-y-2.5"
+                    className="pt-3 mt-3 border-t border-dashed border-cyan-300 space-y-2.5"
                   >
                     <p className="text-[11px] font-bold text-slate-600">Another ticket for this same slot</p>
 
@@ -508,7 +530,8 @@ export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed })
 
         {/* Footer & Checkout Area */}
         {cart && cart.items.length > 0 && (
-          <div className="p-5 border-t border-slate-100 bg-slate-50 space-y-4">
+          <div className="p-5 border-t lg:border-t-0 lg:border-l border-slate-100 bg-slate-50 space-y-4 lg:w-80 lg:shrink-0 lg:overflow-y-auto">
+            <h4 className="hidden lg:block text-xs font-extrabold uppercase tracking-widest text-cyan-700">Order summary</h4>
             {/* Price Calculations */}
             <div className="space-y-1.5 text-xs">
               <div className="flex justify-between text-slate-500">
@@ -547,6 +570,7 @@ export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed })
             </div>
           </div>
         )}
+        </div>
       </div>
 
       {/* Interactive Payment Gateway Modal */}

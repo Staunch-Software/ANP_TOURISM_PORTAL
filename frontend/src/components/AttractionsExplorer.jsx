@@ -268,6 +268,9 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
   const newFilled = !!(passengerName.trim() || passengerId.trim() || passengerAge !== '');
   const newRequired = pickedKeys.length === 0 || newFilled;
   const ticketCount = pickedKeys.length + (newRequired ? 1 : 0);
+  // Rough total shown before adding to the cart (5% GST as the cart applies it).
+  const priceFor = (nat) => Number(nat === 'FOREIGN' ? selectedAttraction?.foreign_price_inr : selectedAttraction?.base_price_inr) || 0;
+  const estimatedTotal = (pickedKeys.reduce((sum, v) => sum + priceFor(v.nationality), 0) + (newRequired ? priceFor(nationality) : 0)) * 1.05;
 
   return (
     <div className="space-y-8">
@@ -333,7 +336,7 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
       )}
 
       {/* Grid of Attractions */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
         {attractions.map((item) => {
           const img = item.image_url || ATTRACTION_IMAGES[item.title] || FALLBACK_IMAGE;
           const displayPrice = nationality === 'INDIAN' ? item.base_price_inr : item.foreign_price_inr;
@@ -343,53 +346,45 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
           return (
             <div
               key={item.id}
-              className="bg-white border border-slate-200 hover:border-cyan-500/60 rounded-2xl overflow-hidden shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg group flex flex-col justify-between"
+              className="bg-white border border-slate-200 hover:border-cyan-400 rounded-2xl overflow-hidden transition-all hover:shadow-lg group flex flex-col"
             >
-              <div>
-                {/* Visual Image Banner */}
-                <div className="relative h-48 overflow-hidden">
-                  <img
-                    src={img}
-                    alt={item.title}
-                    className="w-full h-full object-cover brightness-110 group-hover:scale-105 transition-transform duration-500"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent"></div>
+              <div className="relative h-36 overflow-hidden">
+                <img
+                  src={img}
+                  alt={item.title}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-navy-900/70 via-transparent to-transparent"></div>
+                <span className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-white/95 text-navy-800 flex items-center gap-1">
+                  <CategoryIcon className="w-3 h-3 text-cyan-700" /> {categoryMeta.label}
+                </span>
+                <span className="absolute bottom-2.5 left-3 text-[11px] font-semibold text-white flex items-center gap-1">
+                  <MapPin className="w-3 h-3" /> {ISLAND_LABELS[item.island] || item.island.replace('_', ' ')}
+                </span>
+              </div>
 
-                  {/* Category Pill */}
-                  <span className="absolute top-3 left-3 px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-navy-900/85 backdrop-blur-md text-cyan-200 flex items-center gap-1.5">
-                    <CategoryIcon className="w-3 h-3" /> {categoryMeta.label}
-                  </span>
-                </div>
+              <div className="p-4 flex flex-col flex-1">
+                <h3 className="font-serif text-[15px] font-bold text-navy-800 leading-snug line-clamp-1 group-hover:text-cyan-700 transition-colors">
+                  {item.title}
+                </h3>
+                <p className="text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed">
+                  {item.description || 'Official time-slotted entry with secure turnstile scan and instant digital pass.'}
+                </p>
+                <AttractionFacts item={item} className="mt-2" />
 
-                {/* Body Content */}
-                <div className="p-5">
-                  <span className="flex items-center gap-1 text-[11px] font-semibold text-slate-400 mb-1">
-                    <MapPin className="w-3.5 h-3.5 text-cyan-600" /> {ISLAND_LABELS[item.island] || item.island.replace('_', ' ')}
-                  </span>
-                  <h3 className="font-serif text-base font-bold text-navy-800 group-hover:text-cyan-700 transition-colors line-clamp-1">
-                    {item.title}
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-1.5 line-clamp-3">
-                    {item.description || 'Official time-slotted entry with secure turnstile scan and instant digital pass.'}
-                  </p>
-                  <AttractionFacts item={item} className="mt-2.5" />
-
-                  <div className="mt-4 flex items-center justify-between pt-3 border-t border-slate-100">
-                    <div>
-                      <span className="text-[10px] text-slate-400 uppercase font-semibold block">Entry Fee</span>
-                      <span className="font-serif text-lg font-black text-navy-800">
-                        ₹{displayPrice.toLocaleString('en-IN')}
-                        <span className="font-sans text-xs font-normal text-slate-400"> / pax</span>
-                      </span>
-                    </div>
-
-                    <button
-                      onClick={() => openSlotDrawer(item)}
-                      className="px-4 py-2 bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition-all group-hover:gap-2"
-                    >
-                      Book Slot <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
+                <div className="mt-auto pt-3 flex items-center justify-between">
+                  <div className="leading-tight">
+                    <span className="text-[10px] text-slate-400 font-semibold block">Entry from</span>
+                    <span className="text-lg font-black text-navy-800">₹{displayPrice.toLocaleString('en-IN')}</span>
+                    <span className="text-xs text-slate-400"> / pax</span>
                   </div>
+
+                  <button
+                    onClick={() => openSlotDrawer(item)}
+                    className="px-4 py-2 bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition-all"
+                  >
+                    Book slot <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
             </div>
@@ -400,7 +395,7 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
       {/* Interactive Slot Drawer Modal */}
       {selectedAttraction && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-900/70 backdrop-blur-sm p-4">
-          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-xl p-6 shadow-2xl relative max-h-[90vh] max-h-[90dvh] overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-4xl p-5 shadow-2xl relative max-h-[92vh] max-h-[92dvh] overflow-y-auto">
             <div className="flex justify-between items-start mb-4 pb-3 border-b border-slate-100">
               <div>
                 <span className="text-[10px] font-bold text-cyan-700 uppercase tracking-wider">Select Time Slot</span>
@@ -418,6 +413,8 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
               </button>
             </div>
 
+            <div className="grid lg:grid-cols-2 gap-6 items-start">
+            <div>
             {/* Date Picker */}
             <div className="mb-4">
               <label className="block text-xs font-semibold text-slate-600 mb-1.5 flex items-center gap-1.5">
@@ -503,9 +500,17 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
                       {slot.is_closed ? (
                         <div className="text-[10px] mt-1 font-bold text-amber-600">Closed</div>
                       ) : (
-                        <div className="text-[10px] mt-1 flex items-center gap-1 text-emerald-600">
-                          <Users className="w-3 h-3" /> {slot.available_seats} seats left
-                        </div>
+                        <>
+                          <div className="h-1 rounded-full bg-slate-200 mt-1.5 overflow-hidden">
+                            <div
+                              className={`h-1 rounded-full ${slot.available_seats <= slot.total_capacity * 0.1 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                              style={{ width: `${Math.min(100, Math.round((100 * (slot.total_capacity - slot.available_seats)) / Math.max(1, slot.total_capacity)))}%` }}
+                            />
+                          </div>
+                          <div className={`text-[10px] mt-1 flex items-center gap-1 ${slot.available_seats <= slot.total_capacity * 0.1 ? 'text-amber-600 font-bold' : 'text-emerald-600'}`}>
+                            <Users className="w-3 h-3" /> {slot.available_seats <= slot.total_capacity * 0.1 && slot.available_seats > 0 ? `Filling fast · ${slot.available_seats} left` : `${slot.available_seats} seats left`}
+                          </div>
+                        </>
                       )}
                     </button>
                   );
@@ -513,14 +518,16 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
               </div>
             </div>
 
-            {/* Passenger Quick Form */}
-            <form onSubmit={handleConfirmAddToCart} className="space-y-3 pt-3 border-t border-slate-100">
+            </div>
+
+            {/* Passenger Quick Form (right column on desktop) */}
+            <form onSubmit={handleConfirmAddToCart} className="space-y-3 lg:border-l lg:border-slate-100 lg:pl-6">
               {savedVisitors.length > 0 && (
                 <div className="space-y-2">
                   <h4 className="text-xs font-bold text-slate-600">
                     Who is visiting? <span className="font-normal text-slate-400">(from your earlier bookings)</span>
                   </h4>
-                  <div className="max-h-44 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+                  <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
                     {savedVisitors.map((v) => {
                       const key = visitorKey(v);
                       const inCart = isInCart(v);
@@ -604,16 +611,23 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
                 </select>
               </div>
 
+              <div className="flex items-end justify-between pt-3 border-t border-slate-100">
+                <div className="leading-tight">
+                  <span className="text-[11px] text-slate-500 block">{ticketCount} ticket{ticketCount === 1 ? '' : 's'} · incl. 5% GST</span>
+                  <span className="text-xl font-black text-navy-800">₹{estimatedTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+              </div>
               <button
                 type="submit"
                 disabled={bookingLoading}
-                className="w-full py-3 mt-2 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-lg text-sm flex items-center justify-center gap-2"
+                className="w-full py-3 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-lg text-sm flex items-center justify-center gap-2"
               >
                 {bookingLoading
                   ? 'Holding your seats...'
                   : ticketCount > 1 ? `Confirm & Add ${ticketCount} Tickets to Trip Cart` : 'Confirm & Add to Trip Cart'}
               </button>
             </form>
+            </div>
           </div>
         </div>
       )}

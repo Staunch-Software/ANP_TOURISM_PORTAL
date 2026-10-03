@@ -1140,7 +1140,7 @@ export function AdminDashboard({ user, onLogout, isSidebarOpen, onCloseSidebar }
       {/* 1. Header Banner */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold mb-2">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-800 text-xs font-bold mb-2">
             <ShieldCheck className="w-3.5 h-3.5" /> ANIIDCO Directorate &amp; Regulatory Authority
           </div>
           <h2 className="font-serif text-2xl font-black text-navy-800">Government MIS &amp; Harbor Oversight</h2>

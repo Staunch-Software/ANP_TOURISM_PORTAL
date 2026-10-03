@@ -311,9 +311,9 @@ export default function App() {
       />
 
       {!isHeritageSitesPage && !isConnectedIslandsPage && activeTab === 'ATTRACTIONS' && (
-      <div className="italic">
+      <div>
       {/* Hero Section — editorial rotating carousel of real Andaman locations */}
-      <section className="relative min-h-[420px] flex items-center justify-center overflow-hidden bg-navy-800">
+      <section className="relative min-h-[300px] flex items-center justify-center overflow-hidden bg-navy-800">
         {HERO_SLIDES.map((slide, idx) => (
           <div
             key={slide.img}
@@ -349,17 +349,17 @@ export default function App() {
           </div>
         </div>
 
-        <div className="relative z-10 max-w-4xl mx-auto px-4 py-14 text-center space-y-5">
+        <div className="relative z-10 max-w-4xl mx-auto px-4 pt-8 pb-14 text-center space-y-3">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 border border-white/25 text-cyan-200 text-[11px] font-bold tracking-wide">
             <Waves className="w-3.5 h-3.5" />
             <span>An Official Government of India Initiative</span>
           </div>
 
-          <h1 className="font-serif text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-white leading-tight">
+          <h1 className="font-serif text-3xl md:text-4xl font-black tracking-tight text-white leading-tight">
             Explore the Andamans. <span className="text-cyan-300">Book It All Here.</span>
           </h1>
 
-          <p className="text-slate-200 text-sm md:text-base max-w-2xl mx-auto leading-relaxed">
+          <p className="hidden sm:block text-slate-200 text-sm md:text-base max-w-2xl mx-auto leading-relaxed">
             Monument entry, dive slots and inter-island ferry seats — one verified single-window booking, one tamper-proof digital pass for every gate.
           </p>
         </div>
@@ -468,21 +468,21 @@ export default function App() {
 
 
       {/* Discover the Islands — editorial gallery of real Andaman landmarks */}
-      <div className="portal-explore-band bg-slate-100 py-10 border-b border-slate-200">
+      <div className="portal-explore-band bg-slate-100 py-5 border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4">
-          <div className="flex items-end justify-between mb-5">
+          <div className="flex items-end justify-between mb-3">
             <div>
               <span className="text-[10px] font-extrabold uppercase tracking-widest text-cyan-700">Explore</span>
               <h2 className="font-serif text-xl md:text-2xl font-black text-navy-800">Discover the Islands</h2>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {DISCOVER_CARDS.map((card) => (
               <button
                 key={card.title}
                 onClick={() => handleDiscoverCardClick(card)}
-                className="relative h-64 rounded-2xl overflow-hidden group text-left shadow-sm hover:shadow-xl hover:ring-2 hover:ring-cyan-500/60 transition-all cursor-pointer"
+                className="relative h-40 rounded-2xl overflow-hidden group text-left shadow-sm hover:shadow-xl hover:ring-2 hover:ring-cyan-500/60 transition-all cursor-pointer"
               >
                 <img
                   src={card.img}
@@ -529,7 +529,7 @@ export default function App() {
           )}
         </div>
       ) : (
-        <main id="attractions-section" className={`flex-1 max-w-7xl w-full mx-auto px-4 py-10 ${activeTab === 'ATTRACTIONS' ? 'italic' : ''}`}>
+        <main id="attractions-section" className="flex-1 max-w-7xl w-full mx-auto px-4 py-6">
           {activeTab === 'ATTRACTIONS' && (
             <AttractionsExplorer
               onAddToCart={refreshCartCount}
@@ -592,7 +592,7 @@ export default function App() {
           useful replacing it. */}
       {!HIDE_TOURIST_CHROME_TABS.includes(activeTab) && (
         <footer
-          className={`portal-footer text-slate-100 py-8 px-4 mt-auto ${activeTab === 'ATTRACTIONS' && !isHeritageSitesPage && !isConnectedIslandsPage ? 'italic' : ''}`}
+          className="portal-footer text-slate-100 py-8 px-4 mt-auto"
           style={{
             backgroundImage: "linear-gradient(90deg, rgba(4, 22, 38, 0.9) 0%, rgba(5, 29, 48, 0.76) 48%, rgba(5, 35, 52, 0.4) 100%), url('/images/footer-coconut-beach.jpg')",
             backgroundPosition: '58% 64%',

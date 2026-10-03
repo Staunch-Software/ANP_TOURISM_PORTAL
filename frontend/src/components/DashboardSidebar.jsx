@@ -46,8 +46,8 @@ export function DashboardSidebar({ portalLabel, portalIcon: PortalIcon, groups, 
                     onClick={() => onSelectSection(item.key)}
                     className={`w-full text-left px-3.5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-3 transition-all ${
                       isActive
-                        ? 'bg-amber-700 text-white shadow-md'
-                        : 'text-slate-300 hover:text-amber-300 hover:bg-navy-800'
+                        ? 'bg-cyan-600 text-white shadow-md'
+                        : 'text-slate-300 hover:text-white hover:bg-navy-800'
                     }`}
                   >
                     <Icon className="w-4 h-4 shrink-0" /> {item.label}
