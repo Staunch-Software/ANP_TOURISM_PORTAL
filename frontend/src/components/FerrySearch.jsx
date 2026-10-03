@@ -29,14 +29,27 @@ export function FerrySearch({ onAddToCart, onRequireLogin, user }) {
   const [selectedSeat, setSelectedSeat] = useState(null);
   const [seatLoading, setSeatLoading] = useState(false);
   const [passengerName, setPassengerName] = useState('');
-  const [passengerAge, setPassengerAge] = useState('29');
+  const [passengerAge, setPassengerAge] = useState('');
   const [passengerGender, setPassengerGender] = useState('MALE');
+  const [passengerIdType, setPassengerIdType] = useState('AADHAAR');
   const [passengerId, setPassengerId] = useState('');
+  // Previous visitors from the tourist's booking history (RFP p.25).
+  const [savedVisitors, setSavedVisitors] = useState([]);
   const [holdCountdown, setHoldCountdown] = useState(null);
 
   useEffect(() => {
     handleSearch();
   }, []);
+
+  useEffect(() => {
+    if (!activeSchedule || !user) {
+      setSavedVisitors([]);
+      return;
+    }
+    API.get('/cart/saved-visitors')
+      .then((res) => setSavedVisitors(res.data))
+      .catch(() => setSavedVisitors([]));
+  }, [activeSchedule, user]);
 
   useEffect(() => {
     if (!holdCountdown || holdCountdown <= 0) return;
@@ -125,17 +138,25 @@ export function FerrySearch({ onAddToCart, onRequireLogin, user }) {
       return;
     }
 
+    // Age counts toward the 6-adult / 12-child limit per booking (RFP p.25),
+    // so it has to be the real one.
+    const age = parseInt(passengerAge, 10);
+    if (Number.isNaN(age) || age < 0 || age > 120) {
+      alert("Please enter the passenger's age (0-120)");
+      return;
+    }
+
     setSeatLoading(true);
     try {
       await API.post('/cart/add-ferry', {
         schedule_id: activeSchedule.schedule_id,
         seat_number: selectedSeat.seat_number,
         passenger: {
-          name: passengerName || (user.full_name || "Valued Tourist"),
-          age: parseInt(passengerAge) || 28,
+          name: passengerName.trim() || (user.full_name || "Valued Tourist"),
+          age,
           gender: passengerGender,
-          id_type: "AADHAAR",
-          id_number: passengerId
+          id_type: passengerIdType,
+          id_number: passengerId.trim()
         }
       });
 
@@ -147,6 +168,16 @@ export function FerrySearch({ onAddToCart, onRequireLogin, user }) {
     } finally {
       setSeatLoading(false);
     }
+  };
+
+  const fillFromSaved = (key) => {
+    const v = savedVisitors.find((x) => `${x.id_type}:${x.id_number}` === key);
+    if (!v) return;
+    setPassengerName(v.name);
+    setPassengerAge(v.age == null ? '' : String(v.age));
+    setPassengerGender(v.gender || 'MALE');
+    setPassengerIdType(v.id_type);
+    setPassengerId(v.id_number);
   };
 
   function renderSeatButton(seat) {
@@ -430,6 +461,22 @@ export function FerrySearch({ onAddToCart, onRequireLogin, user }) {
                   <span className="text-base font-black text-cyan-700">₹{selectedSeat.price_inr.toLocaleString('en-IN')}</span>
                 </div>
 
+                {savedVisitors.length > 0 && (
+                  <select
+                    value=""
+                    onChange={(e) => fillFromSaved(e.target.value)}
+                    aria-label="Fill from a previous visitor"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+                  >
+                    <option value="">Fill from a previous visitor…</option>
+                    {savedVisitors.map((v) => (
+                      <option key={`${v.id_type}:${v.id_number}`} value={`${v.id_type}:${v.id_number}`}>
+                        {v.name} · {v.id_type.replace('_', ' ')} ••••{v.id_number.slice(-4)}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
                 <div className="grid grid-cols-2 gap-3">
                   <input
                     type="text"
@@ -440,11 +487,41 @@ export function FerrySearch({ onAddToCart, onRequireLogin, user }) {
                     required
                   />
                   <input
+                    type="number"
+                    min="0"
+                    max="120"
+                    placeholder="Age"
+                    value={passengerAge}
+                    onChange={(e) => setPassengerAge(e.target.value)}
+                    className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+                    required
+                  />
+                  <select
+                    value={passengerGender}
+                    onChange={(e) => setPassengerGender(e.target.value)}
+                    aria-label="Gender"
+                    className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+                  >
+                    <option value="MALE">Male</option>
+                    <option value="FEMALE">Female</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                  <select
+                    value={passengerIdType}
+                    onChange={(e) => setPassengerIdType(e.target.value)}
+                    aria-label="ID type"
+                    className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+                  >
+                    <option value="AADHAAR">Aadhaar</option>
+                    <option value="VOTER_ID">Voter ID</option>
+                    <option value="PASSPORT">Passport</option>
+                  </select>
+                  <input
                     type="text"
-                    placeholder="Aadhaar / Passport No"
+                    placeholder={passengerIdType === 'PASSPORT' ? 'Passport number' : 'ID number'}
                     value={passengerId}
                     onChange={(e) => setPassengerId(e.target.value)}
-                    className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+                    className="col-span-2 px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
                     required
                   />
                 </div>

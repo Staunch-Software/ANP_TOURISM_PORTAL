@@ -93,18 +93,18 @@ async def _check_headcount_batch(r, cart_key: str, new_ages: list) -> None:
         )
 
 
-async def _check_not_already_in_cart(r, cart_key: str, slot_id: str, id_numbers: list) -> None:
-    """One person cannot hold two tickets for the same slot."""
+async def _check_not_already_in_cart(r, cart_key: str, target_id: str, id_numbers: list, field: str = "slot_id", label: str = "slot") -> None:
+    """One person cannot hold two tickets for the same slot (or ferry voyage)."""
     in_cart = {
         (item["passenger"]["id_number"] or "").strip().upper()
         for item in (json.loads(raw) for raw in await r.lrange(cart_key, 0, -1))
-        if item.get("slot_id") == slot_id
+        if item.get(field) == target_id
     }
     seen = set()
     for number in id_numbers:
         key = (number or "").strip().upper()
         if key in in_cart:
-            raise HTTPException(status_code=409, detail=f"The visitor with ID ending {key[-4:]} is already in your cart for this slot.")
+            raise HTTPException(status_code=409, detail=f"The visitor with ID ending {key[-4:]} is already in your cart for this {label}.")
         if key in seen:
             raise HTTPException(status_code=409, detail=f"The same ID (ending {key[-4:]}) was given for more than one visitor.")
         seen.add(key)
@@ -207,6 +207,7 @@ async def add_ferry_to_cart(
         raise HTTPException(status_code=409, detail=f"Seat {req.seat_number} is already booked")
 
     cart_key = get_cart_key(current_user.id)
+    await _check_not_already_in_cart(r, cart_key, str(schedule.id), [req.passenger.id_number], field="schedule_id", label="voyage")
     await _check_headcount_cap(r, cart_key, req.passenger.age)
 
     seat_hold_key = f"ferry:hold:{str(schedule.id)}:{seat.seat_number}"

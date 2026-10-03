@@ -1,11 +1,11 @@
 from typing import List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class PassengerDetail(BaseModel):
     name: str
-    age: int
+    age: int = Field(ge=0, le=120)
     gender: str = "MALE"  # MALE, FEMALE, OTHER
     id_type: str = "AADHAAR"  # AADHAAR, PASSPORT, VOTER_ID
     id_number: str
