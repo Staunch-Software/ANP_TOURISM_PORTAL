@@ -1,4 +1,5 @@
 import React from 'react';
+import { WaveDivider } from '../WaveDivider';
 import {
   Ship, Calendar, Clock, MapPin, Armchair, ArrowLeftRight, ArrowRight, Search, Heart,
   Snowflake, UtensilsCrossed, Luggage, Bath, Star, Info, BadgeCheck, Ticket, ShieldCheck, CalendarClock,
@@ -43,20 +44,21 @@ function formatTime12(t) {
 export function HeroBanner() {
   return (
     <section
-      className="relative h-32 sm:h-40 flex items-center overflow-hidden bg-navy-800"
+      className="relative h-36 sm:h-44 flex items-center overflow-hidden bg-navy-800"
       style={{
         backgroundImage: "linear-gradient(90deg, rgba(5,26,48,0.82) 0%, rgba(5,26,48,0.45) 45%, rgba(5,26,48,0.05) 100%), url('/images/ferry-catamaran.jpg')",
         backgroundSize: 'cover',
         backgroundPosition: 'center 47%',
       }}
     >
-      <div className="max-w-7xl w-full mx-auto px-4 pb-8">
+      <div className="relative z-10 max-w-7xl w-full mx-auto px-4 pb-8 sm:pb-10">
         <p className="text-[11px] font-bold tracking-[0.2em] text-cyan-200 uppercase">Ferry Booking</p>
         <h1 className="font-serif text-2xl sm:text-4xl font-black text-white leading-tight">Explore Islands by Sea</h1>
         <p className="text-sm sm:text-base text-slate-100 mt-1">
           Safe <span className="mx-2 opacity-60">|</span> Comfortable <span className="mx-2 opacity-60">|</span> Scenic Journeys
         </p>
       </div>
+      <WaveDivider />
     </section>
   );
 }

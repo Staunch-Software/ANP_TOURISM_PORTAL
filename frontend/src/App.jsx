@@ -12,6 +12,7 @@ import { LoginModal } from './components/LoginModal';
 import { AttractionsExplorer } from './components/AttractionsExplorer';
 import { FerrySearch } from './components/FerrySearch';
 import { HeroBanner } from './components/ferry/FerryParts';
+import { WaveDivider } from './components/WaveDivider';
 import { CartDrawer } from './components/CartDrawer';
 import { DigitalWallet } from './components/DigitalWallet';
 import { MyWallet } from './components/MyWallet';
@@ -534,13 +535,14 @@ export default function App() {
         {activeTab === 'FERRY' && <HeroBanner />}
         {activeTab !== 'ATTRACTIONS' && activeTab !== 'FERRY' && (
           <section
-            className="relative h-28 sm:h-32 flex items-center overflow-hidden bg-navy-800"
+            className="relative h-32 sm:h-40 flex items-center overflow-hidden bg-navy-800"
             style={{ backgroundImage: `linear-gradient(90deg, rgba(5,26,48,0.5) 0%, rgba(5,26,48,0.12) 55%, rgba(5,26,48,0) 100%), url('/images/inner-hero.jpg')`, backgroundSize: 'cover', backgroundPosition: 'center 55%' }}
           >
-            <div className="max-w-7xl w-full mx-auto px-4 pb-6">
+            <div className="relative z-10 max-w-7xl w-full mx-auto px-4 pb-8 sm:pb-10">
               <h1 className="font-serif text-xl sm:text-2xl font-black text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.45)]">Explore Andaman &amp; Nicobar Islands</h1>
               <p className="text-sm text-slate-100 mt-1">Pristine Beaches <span className="mx-2 opacity-60">|</span> Historic Landmarks <span className="mx-2 opacity-60">|</span> Unique Experiences</p>
             </div>
+            <WaveDivider />
           </section>
         )}
         <main id="attractions-section" className={`flex-1 max-w-7xl w-full mx-auto px-4 py-6 ${['FERRY', 'PASSES'].includes(activeTab) ? '-mt-8 relative z-10' : ''}`}>
