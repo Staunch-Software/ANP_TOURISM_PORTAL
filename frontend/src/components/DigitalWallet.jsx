@@ -146,7 +146,7 @@ export function DigitalWallet({ user, onRequireLogin }) {
       {/* Header Banner */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold mb-2">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-800 text-xs font-bold mb-2">
             <ShieldCheck className="w-3.5 h-3.5" /> Ed25519 Cryptographically Signed · Unified QR per Order
           </div>
           <h2 className="font-serif text-2xl font-black text-navy-800">Official Digital Pass Wallet</h2>
@@ -179,13 +179,14 @@ export function DigitalWallet({ user, onRequireLogin }) {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {passes.map((pass) => {
             const hasCancellableEntitlement = pass.entitlements.some((e) => e.check_in_status === 'ISSUED');
+            const isCancelled = pass.order_status === 'CANCELLED';
             return (
             <div
               key={pass.booking_ref}
-              className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between relative group hover:border-cyan-400 transition-all"
+              className={`border border-slate-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between relative group transition-all ${isCancelled ? 'bg-slate-50 opacity-80' : 'bg-white hover:border-cyan-400'}`}
             >
               {/* Official Pass Header */}
-              <div className="bg-slate-50 p-5 border-b border-slate-100 flex justify-between items-start">
+              <div className="bg-slate-50 px-5 py-4 border-b border-slate-100 flex justify-between items-start">
                 <div>
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-cyan-50 text-cyan-700 border border-cyan-200 w-fit block">
                     UNIFIED BOARDING PASS
@@ -233,7 +234,13 @@ export function DigitalWallet({ user, onRequireLogin }) {
               )}
 
               {/* Pass Mid Section: One QR Code covering the whole order */}
-              <div className="p-6 flex flex-col sm:flex-row items-center gap-6">
+              <div className="p-5 flex flex-col sm:flex-row items-center gap-5">
+                {isCancelled ? (
+                  <div className="w-[154px] h-[154px] rounded-2xl border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-center text-slate-400 flex-shrink-0">
+                    <XCircle className="w-8 h-8 mb-1" />
+                    <span className="text-[10px] font-bold uppercase tracking-wider">QR void<br />Booking cancelled</span>
+                  </div>
+                ) : (
                 <div className="bg-white p-3 rounded-2xl shadow-inner border-2 border-slate-200 flex-shrink-0">
                   <QRCodeSVG
                     value={pass.qr_token}
@@ -245,6 +252,7 @@ export function DigitalWallet({ user, onRequireLogin }) {
                     OFFLINE VERIFIABLE
                   </span>
                 </div>
+                )}
 
                 {/* Entitlements bundled under this one signed pass */}
                 <div className="flex-1 space-y-2 w-full">
@@ -328,14 +336,16 @@ export function DigitalWallet({ user, onRequireLogin }) {
 
 
                 {/* Self-service preview: read-only, does not check anyone in — only staff can do that */}
+                {!isCancelled && (
                 <button
                   type="button"
                   disabled={verifying}
                   onClick={() => handleSimulateTurnstileScan(pass.booking_ref)}
-                  className="px-4 py-2 bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs rounded-lg shadow-md flex items-center gap-2 transition-all"
+                  className="px-4 py-2 bg-cyan-700 hover:bg-cyan-600 text-white font-bold text-xs rounded-lg shadow-md flex items-center gap-2 transition-all"
                 >
                   <ShieldCheck className="w-4 h-4" /> Simulate Turnstile Scan
                 </button>
+                )}
               </div>
             </div>
             );

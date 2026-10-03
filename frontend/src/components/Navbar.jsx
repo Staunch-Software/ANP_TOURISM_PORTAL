@@ -77,9 +77,7 @@ export function Navbar({
       ref={headerRef}
       className="sticky top-0 z-40 border-b-[3px] border-cyan-600 shadow-lg"
       style={{
-        backgroundImage: "linear-gradient(rgba(7, 26, 46, 0.82), rgba(7, 26, 46, 0.86)), url('/images/footer-coconut-beach.jpg')",
-        backgroundPosition: 'center 58%',
-        backgroundSize: 'cover'
+        backgroundImage: 'linear-gradient(180deg, #082640 0%, #051a30 100%)'
       }}
     >
       {/* Government identity strip */}
@@ -127,9 +125,9 @@ export function Navbar({
         >
           <img src="/images/govt-seal.png" alt="Emblem" className="w-11 h-11 object-contain bg-white rounded-lg p-1 shadow-md shrink-0" />
           <div className="min-w-0">
-            <div className="brand-title font-serif font-black text-base sm:text-xl tracking-tight text-white leading-tight truncate">ANIIDCO Tourism &amp; Ferry Portal</div>
+            <div className="brand-title font-serif font-black text-base sm:text-xl tracking-tight text-white leading-tight truncate">ANIIDCO Tourism Portal</div>
             <span className="brand-subtitle text-[10px] text-cyan-200 tracking-wider uppercase font-semibold hidden sm:block truncate">
-              Official Single-Window Ticketing · A&amp;N Islands
+              Single-Window Ticketing · A&amp;N Islands
             </span>
           </div>
         </div>
@@ -141,7 +139,7 @@ export function Navbar({
           <nav className="hidden lg:flex items-center gap-1">
             <button
               onClick={() => setActiveTab('ATTRACTIONS')}
-              className={`portal-nav-button px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap ${
+              className={`portal-nav-button px-3 py-2 rounded-lg text-sm font-bold whitespace-nowrap ${
                 activeTab === 'ATTRACTIONS' ? 'text-white' : 'text-slate-200'
               }`}
             >
@@ -150,7 +148,7 @@ export function Navbar({
 
             <button
               onClick={() => setActiveTab('FERRY')}
-              className={`portal-nav-button px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap ${
+              className={`portal-nav-button px-3 py-2 rounded-lg text-sm font-bold whitespace-nowrap ${
                 activeTab === 'FERRY'
                   ? 'is-current text-white shadow-md'
                   : 'text-slate-200'
@@ -161,7 +159,7 @@ export function Navbar({
 
             <button
               onClick={() => setActiveTab('PASSES')}
-              className={`portal-nav-button px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap ${
+              className={`portal-nav-button px-3 py-2 rounded-lg text-sm font-bold whitespace-nowrap ${
                 activeTab === 'PASSES'
                   ? 'is-current text-white shadow-md'
                   : 'text-slate-200'
@@ -183,7 +181,7 @@ export function Navbar({
 
             <button
               onClick={() => setActiveTab('SUPPORT')}
-              className={`portal-nav-button px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap ${
+              className={`portal-nav-button px-3 py-2 rounded-lg text-sm font-bold whitespace-nowrap ${
                 activeTab === 'SUPPORT'
                   ? 'is-current text-white shadow-md'
                   : 'text-slate-200'
@@ -194,7 +192,7 @@ export function Navbar({
 
             <button
               onClick={() => setActiveTab('GROUP_BOOKINGS')}
-              className={`portal-nav-button px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap ${
+              className={`portal-nav-button px-3 py-2 rounded-lg text-sm font-bold whitespace-nowrap ${
                 activeTab === 'GROUP_BOOKINGS' ? 'is-current text-white shadow-md' : 'text-slate-200'
               }`}
             >
@@ -204,7 +202,7 @@ export function Navbar({
             {user?.role === 'AGENT' && (
               <button
                 onClick={() => setActiveTab('AGENT_CONSOLE')}
-                className={`portal-nav-button px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap ${
+                className={`portal-nav-button px-3 py-2 rounded-lg text-sm font-bold whitespace-nowrap ${
                   activeTab === 'AGENT_CONSOLE'
                     ? 'is-current text-white shadow-md'
                     : 'text-cyan-200'
