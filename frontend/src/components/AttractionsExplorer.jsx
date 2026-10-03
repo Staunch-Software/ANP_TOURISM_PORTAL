@@ -80,7 +80,8 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [passengerName, setPassengerName] = useState('');
-  const [passengerAge, setPassengerAge] = useState('28');
+  const [passengerAge, setPassengerAge] = useState('');
+  const [passengerGender, setPassengerGender] = useState('MALE');
   const [passengerId, setPassengerId] = useState('');
   const [loading, setLoading] = useState(false);
   const [bookingLoading, setBookingLoading] = useState(false);
@@ -155,6 +156,14 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
       return;
     }
 
+    // Age decides whether this visitor counts toward the 6-adult or the
+    // 12-child limit per booking (RFP p.25), so it has to be real.
+    const age = parseInt(passengerAge, 10);
+    if (Number.isNaN(age) || age < 0 || age > 120) {
+      alert("Please enter the visitor's age (0-120)");
+      return;
+    }
+
     setBookingLoading(true);
     try {
       await API.post('/cart/add-attraction', {
@@ -162,8 +171,8 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
         nationality: nationality,
         passenger: {
           name: passengerName || (user.full_name || "Valued Tourist"),
-          age: parseInt(passengerAge) || 25,
-          gender: "MALE",
+          age,
+          gender: passengerGender,
           id_type: nationality === 'INDIAN' ? "AADHAAR" : "PASSPORT",
           id_number: passengerId
         }
@@ -443,6 +452,26 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
                   className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
                   required
                 />
+                <input
+                  type="number"
+                  min="0"
+                  max="120"
+                  placeholder="Age"
+                  value={passengerAge}
+                  onChange={(e) => setPassengerAge(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+                  required
+                />
+                <select
+                  value={passengerGender}
+                  onChange={(e) => setPassengerGender(e.target.value)}
+                  aria-label="Gender"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
+                >
+                  <option value="MALE">Male</option>
+                  <option value="FEMALE">Female</option>
+                  <option value="OTHER">Other</option>
+                </select>
               </div>
 
               <button
