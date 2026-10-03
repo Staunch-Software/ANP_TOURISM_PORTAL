@@ -245,7 +245,7 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
       {/* Grid of Attractions */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {attractions.map((item) => {
-          const img = ATTRACTION_IMAGES[item.title] || FALLBACK_IMAGE;
+          const img = item.image_url || ATTRACTION_IMAGES[item.title] || FALLBACK_IMAGE;
           const displayPrice = nationality === 'INDIAN' ? item.base_price_inr : item.foreign_price_inr;
           const categoryMeta = CATEGORY_STYLE[item.category] || { icon: Landmark, label: item.category.replace('_', ' ') };
           const CategoryIcon = categoryMeta.icon;
@@ -382,7 +382,7 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
                       <Select.Viewport className="slot-booking-select-viewport">
                         {availableSlots.map((slot) => (
                           <Select.Item key={slot.slot_id} value={String(slot.slot_id)} disabled={slot.available_seats <= 0} className="slot-booking-select-item">
-                            <Select.ItemText>{slot.start_time} - {slot.end_time} ({slot.available_seats} seats left)</Select.ItemText>
+                            <Select.ItemText>{slot.start_time} - {slot.end_time} ({slot.is_closed ? 'Closed' : `${slot.available_seats} seats left`})</Select.ItemText>
                           </Select.Item>
                         ))}
                       </Select.Viewport>
@@ -410,9 +410,13 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
                       }`}
                     >
                       <div className="text-xs font-mono font-bold">{slot.start_time} - {slot.end_time}</div>
-                      <div className="text-[10px] mt-1 flex items-center gap-1 text-emerald-600">
-                        <Users className="w-3 h-3" /> {slot.available_seats} seats left
-                      </div>
+                      {slot.is_closed ? (
+                        <div className="text-[10px] mt-1 font-bold text-amber-600">Closed</div>
+                      ) : (
+                        <div className="text-[10px] mt-1 flex items-center gap-1 text-emerald-600">
+                          <Users className="w-3 h-3" /> {slot.available_seats} seats left
+                        </div>
+                      )}
                     </button>
                   );
                 })}

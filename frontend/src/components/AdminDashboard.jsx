@@ -5,10 +5,11 @@ import {
   Ship, CloudRain, CheckCircle2, FileSpreadsheet, RefreshCw, Sliders,
   UserPlus, ShieldAlert, MapPin, KeyRound, Trash2, Plus, ClipboardCheck,
   GraduationCap, Eye, X, LayoutDashboard, ClipboardList, ScanLine, Anchor, UserCog,
-  BarChart3, Bell, BellRing, CalendarClock, LifeBuoy, ArrowUpCircle, Receipt, RotateCcw, Filter, Wallet
+  BarChart3, Bell, BellRing, CalendarClock, LifeBuoy, ArrowUpCircle, Receipt, RotateCcw, Filter, Wallet, Landmark
 } from 'lucide-react';
 import { DashboardSidebar } from './DashboardSidebar';
 import { StaffGateScanner } from './StaffGateScanner';
+import { AdminAttractions } from './AdminAttractions';
 
 // Each admin function lives on its own screen instead of one long
 // scrolling page — an admin working on, say, slot capacity shouldn't
@@ -32,6 +33,7 @@ const ADMIN_SECTION_GROUPS = [
       { key: 'MANIFEST', label: 'Harbor Manifest', icon: FileSpreadsheet },
       { key: 'REPORTS', label: 'Validated Tickets', icon: ClipboardList },
       { key: 'ADHOC_REPORT', label: 'Ad-hoc Report Builder', icon: Filter },
+      { key: 'ATTRACTIONS', label: 'Attractions', icon: Landmark },
       { key: 'CAPACITY', label: 'Crowd & Capacity', icon: Sliders },
       { key: 'GATE_SCANNER', label: 'Gate Scanner', icon: ScanLine },
       { key: 'GATES', label: 'Gate / LPU Sites', icon: MapPin },
@@ -929,6 +931,22 @@ export function AdminDashboard({ user, onLogout, isSidebarOpen, onCloseSidebar }
       fetchSlots(selectedAttractionId);
     } catch (err) {
       alert(err.response?.data?.detail || "Failed to update slot capacity");
+    } finally {
+      setExpandingSlotId(null);
+    }
+  };
+
+  const handleToggleSlotClosed = async (slot) => {
+    const closing = !slot.is_closed;
+    if (closing && !window.confirm(
+      `Close ${slot.start_time} - ${slot.end_time} to new bookings?\n\nTickets already sold for this slot are NOT cancelled.`
+    )) return;
+    setExpandingSlotId(slot.slot_id);
+    try {
+      await API.patch(`/admin/slots/${slot.slot_id}/status`, { is_active: !closing });
+      fetchSlots(selectedAttractionId);
+    } catch (err) {
+      alert(err.response?.data?.detail || "Failed to update slot status");
     } finally {
       setExpandingSlotId(null);
     }
@@ -2253,6 +2271,8 @@ export function AdminDashboard({ user, onLogout, isSidebarOpen, onCloseSidebar }
       </>
       )}
 
+      {activeSection === 'ATTRACTIONS' && <AdminAttractions />}
+
       {activeSection === 'CAPACITY' && (
       <>
       {/* 4. Live Slot Quota Expansion & Carrying Capacity (RFP Page 30) */}
@@ -2286,14 +2306,15 @@ export function AdminDashboard({ user, onLogout, isSidebarOpen, onCloseSidebar }
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {attractionSlots.map((slot) => {
-            const isSoldOut = slot.available_seats === 0;
+            const isClosed = !!slot.is_closed;
+            const isSoldOut = !isClosed && slot.available_seats === 0;
             const isExpanding = expandingSlotId === slot.slot_id;
 
             return (
               <div
                 key={slot.slot_id}
                 className={`p-4 rounded-2xl border transition-all ${
-                  isSoldOut ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-200'
+                  isClosed ? 'bg-amber-50 border-amber-200' : isSoldOut ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-200'
                 }`}
               >
                 <div className="flex justify-between items-start mb-2">
@@ -2301,22 +2322,37 @@ export function AdminDashboard({ user, onLogout, isSidebarOpen, onCloseSidebar }
                     <span className="text-sm font-mono font-black text-navy-800 block">
                       {slot.start_time} - {slot.end_time}
                     </span>
-                    <span className={`text-xs font-bold ${isSoldOut ? 'text-red-600' : 'text-emerald-700'}`}>
-                      {slot.available_seats} / {slot.total_capacity} Seats Available
+                    <span className={`text-xs font-bold ${isClosed ? 'text-amber-700' : isSoldOut ? 'text-red-600' : 'text-emerald-700'}`}>
+                      {isClosed
+                        ? `Closed to new bookings · ${slot.booked_count} booked`
+                        : `${slot.available_seats} / ${slot.total_capacity} Seats Available`}
                     </span>
                   </div>
                   <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
-                    isSoldOut
+                    isClosed
+                      ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                      : isSoldOut
                       ? 'bg-red-100 text-red-700 border border-red-200'
                       : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                   }`}>
-                    {isSoldOut ? 'SOLD OUT' : 'OPEN'}
+                    {isClosed ? 'CLOSED' : isSoldOut ? 'SOLD OUT' : 'OPEN'}
                   </span>
                 </div>
 
                 {/* Dynamic Expansion Actions */}
                 <div className="pt-3 border-t border-slate-200 flex items-center justify-between gap-2">
-                  <span className="text-[11px] text-slate-500">Expand Quota:</span>
+                  <button
+                    type="button"
+                    disabled={isExpanding}
+                    onClick={() => handleToggleSlotClosed(slot)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors disabled:opacity-50 ${
+                      isClosed
+                        ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                        : 'bg-white hover:bg-amber-50 text-amber-700 border-amber-300'
+                    }`}
+                  >
+                    {isClosed ? 'Reopen' : 'Close slot'}
+                  </button>
                   <div className="flex gap-1.5">
                     <button
                       type="button"
