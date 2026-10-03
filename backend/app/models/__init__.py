@@ -1,5 +1,5 @@
 from app.models.user import User
-from app.models.attraction import Attraction, AttractionSlot
+from app.models.attraction import Attraction, AttractionSlot, AttractionSlotTemplate, AttractionClosure
 from app.models.ferry import Vessel, FerrySchedule, FerrySeat
 from app.models.order import Order, OrderItem
 from app.models.ticket import Ticket

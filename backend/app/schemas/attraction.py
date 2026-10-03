@@ -15,6 +15,7 @@ class AttractionResponse(BaseModel):
     opening_time: Optional[str] = None  # "HH:MM"
     closing_time: Optional[str] = None  # "HH:MM"
     estimated_exploration_minutes: Optional[int] = None
+    image_url: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -30,3 +31,4 @@ class SlotResponse(BaseModel):
     booked_count: int
     available_seats: int
     is_available: bool
+    is_closed: bool = False  # closed by the administrator (maintenance etc.)

@@ -51,6 +51,7 @@ async def list_attractions(
             opening_time=item.opening_time,
             closing_time=item.closing_time,
             estimated_exploration_minutes=item.estimated_exploration_minutes,
+            image_url=item.image_url,
         )
         for item in items
     ]
@@ -80,6 +81,7 @@ async def get_attraction(attraction_id: str, db: AsyncSession = Depends(get_db))
         opening_time=attraction.opening_time,
         closing_time=attraction.closing_time,
         estimated_exploration_minutes=attraction.estimated_exploration_minutes,
+        image_url=attraction.image_url,
     )
 
 
@@ -113,6 +115,8 @@ async def get_attraction_slots(
         held_count = int(redis_held) if redis_held else 0
 
         available = max(0, s.total_capacity - s.booked_count - held_count)
+        if not s.is_active:
+            available = 0  # closed by an admin: shown, but never bookable
 
         response_slots.append(
             SlotResponse(
@@ -125,6 +129,7 @@ async def get_attraction_slots(
                 booked_count=s.booked_count + held_count,
                 available_seats=available,
                 is_available=(available > 0),
+                is_closed=not s.is_active,
             )
         )
 
@@ -158,6 +163,7 @@ async def suggest_itinerary(
             Attraction.is_active == True,
             AttractionSlot.slot_date >= req.start_date,
             AttractionSlot.slot_date <= req.end_date,
+            AttractionSlot.is_active == True,
         )
     )
     if req.island:

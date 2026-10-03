@@ -13,6 +13,7 @@ from app.models.user import User
 from app.models.order import Order, OrderItem
 from app.models.ticket import Ticket
 from app.models.attraction import Attraction, AttractionSlot
+from app.services.slot_service import ensure_slot_bookable
 from app.models.ferry import FerrySeat, FerrySchedule
 from app.models.reschedule import RescheduleRequest
 from app.api.v1.auth import get_current_user
@@ -452,7 +453,8 @@ async def get_reschedule_slot_options(
             total_capacity=s.total_capacity,
             booked_count=s.booked_count,
             available_seats=max(0, s.total_capacity - s.booked_count),
-            is_available=(s.id != current_slot.id) and (s.booked_count < s.total_capacity),
+            is_available=(s.id != current_slot.id) and (s.booked_count < s.total_capacity) and s.is_active,
+            is_closed=not s.is_active,
         )
         for s in slots
     ]
@@ -497,6 +499,7 @@ async def request_ticket_reschedule(
 
     attraction_res = await db.execute(select(Attraction).where(Attraction.id == new_slot.attraction_id))
     attraction = attraction_res.scalars().first()
+    ensure_slot_bookable(new_slot, attraction)
 
     reschedule_req = RescheduleRequest(
         request_ref=f"AN-2026-RSC-{random.randint(100000, 999999)}",

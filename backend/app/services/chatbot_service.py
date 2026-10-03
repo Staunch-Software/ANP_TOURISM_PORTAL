@@ -143,6 +143,7 @@ async def _async_get_available_slots(attraction_name: str, date: str, phone_numb
                 select(AttractionSlot)
                 .where(AttractionSlot.attraction_id == attraction.id)
                 .where(AttractionSlot.slot_date == date)
+                .where(AttractionSlot.is_active == True)
                 .order_by(AttractionSlot.start_time)
             )
             slots = slots_result.scalars().all()

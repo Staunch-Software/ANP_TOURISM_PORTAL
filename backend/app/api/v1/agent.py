@@ -9,6 +9,7 @@ from sqlalchemy.future import select
 from app.core.database import get_db
 from app.models.user import User
 from app.models.attraction import Attraction, AttractionSlot
+from app.services.slot_service import ensure_slot_bookable
 from app.models.ferry import FerrySchedule, FerrySeat, Vessel
 from app.models.order import Order, OrderItem
 from app.models.ticket import Ticket
@@ -68,6 +69,7 @@ async def agent_book_attraction(
     if not row:
         raise HTTPException(status_code=404, detail="Attraction slot not found")
     slot, attraction = row
+    ensure_slot_bookable(slot, attraction)
 
     available = slot.total_capacity - slot.booked_count
     if available < 1:

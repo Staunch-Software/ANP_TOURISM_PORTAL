@@ -19,7 +19,8 @@ from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
-from app.models.attraction import Attraction, AttractionSlot
+from app.models.attraction import Attraction, AttractionSlot, AttractionSlotTemplate
+from app.services.slot_service import closure_covers, closures_for
 from app.models.ferry import Vessel, FerrySchedule, FerrySeat
 from app.data.catalog_templates import (
     REAL_ATTRACTIONS,
@@ -39,43 +40,69 @@ async def _ensure_attraction_slots(db: AsyncSession, days_ahead: int) -> int:
     date_strings = [(today + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days_ahead)]
     created = 0
 
+    # 1. The five seeded attractions: backfill detail fields and their slot
+    #    pattern into the database (only where still missing, so an admin's
+    #    later edit is never overwritten). After this the database is the
+    #    source of truth; catalog_templates.py is just the initial seed.
     for item in REAL_ATTRACTIONS:
         res = await db.execute(select(Attraction).where(Attraction.title == item["title"]))
         attraction = res.scalars().first()
         if not attraction:
-            # This service only extends availability for attractions that
-            # already exist -- seed_catalog.py is still what creates the
-            # catalog itself the first time.
+            # seed_catalog.py is still what creates the catalog the first time.
             continue
 
-        # Backfill the RFP attraction-detail fields on attractions created
-        # before they existed -- only where still NULL, so a value an admin
-        # has since edited is never overwritten.
-        for field in ("description", "opening_time", "closing_time", "estimated_exploration_minutes"):
+        for field in ("description", "opening_time", "closing_time", "estimated_exploration_minutes", "image_url"):
             if getattr(attraction, field) is None:
                 setattr(attraction, field, item[field])
 
-        for d_str in date_strings:
+        has_template = (await db.execute(
+            select(AttractionSlotTemplate.id).where(AttractionSlotTemplate.attraction_id == attraction.id).limit(1)
+        )).first()
+        if not has_template:
             for start_t, end_t, cap in item["slots"]:
-                slot_res = await db.execute(
-                    select(AttractionSlot).where(
-                        AttractionSlot.attraction_id == attraction.id,
-                        AttractionSlot.slot_date == d_str,
-                        AttractionSlot.start_time == start_t,
-                    )
+                db.add(AttractionSlotTemplate(
+                    attraction_id=attraction.id, start_time=start_t, end_time=end_t, capacity=cap,
+                ))
+    await db.flush()
+
+    # 2. Every ACTIVE attraction (seeded or admin-created): generate the
+    #    rolling window of dated slots from its templates. Slots that fall
+    #    inside an admin closure are created already closed.
+    attractions = (await db.execute(select(Attraction).where(Attraction.is_active == True))).scalars().all()
+    for attraction in attractions:
+        templates = (await db.execute(
+            select(AttractionSlotTemplate).where(AttractionSlotTemplate.attraction_id == attraction.id)
+        )).scalars().all()
+        if not templates:
+            continue
+
+        closures = await closures_for(db, attraction.id)
+        existing = {
+            (row.slot_date, row.start_time)
+            for row in (await db.execute(
+                select(AttractionSlot.slot_date, AttractionSlot.start_time).where(
+                    AttractionSlot.attraction_id == attraction.id,
+                    AttractionSlot.slot_date.in_(date_strings),
                 )
-                if slot_res.scalars().first():
+            )).all()
+        }
+
+        for d_str in date_strings:
+            for t in templates:
+                if (d_str, t.start_time) in existing:
                     continue
+                closed = any(closure_covers(c, d_str, t.start_time, t.end_time) for c in closures)
                 db.add(
                     AttractionSlot(
                         attraction_id=attraction.id,
                         slot_date=d_str,
-                        start_time=start_t,
-                        end_time=end_t,
-                        total_capacity=cap,
+                        start_time=t.start_time,
+                        end_time=t.end_time,
+                        total_capacity=t.capacity,
                         booked_count=0,
-                        premium_capacity=max(1, int(cap * 0.2)),
+                        premium_capacity=max(1, int(t.capacity * 0.2)),
                         premium_booked_count=0,
+                        is_active=not closed,
                     )
                 )
                 created += 1

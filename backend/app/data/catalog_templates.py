@@ -9,6 +9,7 @@ from datetime import time
 REAL_ATTRACTIONS = [
     {
         "title": "Cellular Jail National Memorial",
+        "image_url": "/images/cellular-jail.jpg",
         "description": "Colonial-era prison in Port Blair, now a national memorial to the freedom fighters of India. Walk the cell wings and the central tower, and see the exhibits on the independence struggle.",
         "estimated_exploration_minutes": 60,
         "island": "PORT_BLAIR",
@@ -26,6 +27,7 @@ REAL_ATTRACTIONS = [
     },
     {
         "title": "Cellular Jail Light & Sound Show",
+        "image_url": "/images/cellular-jail-corridor.jpg",
         "description": "Evening light-and-sound show held in the Cellular Jail grounds, narrating the history of the jail and the freedom struggle.",
         "estimated_exploration_minutes": 60,
         "island": "PORT_BLAIR",
@@ -40,6 +42,7 @@ REAL_ATTRACTIONS = [
     },
     {
         "title": "Ross Island (Netaji Subhash Chandra Bose Dweep)",
+        "image_url": "/images/ross-island-church-ruins.jpg",
         "description": "Former British administrative headquarters, reached by a short boat ride from Port Blair. Explore the colonial-era ruins in the forest, home to free-roaming deer.",
         "estimated_exploration_minutes": 180,
         "island": "PORT_BLAIR",
@@ -53,6 +56,7 @@ REAL_ATTRACTIONS = [
     },
     {
         "title": "Elephant Beach Scuba Diving & Sea Walk",
+        "image_url": "/images/scuba-diving.jpg",
         "description": "Beach on Havelock Island known for its coral reefs. Guided scuba diving and sea-walk sessions let you see the corals and marine life up close.",
         "estimated_exploration_minutes": 120,
         "island": "HAVELOCK",
@@ -67,6 +71,7 @@ REAL_ATTRACTIONS = [
     },
     {
         "title": "North Bay Coral Glass-Bottom Safari",
+        "image_url": "/images/north-bay-glassboat.jpg",
         "description": "Glass-bottom boat trip over the coral reef at North Bay near Port Blair, for viewing corals and marine life without getting in the water.",
         "estimated_exploration_minutes": 120,
         "island": "PORT_BLAIR",

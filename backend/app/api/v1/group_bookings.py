@@ -14,6 +14,7 @@ from sqlalchemy.future import select
 from app.core.database import get_db
 from app.models.user import User
 from app.models.attraction import Attraction, AttractionSlot
+from app.services.slot_service import ensure_slot_bookable
 from app.models.order import Order, OrderItem
 from app.models.ticket import Ticket
 from app.models.group_booking import GroupBookingRequest
@@ -114,6 +115,8 @@ async def submit_group_booking_request(
     slot = slot_res.scalars().first()
     if not slot:
         raise HTTPException(status_code=404, detail="Attraction slot not found")
+    group_attraction = (await db.execute(select(Attraction).where(Attraction.id == slot.attraction_id))).scalars().first()
+    ensure_slot_bookable(slot, group_attraction)
 
     total_headcount = payload.indian_travelers_count + payload.foreign_travelers_count
     if total_headcount <= 0:

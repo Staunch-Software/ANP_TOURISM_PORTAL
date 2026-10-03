@@ -10,6 +10,7 @@ from app.core.database import get_db
 from app.core.redis import get_redis
 from app.models.user import User
 from app.models.attraction import Attraction, AttractionSlot
+from app.services.slot_service import ensure_slot_bookable
 from app.models.ferry import FerrySchedule, FerrySeat, Vessel
 from app.models.order import Order, OrderItem
 from app.api.v1.auth import get_current_user
@@ -87,6 +88,7 @@ async def add_attraction_to_cart(
         raise HTTPException(status_code=404, detail="Attraction slot not found")
 
     slot, attraction = row
+    ensure_slot_bookable(slot, attraction)
 
     hold_key = f"slot_hold_count:{str(slot.id)}"
     current_held = int(await r.get(hold_key) or 0)
