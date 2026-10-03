@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel
 
@@ -32,6 +32,9 @@ class CartItemResponse(BaseModel):
     passenger_name: str
     id_type: str
     id_number: str
+    # Attraction items only: lets the cart add another ticket for this same
+    # slot without the tourist re-picking it.
+    slot_id: Optional[str] = None
 
 
 class CartSummaryResponse(BaseModel):

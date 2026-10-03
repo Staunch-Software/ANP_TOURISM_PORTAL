@@ -337,6 +337,7 @@ async def get_cart_summary(user_id: uuid.UUID, r) -> CartSummaryResponse:
                 passenger_name=d["passenger"]["name"],
                 id_type=d["passenger"]["id_type"],
                 id_number=d["passenger"]["id_number"],
+                slot_id=d.get("slot_id") if d["item_type"] == "ATTRACTION" else None,
             )
         )
 

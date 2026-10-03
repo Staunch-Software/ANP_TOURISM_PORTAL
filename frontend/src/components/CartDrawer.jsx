@@ -2,10 +2,20 @@ import React, { useState, useEffect } from 'react';
 import API from '../api/client';
 import {
   ShoppingBag, X, Trash2, Clock, ShieldCheck,
-  CreditCard, QrCode, ArrowRight, CheckCircle2, Building, Ship, Landmark, Wallet
+  CreditCard, QrCode, ArrowRight, CheckCircle2, Building, Ship, Landmark, Wallet, Plus
 } from 'lucide-react';
 
 const ITEM_TYPE_ICON = { FERRY: Ship, ATTRACTION: Landmark };
+
+// Fields for the "+" (add another ticket for this slot) form. Indian visitors
+// identify with Aadhaar / Voter ID, foreign nationals with a passport --
+// the same rule the booking form uses.
+const ID_TYPES = {
+  INDIAN: [['AADHAAR', 'Aadhaar'], ['VOTER_ID', 'Voter ID']],
+  FOREIGN: [['PASSPORT', 'Passport']],
+};
+const EMPTY_TICKET = { name: '', age: '', gender: 'MALE', nationality: 'INDIAN', id_type: 'AADHAAR', id_number: '' };
+const ticketInputCls = 'w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800 focus:border-cyan-500 focus:outline-none';
 
 export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed }) {
   const [cart, setCart] = useState(null);
@@ -20,9 +30,18 @@ export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed })
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [walletBalance, setWalletBalance] = useState(null);
 
+  // "+" add-another-ticket form: which cart item it's open on, its fields,
+  // and the last error from the server (slot full, headcount cap, ...).
+  const [addingFor, setAddingFor] = useState(null);
+  const [newTicket, setNewTicket] = useState(EMPTY_TICKET);
+  const [addBusy, setAddBusy] = useState(false);
+  const [addError, setAddError] = useState(null);
+
   useEffect(() => {
     if (isOpen) {
       fetchCart();
+    } else {
+      setAddingFor(null);
     }
   }, [isOpen]);
 
@@ -40,8 +59,10 @@ export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed })
     return () => clearInterval(timer);
   }, [countdown]);
 
-  const fetchCart = async () => {
-    setLoading(true);
+  // silent: refresh in place without swapping the list for the "Loading"
+  // placeholder (used after adding a ticket so the drawer doesn't flicker).
+  const fetchCart = async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     try {
       const res = await API.get('/cart');
       setCart(res.data);
@@ -49,7 +70,51 @@ export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed })
     } catch (err) {
       setCart(null);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
+    }
+  };
+
+  const toggleAddTicket = (item) => {
+    if (addingFor === item.cart_item_id) {
+      setAddingFor(null);
+      return;
+    }
+    setNewTicket(EMPTY_TICKET);
+    setAddError(null);
+    setAddingFor(item.cart_item_id);
+  };
+
+  const setTicketNationality = (nationality) =>
+    setNewTicket((t) => ({ ...t, nationality, id_type: ID_TYPES[nationality][0][0] }));
+
+  const submitAddTicket = async (e, item) => {
+    e.preventDefault();
+    const age = parseInt(newTicket.age, 10);
+    if (Number.isNaN(age) || age < 0 || age > 120) {
+      setAddError('Enter a valid age between 0 and 120.');
+      return;
+    }
+    setAddBusy(true);
+    setAddError(null);
+    try {
+      await API.post('/cart/add-attraction', {
+        slot_id: item.slot_id,
+        nationality: newTicket.nationality,
+        passenger: {
+          name: newTicket.name.trim(),
+          age,
+          gender: newTicket.gender,
+          id_type: newTicket.id_type,
+          id_number: newTicket.id_number.trim(),
+        },
+      });
+      setAddingFor(null);
+      await fetchCart({ silent: true });
+      if (onCartUpdated) onCartUpdated();
+    } catch (err) {
+      setAddError(err.response?.data?.detail || 'Could not add the ticket. Please try again.');
+    } finally {
+      setAddBusy(false);
     }
   };
 
@@ -240,9 +305,27 @@ export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed })
                   <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider bg-white text-cyan-700 border border-cyan-200 flex items-center gap-1.5 w-fit">
                     <TypeIcon className="w-3 h-3" /> {item.item_type}
                   </span>
-                  <span className="text-sm font-black text-navy-800">
-                    ₹{item.price.toLocaleString('en-IN')}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-black text-navy-800">
+                      ₹{item.price.toLocaleString('en-IN')}
+                    </span>
+                    {item.item_type === 'ATTRACTION' && item.slot_id && (
+                      <button
+                        type="button"
+                        onClick={() => toggleAddTicket(item)}
+                        aria-label={`Add another ticket for ${item.title}`}
+                        aria-expanded={addingFor === item.cart_item_id}
+                        title={addingFor === item.cart_item_id ? 'Cancel' : 'Add another ticket for this slot'}
+                        className={`w-6 h-6 rounded-full border flex items-center justify-center transition-colors ${
+                          addingFor === item.cart_item_id
+                            ? 'bg-cyan-700 border-cyan-700 text-white'
+                            : 'bg-white border-cyan-300 text-cyan-700 hover:bg-cyan-700 hover:text-white'
+                        }`}
+                      >
+                        {addingFor === item.cart_item_id ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <h4 className="text-sm font-bold text-navy-800 pr-2">{item.title}</h4>
@@ -254,6 +337,99 @@ export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed })
                     {item.id_type}: •••• {item.id_number.slice(-4)}
                   </span>
                 </div>
+
+                {addingFor === item.cart_item_id && (
+                  <form
+                    onSubmit={(e) => submitAddTicket(e, item)}
+                    className="pt-3 mt-1 border-t border-dashed border-cyan-300 space-y-2.5"
+                  >
+                    <p className="text-[11px] font-bold text-slate-600">Another ticket for this same slot</p>
+
+                    {addError && (
+                      <div role="alert" className="px-2.5 py-1.5 bg-red-50 border border-red-200 text-red-700 text-[11px] rounded-lg">
+                        {addError}
+                      </div>
+                    )}
+
+                    <input
+                      type="text"
+                      required
+                      autoFocus
+                      placeholder="Full name as on ID"
+                      value={newTicket.name}
+                      onChange={(e) => setNewTicket({ ...newTicket, name: e.target.value })}
+                      className={ticketInputCls}
+                    />
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="number"
+                        required
+                        min="0"
+                        max="120"
+                        placeholder="Age"
+                        value={newTicket.age}
+                        onChange={(e) => setNewTicket({ ...newTicket, age: e.target.value })}
+                        className={ticketInputCls}
+                      />
+                      <select
+                        value={newTicket.gender}
+                        onChange={(e) => setNewTicket({ ...newTicket, gender: e.target.value })}
+                        className={ticketInputCls}
+                        aria-label="Gender"
+                      >
+                        <option value="MALE">Male</option>
+                        <option value="FEMALE">Female</option>
+                        <option value="OTHER">Other</option>
+                      </select>
+                    </div>
+
+                    <div className="flex bg-white border border-slate-300 rounded-lg p-0.5 text-[11px] font-bold" role="group" aria-label="Nationality">
+                      {['INDIAN', 'FOREIGN'].map((n) => (
+                        <button
+                          key={n}
+                          type="button"
+                          onClick={() => setTicketNationality(n)}
+                          className={`flex-1 py-1.5 rounded-md transition-colors ${
+                            newTicket.nationality === n ? 'bg-navy-800 text-white' : 'text-slate-500 hover:text-navy-800'
+                          }`}
+                        >
+                          {n === 'INDIAN' ? 'Indian citizen' : 'Foreign national'}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <select
+                        value={newTicket.id_type}
+                        onChange={(e) => setNewTicket({ ...newTicket, id_type: e.target.value })}
+                        disabled={ID_TYPES[newTicket.nationality].length === 1}
+                        className={ticketInputCls}
+                        aria-label="ID type"
+                      >
+                        {ID_TYPES[newTicket.nationality].map(([value, label]) => (
+                          <option key={value} value={value}>{label}</option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        required
+                        placeholder={newTicket.id_type === 'PASSPORT' ? 'Passport number' : 'ID number'}
+                        value={newTicket.id_number}
+                        onChange={(e) => setNewTicket({ ...newTicket, id_number: e.target.value })}
+                        className={ticketInputCls}
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={addBusy}
+                      className="w-full py-2 bg-cyan-700 hover:bg-cyan-600 disabled:opacity-60 text-white font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> {addBusy ? 'Adding...' : 'Add ticket'}
+                    </button>
+                  </form>
+                )}
               </div>
               );
             })
