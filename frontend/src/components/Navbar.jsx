@@ -1,7 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ShieldCheck, ShoppingBag, LogOut, LogIn, Anchor, Waves, Menu, X, Wallet
+  ShieldCheck, ShoppingBag, LogOut, LogIn, Anchor, Waves, Menu, X, Wallet,
+  Home, Landmark, Ship, Ticket, LifeBuoy, Users
 } from 'lucide-react';
+
+// Tourist top-nav: one data-driven list so desktop and the phone drawer match.
+const TOURIST_TABS = [
+  { key: 'ATTRACTIONS', label: 'Home', icon: Home },
+  { key: 'ATTRACTIONS_LIST', label: 'Attractions', icon: Landmark, tab: 'ATTRACTIONS' },
+  { key: 'FERRY', label: 'Ferries', icon: Ship },
+  { key: 'PASSES', label: 'My Passes', icon: Ticket },
+  { key: 'WALLET', label: 'My Wallet', icon: Wallet },
+  { key: 'SUPPORT', label: 'Support', icon: LifeBuoy },
+  { key: 'GROUP_BOOKINGS', label: 'Group Booking', icon: Users },
+];
 
 // RFP 344: Admin/Regulatory Authority is a distinct user type from Service
 // Providers. Each role now has exactly one destination — Gate Scanner is a
@@ -80,35 +92,8 @@ export function Navbar({
         backgroundImage: 'linear-gradient(180deg, #082640 0%, #051a30 100%)'
       }}
     >
-      {/* Government identity strip */}
-      <div className="bg-navy-900/65 px-4 py-1.5 text-[11px] text-slate-300">
-        <div className="w-full flex justify-between items-center">
-          <span className="font-medium">भारत सरकार · Government of India &nbsp;|&nbsp; Andaman &amp; Nicobar Administration</span>
-          <div className="hidden sm:flex items-center gap-4 text-xs">
-            <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-              Systems Operational
-            </span>
-            <span className="text-slate-600">|</span>
-            <button
-              onClick={toggleAccessibleMode}
-              className="underline underline-offset-2 hover:text-white transition-colors"
-              title="Toggle larger text & high-contrast mode"
-            >
-              Screen Reader
-            </button>
-            <button
-              onClick={() => alert('हिन्दी इंटरफ़ेस जल्द उपलब्ध होगा (Hindi interface coming soon).')}
-              className="underline underline-offset-2 hover:text-white transition-colors"
-            >
-              हिन्दी
-            </button>
-          </div>
-        </div>
-      </div>
-
       {/* Main Nav Strip */}
-      <div className={`portal-header-row w-full px-4 sm:px-5 lg:px-6 h-20 flex items-center justify-between gap-3 lg:gap-5 ${!isStaffUser ? 'portal-header-tourist' : ''}`}>
+      <div className={`portal-header-row w-full px-4 sm:px-5 lg:px-6 h-[72px] flex items-center justify-between gap-3 lg:gap-5 ${!isStaffUser ? 'portal-header-tourist' : ''}`}>
         <button
           onClick={() => hasDashboardSidebar ? toggleDashboardSidebar() : setIsMobileMenuOpen((v) => !v)}
           className="portal-header-menu lg:hidden p-2.5 rounded-lg text-white hover:bg-navy-700 transition-colors shrink-0"
@@ -125,9 +110,10 @@ export function Navbar({
         >
           <img src="/images/govt-seal.png" alt="Emblem" className="w-11 h-11 object-contain bg-white rounded-lg p-1 shadow-md shrink-0" />
           <div className="min-w-0">
-            <div className="brand-title font-serif font-black text-base sm:text-xl tracking-tight text-white leading-tight truncate">ANIIDCO Tourism Portal</div>
+            <div className="hidden sm:block text-[11px] text-slate-300 leading-tight truncate">Andaman &amp; Nicobar Administration</div>
+            <div className="brand-title font-sans font-extrabold text-base sm:text-xl tracking-tight text-white leading-tight truncate">ANIIDCO Tourism Portal</div>
             <span className="brand-subtitle text-[10px] text-cyan-200 tracking-wider uppercase font-semibold hidden sm:block truncate">
-              Single-Window Ticketing · A&amp;N Islands
+              Official Single-Window Ticketing
             </span>
           </div>
         </div>
@@ -137,68 +123,26 @@ export function Navbar({
             via the mobile drawer below on small screens. */}
         {!isStaffUser && (
           <nav className="hidden lg:flex items-center gap-1">
-            <button
-              onClick={() => setActiveTab('ATTRACTIONS')}
-              className={`portal-nav-button px-3 py-2 rounded-lg text-sm font-bold whitespace-nowrap ${
-                activeTab === 'ATTRACTIONS' ? 'text-white' : 'text-slate-200'
-              }`}
-            >
-              <span>Attractions</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('FERRY')}
-              className={`portal-nav-button px-3 py-2 rounded-lg text-sm font-bold whitespace-nowrap ${
-                activeTab === 'FERRY'
-                  ? 'is-current text-white shadow-md'
-                  : 'text-slate-200'
-              }`}
-            >
-              <span>Ferries</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('PASSES')}
-              className={`portal-nav-button px-3 py-2 rounded-lg text-sm font-bold whitespace-nowrap ${
-                activeTab === 'PASSES'
-                  ? 'is-current text-white shadow-md'
-                  : 'text-slate-200'
-              }`}
-            >
-              <span>My Passes</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('WALLET')}
-              className={`px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                activeTab === 'WALLET'
-                  ? 'bg-cyan-700 text-white shadow-md'
-                  : 'text-slate-200 hover:text-white hover:bg-navy-600'
-              }`}
-            >
-              <Wallet className="w-3.5 h-3.5" /> My Wallet
-            </button>
-
-            <button
-              onClick={() => setActiveTab('SUPPORT')}
-              className={`portal-nav-button px-3 py-2 rounded-lg text-sm font-bold whitespace-nowrap ${
-                activeTab === 'SUPPORT'
-                  ? 'is-current text-white shadow-md'
-                  : 'text-slate-200'
-              }`}
-            >
-              <span>Support</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('GROUP_BOOKINGS')}
-              className={`portal-nav-button px-3 py-2 rounded-lg text-sm font-bold whitespace-nowrap ${
-                activeTab === 'GROUP_BOOKINGS' ? 'is-current text-white shadow-md' : 'text-slate-200'
-              }`}
-            >
-              <span>Group Booking</span>
-            </button>
-
+            {TOURIST_TABS.map((t) => {
+              const Icon = t.icon;
+              const isActive = t.key === 'ATTRACTIONS_LIST' ? false : activeTab === t.key;
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => {
+                    setActiveTab(t.tab || t.key);
+                    if (t.key === 'ATTRACTIONS_LIST') {
+                      setTimeout(() => document.getElementById('popular-attractions')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+                    }
+                  }}
+                  className={`px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap flex items-center gap-1.5 transition-colors ${
+                    isActive ? 'bg-cyan-700 text-white shadow-md' : 'text-slate-200 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  <Icon className="w-4 h-4" /> {t.label}
+                </button>
+              );
+            })}
             {user?.role === 'AGENT' && (
               <button
                 onClick={() => setActiveTab('AGENT_CONSOLE')}
@@ -216,6 +160,10 @@ export function Navbar({
 
         {/* Right Section: Cart + Account */}
         <div className="portal-header-actions flex items-center gap-3 shrink-0">
+          <div className="hidden 2xl:flex items-center gap-3 text-xs text-slate-300">
+            <button onClick={toggleAccessibleMode} title="Toggle larger text & high-contrast mode" className="underline underline-offset-2 hover:text-white">Screen Reader</button>
+            <button onClick={() => alert('हिन्दी इंटरफ़ेस जल्द उपलब्ध होगा (Hindi interface coming soon).')} className="underline underline-offset-2 hover:text-white">हिन्दी</button>
+          </div>
           {!isStaffUser && (
             <button
               onClick={onOpenCart}
@@ -278,58 +226,20 @@ export function Navbar({
           <nav className="px-4 py-3 space-y-1">
             {!isStaffUser && (
               <>
-                <button
-                  onClick={() => {
-                    setActiveTab('ATTRACTIONS');
-                    setIsMobileMenuOpen(false);
-                    requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' }));
-                  }}
-                  className={`portal-nav-button w-full text-left px-4 py-3 rounded-lg text-sm font-bold ${
-                    activeTab === 'ATTRACTIONS' ? 'text-white' : 'text-slate-200'
-                  }`}
-                >
-                  <span>Attractions</span>
-                </button>
-                <button
-                  onClick={() => { setActiveTab('FERRY'); setIsMobileMenuOpen(false); }}
-                  className={`portal-nav-button w-full text-left px-4 py-3 rounded-lg text-sm font-bold ${
-                    activeTab === 'FERRY' ? 'is-current text-white' : 'text-slate-200'
-                  }`}
-                >
-                  <span>Ferries</span>
-                </button>
-                <button
-                  onClick={() => { setActiveTab('PASSES'); setIsMobileMenuOpen(false); }}
-                  className={`portal-nav-button w-full text-left px-4 py-3 rounded-lg text-sm font-bold ${
-                    activeTab === 'PASSES' ? 'is-current text-white' : 'text-slate-200'
-                  }`}
-                >
-                  <span>My Passes</span>
-                </button>
-                <button
-                  onClick={() => { setActiveTab('WALLET'); setIsMobileMenuOpen(false); }}
-                  className={`w-full text-left px-4 py-3 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${
-                    activeTab === 'WALLET' ? 'bg-cyan-700 text-white' : 'text-slate-200 hover:bg-navy-700'
-                  }`}
-                >
-                  <Wallet className="w-4 h-4" /> My Wallet
-                </button>
-                <button
-                  onClick={() => { setActiveTab('SUPPORT'); setIsMobileMenuOpen(false); }}
-                  className={`portal-nav-button w-full text-left px-4 py-3 rounded-lg text-sm font-bold ${
-                    activeTab === 'SUPPORT' ? 'is-current text-white' : 'text-slate-200'
-                  }`}
-                >
-                  <span>Support</span>
-                </button>
-                <button
-                  onClick={() => { setActiveTab('GROUP_BOOKINGS'); setIsMobileMenuOpen(false); }}
-                  className={`portal-nav-button w-full text-left px-4 py-3 rounded-lg text-sm font-bold ${
-                    activeTab === 'GROUP_BOOKINGS' ? 'is-current text-white' : 'text-slate-200'
-                  }`}
-                >
-                  <span>Group Booking</span>
-                </button>
+                {TOURIST_TABS.filter((t) => t.key !== 'ATTRACTIONS_LIST').map((t) => {
+                  const Icon = t.icon;
+                  return (
+                    <button
+                      key={t.key}
+                      onClick={() => { setActiveTab(t.key); setIsMobileMenuOpen(false); requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' })); }}
+                      className={`w-full text-left px-4 py-3 rounded-lg text-sm font-semibold flex items-center gap-2.5 transition-colors ${
+                        activeTab === t.key ? 'bg-cyan-700 text-white' : 'text-slate-200 hover:bg-navy-700'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" /> {t.label}
+                    </button>
+                  );
+                })}
                 {user?.role === 'AGENT' && (
                   <button
                     onClick={() => { setActiveTab('AGENT_CONSOLE'); setIsMobileMenuOpen(false); }}

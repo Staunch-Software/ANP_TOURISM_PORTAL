@@ -273,7 +273,7 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
   const estimatedTotal = (pickedKeys.reduce((sum, v) => sum + priceFor(v.nationality), 0) + (newRequired ? priceFor(nationality) : 0)) * 1.05;
 
   return (
-    <div className="space-y-8">
+    <div id="popular-attractions" className="space-y-8 scroll-mt-24">
       {/* Island & Filter Header */}
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200">
         {/* Island Pills */}

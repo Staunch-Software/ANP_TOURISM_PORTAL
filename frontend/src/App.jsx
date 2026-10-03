@@ -529,7 +529,19 @@ export default function App() {
           )}
         </div>
       ) : (
-        <main id="attractions-section" className="flex-1 max-w-7xl w-full mx-auto px-4 py-6">
+        <>
+        {activeTab !== 'ATTRACTIONS' && (
+          <section
+            className="relative h-28 sm:h-32 flex items-center overflow-hidden bg-navy-800"
+            style={{ backgroundImage: "linear-gradient(90deg, rgba(5,26,48,0.78), rgba(5,26,48,0.35)), url('/images/home-hero-beach.jpg')", backgroundSize: 'cover', backgroundPosition: 'center 40%' }}
+          >
+            <div className="max-w-7xl w-full mx-auto px-4 pb-6">
+              <h1 className="font-serif text-2xl sm:text-3xl font-black text-white">Explore Andaman &amp; Nicobar Islands</h1>
+              <p className="text-sm text-slate-100 mt-1">Pristine Beaches <span className="mx-2 opacity-60">|</span> Historic Landmarks <span className="mx-2 opacity-60">|</span> Unique Experiences</p>
+            </div>
+          </section>
+        )}
+        <main id="attractions-section" className={`flex-1 max-w-7xl w-full mx-auto px-4 py-6 ${activeTab !== 'ATTRACTIONS' ? '-mt-8 relative z-10' : ''}`}>
           {activeTab === 'ATTRACTIONS' && (
             <AttractionsExplorer
               onAddToCart={refreshCartCount}
@@ -584,6 +596,7 @@ export default function App() {
             />
           )}
         </main>
+        </>
       )}
 
       {/* Staff dashboards are a fixed-sidebar app shell (DashboardSidebar),
