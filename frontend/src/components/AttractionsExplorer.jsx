@@ -85,6 +85,15 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
   const [passengerId, setPassengerId] = useState('');
   const [loading, setLoading] = useState(false);
   const [bookingLoading, setBookingLoading] = useState(false);
+
+  // RFP p.25: the list of visitor names is pre-filled from the tourist's
+  // booking history; they confirm who is coming, add new people, or untick
+  // anyone. pickedAges: ticked visitors (key -> their editable age).
+  // cartItems: what is already in the cart, so nobody is added to the same
+  // slot twice.
+  const [savedVisitors, setSavedVisitors] = useState([]);
+  const [pickedAges, setPickedAges] = useState({});
+  const [cartItems, setCartItems] = useState([]);
   const selectedVisitDate = new Date(`${selectedDate}T00:00:00`);
 
   useEffect(() => {
@@ -145,6 +154,49 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
     }
   };
 
+  const visitorKey = (v) => `${v.id_type}:${v.id_number}`;
+
+  useEffect(() => {
+    setPickedAges({});
+    if (!selectedAttraction || !user) {
+      setSavedVisitors([]);
+      setCartItems([]);
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const [vis, cart] = await Promise.all([API.get('/cart/saved-visitors'), API.get('/cart')]);
+        if (!cancelled) {
+          setSavedVisitors(vis.data);
+          setCartItems(cart.data.items || []);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setSavedVisitors([]);
+          setCartItems([]);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedAttraction, user]);
+
+  const togglePicked = (v) => {
+    const key = visitorKey(v);
+    setPickedAges((cur) => {
+      const next = { ...cur };
+      if (key in next) delete next[key];
+      else next[key] = v.age == null ? '' : String(v.age);
+      return next;
+    });
+  };
+
+  const isInCart = (v) =>
+    !!selectedSlot &&
+    cartItems.some(
+      (i) => i.slot_id === selectedSlot.slot_id && (i.id_number || '').toUpperCase() === v.id_number.toUpperCase()
+    );
+
   const handleConfirmAddToCart = async (e) => {
     e.preventDefault();
     if (!user) {
@@ -156,29 +208,51 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
       return;
     }
 
-    // Age decides whether this visitor counts toward the 6-adult or the
+    // Age decides whether a visitor counts toward the 6-adult or the
     // 12-child limit per booking (RFP p.25), so it has to be real.
-    const age = parseInt(passengerAge, 10);
-    if (Number.isNaN(age) || age < 0 || age > 120) {
-      alert("Please enter the visitor's age (0-120)");
-      return;
+    const validAge = (value) => {
+      const age = parseInt(value, 10);
+      return Number.isNaN(age) || age < 0 || age > 120 ? null : age;
+    };
+
+    const passengers = [];
+    for (const v of savedVisitors) {
+      const key = visitorKey(v);
+      if (!(key in pickedAges) || isInCart(v)) continue;
+      const age = validAge(pickedAges[key]);
+      if (age === null) {
+        alert(`Please enter a valid age (0-120) for ${v.name}`);
+        return;
+      }
+      passengers.push({
+        name: v.name, age, gender: v.gender || 'MALE',
+        id_type: v.id_type, id_number: v.id_number, nationality: v.nationality,
+      });
+    }
+
+    // A new visitor is added when the fields are filled, or when nobody was
+    // ticked (the original single-visitor flow).
+    const newFilled = !!(passengerName.trim() || passengerId.trim() || passengerAge !== '');
+    if (newFilled || passengers.length === 0) {
+      const age = validAge(passengerAge);
+      if (age === null) {
+        alert("Please enter the visitor's age (0-120)");
+        return;
+      }
+      passengers.push({
+        name: passengerName.trim() || (user.full_name || "Valued Tourist"),
+        age,
+        gender: passengerGender,
+        id_type: nationality === 'INDIAN' ? "AADHAAR" : "PASSPORT",
+        id_number: passengerId.trim(),
+        nationality,
+      });
     }
 
     setBookingLoading(true);
     try {
-      await API.post('/cart/add-attraction', {
-        slot_id: selectedSlot.slot_id,
-        nationality: nationality,
-        passenger: {
-          name: passengerName || (user.full_name || "Valued Tourist"),
-          age,
-          gender: passengerGender,
-          id_type: nationality === 'INDIAN' ? "AADHAAR" : "PASSPORT",
-          id_number: passengerId
-        }
-      });
-
-      alert(`Added ${selectedAttraction.title} to your trip cart!`);
+      await API.post('/cart/add-attractions', { slot_id: selectedSlot.slot_id, passengers });
+      alert(`Added ${passengers.length} ticket${passengers.length > 1 ? 's' : ''} for ${selectedAttraction.title} to your trip cart!`);
       setSelectedAttraction(null);
       if (onAddToCart) onAddToCart();
     } catch (err) {
@@ -187,6 +261,13 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
       setBookingLoading(false);
     }
   };
+
+  // The new-visitor fields are mandatory only when nobody is ticked, or once
+  // the tourist starts filling them in.
+  const pickedKeys = savedVisitors.filter((v) => visitorKey(v) in pickedAges && !isInCart(v));
+  const newFilled = !!(passengerName.trim() || passengerId.trim() || passengerAge !== '');
+  const newRequired = pickedKeys.length === 0 || newFilled;
+  const ticketCount = pickedKeys.length + (newRequired ? 1 : 0);
 
   return (
     <div className="space-y-8">
@@ -434,7 +515,56 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
 
             {/* Passenger Quick Form */}
             <form onSubmit={handleConfirmAddToCart} className="space-y-3 pt-3 border-t border-slate-100">
-              <h4 className="text-xs font-bold text-slate-600">Lead Passenger Details (For Turnstile Entry):</h4>
+              {savedVisitors.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-xs font-bold text-slate-600">
+                    Who is visiting? <span className="font-normal text-slate-400">(from your earlier bookings)</span>
+                  </h4>
+                  <div className="max-h-44 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+                    {savedVisitors.map((v) => {
+                      const key = visitorKey(v);
+                      const inCart = isInCart(v);
+                      const picked = key in pickedAges && !inCart;
+                      return (
+                        <label
+                          key={key}
+                          className={`flex items-center gap-2.5 px-3 py-2 text-xs ${inCart ? 'opacity-50' : 'cursor-pointer hover:bg-slate-50'}`}
+                        >
+                          <input type="checkbox" checked={picked} disabled={inCart} onChange={() => togglePicked(v)} />
+                          <span className="flex-1 min-w-0">
+                            <span className="font-bold text-navy-800 block truncate">{v.name}</span>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              {v.id_type.replace('_', ' ')} •••• {v.id_number.slice(-4)} · {v.nationality === 'FOREIGN' ? 'Foreign' : 'Indian'}
+                              {inCart ? ' · already in your cart for this slot' : ''}
+                            </span>
+                          </span>
+                          {picked && (
+                            <span className="flex items-center gap-1 text-[10px] text-slate-500">
+                              Age
+                              <input
+                                type="number"
+                                min="0"
+                                max="120"
+                                required
+                                value={pickedAges[key]}
+                                onChange={(e) => setPickedAges((cur) => ({ ...cur, [key]: e.target.value }))}
+                                aria-label={`Age of ${v.name}`}
+                                className="w-14 px-1.5 py-1 border border-slate-300 rounded text-xs text-navy-800"
+                              />
+                            </span>
+                          )}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <h4 className="text-xs font-bold text-slate-600">
+                {savedVisitors.length > 0
+                  ? <>Add a new visitor <span className="font-normal text-slate-400">(optional)</span></>
+                  : 'Lead Passenger Details (For Turnstile Entry):'}
+              </h4>
               <div className="grid grid-cols-2 gap-3">
                 <input
                   type="text"
@@ -442,7 +572,7 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
                   value={passengerName}
                   onChange={(e) => setPassengerName(e.target.value)}
                   className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
-                  required
+                  required={newRequired}
                 />
                 <input
                   type="text"
@@ -450,7 +580,7 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
                   value={passengerId}
                   onChange={(e) => setPassengerId(e.target.value)}
                   className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
-                  required
+                  required={newRequired}
                 />
                 <input
                   type="number"
@@ -460,7 +590,7 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
                   value={passengerAge}
                   onChange={(e) => setPassengerAge(e.target.value)}
                   className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-navy-800"
-                  required
+                  required={newRequired}
                 />
                 <select
                   value={passengerGender}
@@ -479,7 +609,9 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
                 disabled={bookingLoading}
                 className="w-full py-3 mt-2 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-lg text-sm flex items-center justify-center gap-2"
               >
-                {bookingLoading ? 'Holding Slot in Redis...' : 'Confirm & Add to Trip Cart'}
+                {bookingLoading
+                  ? 'Holding your seats...'
+                  : ticketCount > 1 ? `Confirm & Add ${ticketCount} Tickets to Trip Cart` : 'Confirm & Add to Trip Cart'}
               </button>
             </form>
           </div>

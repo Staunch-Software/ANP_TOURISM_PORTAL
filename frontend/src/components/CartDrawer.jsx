@@ -36,6 +36,9 @@ export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed })
   const [newTicket, setNewTicket] = useState(EMPTY_TICKET);
   const [addBusy, setAddBusy] = useState(false);
   const [addError, setAddError] = useState(null);
+  const [removingId, setRemovingId] = useState(null);
+  // Visitors from earlier bookings, offered in the "+" form (RFP p.25).
+  const [savedVisitors, setSavedVisitors] = useState([]);
 
   useEffect(() => {
     if (isOpen) {
@@ -82,6 +85,40 @@ export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed })
     setNewTicket(EMPTY_TICKET);
     setAddError(null);
     setAddingFor(item.cart_item_id);
+    API.get('/cart/saved-visitors')
+      .then((res) => setSavedVisitors(res.data))
+      .catch(() => setSavedVisitors([]));
+  };
+
+  const savedKey = (v) => `${v.id_type}:${v.id_number}`;
+
+  const fillFromSaved = (key) => {
+    const v = savedVisitors.find((x) => savedKey(x) === key);
+    if (!v) return;
+    setNewTicket({
+      name: v.name,
+      age: v.age == null ? '' : String(v.age),
+      gender: v.gender || 'MALE',
+      nationality: v.nationality,
+      id_type: v.id_type,
+      id_number: v.id_number,
+    });
+  };
+
+  // Remove just this one ticket and release only its seat hold.
+  const removeTicket = async (item) => {
+    setRemovingId(item.cart_item_id);
+    try {
+      await API.delete(`/cart/items/${item.cart_item_id}`);
+      if (addingFor === item.cart_item_id) setAddingFor(null);
+      await fetchCart({ silent: true });
+      if (onCartUpdated) onCartUpdated();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Could not remove the ticket');
+      await fetchCart({ silent: true });
+    } finally {
+      setRemovingId(null);
+    }
   };
 
   const setTicketNationality = (nationality) =>
@@ -325,6 +362,16 @@ export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed })
                         {addingFor === item.cart_item_id ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
                       </button>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => removeTicket(item)}
+                      disabled={removingId === item.cart_item_id}
+                      aria-label={`Remove ${item.passenger_name}'s ticket for ${item.title}`}
+                      title="Remove this ticket"
+                      className="w-6 h-6 rounded-full border border-slate-200 bg-white text-slate-400 hover:bg-red-50 hover:border-red-300 hover:text-red-600 flex items-center justify-center transition-colors disabled:opacity-50"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
                   </div>
                 </div>
 
@@ -350,6 +397,29 @@ export function CartDrawer({ isOpen, onClose, onCartUpdated, onOrderConfirmed })
                         {addError}
                       </div>
                     )}
+
+                    {(() => {
+                      // previous visitors who are not already holding a ticket for this slot
+                      const options = savedVisitors.filter(
+                        (v) => !cart.items.some((i) => i.slot_id === item.slot_id && (i.id_number || '').toUpperCase() === v.id_number.toUpperCase())
+                      );
+                      if (options.length === 0) return null;
+                      return (
+                        <select
+                          value=""
+                          onChange={(e) => fillFromSaved(e.target.value)}
+                          aria-label="Fill from a previous visitor"
+                          className={ticketInputCls}
+                        >
+                          <option value="">Fill from a previous visitor…</option>
+                          {options.map((v) => (
+                            <option key={savedKey(v)} value={savedKey(v)}>
+                              {v.name} · {v.id_type.replace('_', ' ')} ••••{v.id_number.slice(-4)}
+                            </option>
+                          ))}
+                        </select>
+                      );
+                    })()}
 
                     <input
                       type="text"

@@ -17,6 +17,27 @@ class AddAttractionToCartRequest(BaseModel):
     passenger: PassengerDetail
 
 
+class BatchPassenger(PassengerDetail):
+    # Each visitor is priced by their OWN nationality (RFP p.25), so it
+    # travels with the passenger rather than once for the whole request.
+    nationality: str = "INDIAN"  # INDIAN, FOREIGN
+
+
+class AddAttractionsBatchRequest(BaseModel):
+    slot_id: str
+    passengers: List[BatchPassenger]
+
+
+class SavedVisitor(BaseModel):
+    name: str
+    age: Optional[int] = None
+    gender: Optional[str] = None
+    id_type: str
+    id_number: str
+    nationality: str
+    last_used: str
+
+
 class AddFerryToCartRequest(BaseModel):
     schedule_id: str
     seat_number: str

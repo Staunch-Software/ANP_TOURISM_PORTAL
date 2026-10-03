@@ -1,6 +1,7 @@
 import uuid
 import json
 import random
+from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +17,8 @@ from app.models.order import Order, OrderItem
 from app.api.v1.auth import get_current_user
 from app.schemas.cart import (
     AddAttractionToCartRequest,
+    AddAttractionsBatchRequest,
+    SavedVisitor,
     AddFerryToCartRequest,
     CartItemResponse,
     CartSummaryResponse,
@@ -63,6 +66,50 @@ async def _check_headcount_cap(r, cart_key: str, new_passenger_age: int) -> None
         )
 
 
+async def _check_headcount_batch(r, cart_key: str, new_ages: list) -> None:
+    """Same 6-adult / 12-child limit as _check_headcount_cap, but for several
+    visitors added at once: the cart's current headcount plus ALL of them."""
+    adults = children = 0
+    for raw in await r.lrange(cart_key, 0, -1):
+        age = json.loads(raw).get("passenger", {}).get("age")
+        if age is not None and age < ADULT_AGE_THRESHOLD:
+            children += 1
+        else:
+            adults += 1
+    for age in new_ages:
+        if age is not None and age < ADULT_AGE_THRESHOLD:
+            children += 1
+        else:
+            adults += 1
+    if children > MAX_CHILDREN_PER_BOOKING:
+        raise HTTPException(
+            status_code=400,
+            detail=f"A single booking can include at most {MAX_CHILDREN_PER_BOOKING} children. Please start a new booking for additional visitors.",
+        )
+    if adults > MAX_ADULTS_PER_BOOKING:
+        raise HTTPException(
+            status_code=400,
+            detail=f"A single booking can include at most {MAX_ADULTS_PER_BOOKING} adults. Please start a new booking for additional visitors.",
+        )
+
+
+async def _check_not_already_in_cart(r, cart_key: str, slot_id: str, id_numbers: list) -> None:
+    """One person cannot hold two tickets for the same slot."""
+    in_cart = {
+        (item["passenger"]["id_number"] or "").strip().upper()
+        for item in (json.loads(raw) for raw in await r.lrange(cart_key, 0, -1))
+        if item.get("slot_id") == slot_id
+    }
+    seen = set()
+    for number in id_numbers:
+        key = (number or "").strip().upper()
+        if key in in_cart:
+            raise HTTPException(status_code=409, detail=f"The visitor with ID ending {key[-4:]} is already in your cart for this slot.")
+        if key in seen:
+            raise HTTPException(status_code=409, detail=f"The same ID (ending {key[-4:]}) was given for more than one visitor.")
+        seen.add(key)
+
+
 # -------------------------------------------------------------
 # 1. Add Monument / Water Sport Attraction to Cart
 # -------------------------------------------------------------
@@ -100,6 +147,7 @@ async def add_attraction_to_cart(
     price = float(attraction.foreign_price_inr if req.nationality.upper() == "FOREIGN" else attraction.base_price_inr)
 
     cart_key = get_cart_key(current_user.id)
+    await _check_not_already_in_cart(r, cart_key, str(slot.id), [req.passenger.id_number])
     await _check_headcount_cap(r, cart_key, req.passenger.age)
 
     await r.incr(hold_key)
@@ -195,6 +243,117 @@ async def add_ferry_to_cart(
 
 
 # -------------------------------------------------------------
+# 2b. Add SEVERAL visitors to one attraction slot in one step.
+#     All-or-nothing: seats, headcount limit and duplicates are checked
+#     for the whole group before anything is added, so a family is never
+#     left half-added because the slot filled up midway.
+# -------------------------------------------------------------
+@router.post("/add-attractions", response_model=CartSummaryResponse)
+async def add_attractions_batch(
+    req: AddAttractionsBatchRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    r=Depends(get_redis),
+):
+    if not req.passengers:
+        raise HTTPException(status_code=400, detail="Choose at least one visitor")
+    if len(req.passengers) > MAX_ADULTS_PER_BOOKING + MAX_CHILDREN_PER_BOOKING:
+        raise HTTPException(status_code=400, detail="Too many visitors in one request")
+    for p in req.passengers:
+        if p.age is None or p.age < 0 or p.age > 120:
+            raise HTTPException(status_code=400, detail=f"Enter a valid age (0-120) for {p.name}")
+        if not p.name.strip() or not p.id_number.strip():
+            raise HTTPException(status_code=400, detail="Every visitor needs a name and an ID number")
+
+    try:
+        slot_uuid = uuid.UUID(req.slot_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid Slot UUID")
+
+    row = (await db.execute(
+        select(AttractionSlot, Attraction)
+        .join(Attraction, AttractionSlot.attraction_id == Attraction.id)
+        .where(AttractionSlot.id == slot_uuid)
+    )).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Attraction slot not found")
+    slot, attraction = row
+    ensure_slot_bookable(slot, attraction)
+
+    hold_key = f"slot_hold_count:{str(slot.id)}"
+    current_held = int(await r.get(hold_key) or 0)
+    available = slot.total_capacity - slot.booked_count - current_held
+    if available < len(req.passengers):
+        raise HTTPException(
+            status_code=409,
+            detail=("This time slot is completely full" if available <= 0
+                    else f"Only {available} seat(s) are left in this slot, but you chose {len(req.passengers)} visitors"),
+        )
+
+    cart_key = get_cart_key(current_user.id)
+    await _check_not_already_in_cart(r, cart_key, str(slot.id), [p.id_number for p in req.passengers])
+    await _check_headcount_batch(r, cart_key, [p.age for p in req.passengers])
+
+    for p in req.passengers:
+        nationality = p.nationality.upper()
+        price = float(attraction.foreign_price_inr if nationality == "FOREIGN" else attraction.base_price_inr)
+        cart_item = {
+            "cart_item_id": str(uuid.uuid4()),
+            "item_type": "ATTRACTION",
+            "slot_id": str(slot.id),
+            "title": attraction.title,
+            "slot_or_seat": f"{slot.slot_date} ({slot.start_time} - {slot.end_time})",
+            "price": price,
+            "passenger": p.model_dump(exclude={"nationality"}),
+            "nationality": nationality,
+        }
+        await r.rpush(cart_key, json.dumps(cart_item))
+    await r.incrby(hold_key, len(req.passengers))
+    await r.expire(hold_key, 600)
+    await r.expire(cart_key, 600)
+
+    return await get_cart_summary(current_user.id, r)
+
+
+# -------------------------------------------------------------
+# 2c. Visitors from this tourist's earlier bookings (RFP p.25: the list of
+#     visitor names is automatically filled with details of the booking
+#     history, so nobody re-types a family every trip).
+# -------------------------------------------------------------
+@router.get("/saved-visitors", response_model=List[SavedVisitor])
+async def saved_visitors(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    rows = (await db.execute(
+        select(OrderItem, Order.created_at)
+        .join(Order, OrderItem.order_id == Order.id)
+        .where(Order.user_id == current_user.id, Order.status.in_(["CONFIRMED", "CANCELLED", "PENDING_PAYMENT"]))
+        .order_by(Order.created_at.desc())
+    )).all()
+
+    seen = set()
+    visitors = []
+    for item, created_at in rows:
+        key = ((item.id_type or "").upper(), (item.id_number or "").strip().upper())
+        if key in seen or not key[1]:
+            continue
+        seen.add(key)
+        visitors.append(SavedVisitor(
+            name=item.passenger_name,
+            age=item.passenger_age,
+            gender=item.passenger_gender,
+            id_type=item.id_type,
+            id_number=item.id_number,
+            nationality=item.nationality or ("FOREIGN" if (item.id_type or "").upper() == "PASSPORT" else "INDIAN"),
+            last_used=created_at.isoformat() if created_at else "",
+        ))
+        if len(visitors) >= 30:
+            break
+    return visitors
+
+
+# -------------------------------------------------------------
 # 3. View Current Cart
 # -------------------------------------------------------------
 @router.get("", response_model=CartSummaryResponse)
@@ -202,6 +361,39 @@ async def view_cart(
     current_user: User = Depends(get_current_user),
     r=Depends(get_redis),
 ):
+    return await get_cart_summary(current_user.id, r)
+
+
+# -------------------------------------------------------------
+# 3b. Remove ONE ticket from the cart and release just its hold
+# -------------------------------------------------------------
+@router.delete("/items/{cart_item_id}", response_model=CartSummaryResponse)
+async def remove_cart_item(
+    cart_item_id: str,
+    current_user: User = Depends(get_current_user),
+    r=Depends(get_redis),
+):
+    cart_key = get_cart_key(current_user.id)
+    target_raw, target = None, None
+    for raw in await r.lrange(cart_key, 0, -1):
+        item = json.loads(raw)
+        if item.get("cart_item_id") == cart_item_id:
+            target_raw, target = raw, item
+            break
+    if target is None:
+        raise HTTPException(status_code=404, detail="That ticket is no longer in your cart")
+
+    await r.lrem(cart_key, 1, target_raw)
+
+    if target["item_type"] == "ATTRACTION":
+        hold_key = f"slot_hold_count:{target['slot_id']}"
+        if int(await r.get(hold_key) or 0) > 0:
+            await r.decr(hold_key)
+    elif target["item_type"] == "FERRY":
+        seat_key = f"ferry:hold:{target['schedule_id']}:{target['seat_number']}"
+        if await r.get(seat_key) == current_user.phone_number:
+            await r.delete(seat_key)
+
     return await get_cart_summary(current_user.id, r)
 
 
