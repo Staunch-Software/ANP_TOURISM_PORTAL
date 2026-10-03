@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import API from '../api/client';
 import * as Select from '@radix-ui/react-select';
 import {
-  MapPin, Users, ArrowRight, Calendar, ChevronDown, Landmark, Sparkles, Waves, SearchX, X
+  MapPin, Users, ArrowRight, Calendar, ChevronDown, Landmark, Sparkles, Waves, SearchX, X, Clock, Timer
 } from 'lucide-react';
 import { DayPicker } from 'react-day-picker';
 import 'react-day-picker/style.css';
@@ -28,6 +28,47 @@ export const ISLAND_LABELS = {
 };
 
 export const FALLBACK_IMAGE = "/images/hero-lagoon.jpg";
+
+// "16:00" -> "4:00 PM"
+const formatClock = (hhmm) => {
+  if (!hhmm) return '';
+  const [h, m] = hhmm.split(':').map(Number);
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${suffix}`;
+};
+
+// 150 -> "2 hr 30 min", 60 -> "1 hr", 45 -> "45 min"
+const formatDuration = (minutes) => {
+  if (!minutes) return '';
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return [h ? `${h} hr` : '', m ? `${m} min` : ''].filter(Boolean).join(' ');
+};
+
+// RFP p.24: attraction opening/closing hours and estimated exploration time.
+// Renders nothing for attractions that don't have them yet.
+function AttractionFacts({ item, className = '' }) {
+  const hours = item.opening_time && item.closing_time
+    ? `${formatClock(item.opening_time)} – ${formatClock(item.closing_time)}`
+    : '';
+  const duration = formatDuration(item.estimated_exploration_minutes);
+  if (!hours && !duration) return null;
+
+  return (
+    <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500 ${className}`}>
+      {hours && (
+        <span className="flex items-center gap-1" title="Opening hours">
+          <Clock className="w-3.5 h-3.5 text-cyan-600" /> {hours}
+        </span>
+      )}
+      {duration && (
+        <span className="flex items-center gap-1" title="Estimated time to explore">
+          <Timer className="w-3.5 h-3.5 text-cyan-600" /> ~{duration}
+        </span>
+      )}
+    </div>
+  );
+}
 
 export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRequest }) {
   const [attractions, setAttractions] = useState([]);
@@ -238,9 +279,10 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
                   <h3 className="font-serif text-base font-bold text-navy-800 group-hover:text-cyan-700 transition-colors line-clamp-1">
                     {item.title}
                   </h3>
-                  <p className="text-xs text-slate-500 mt-1.5 line-clamp-2">
-                    Official time-slotted entry with secure turnstile scan and instant digital pass.
+                  <p className="text-xs text-slate-500 mt-1.5 line-clamp-3">
+                    {item.description || 'Official time-slotted entry with secure turnstile scan and instant digital pass.'}
                   </p>
+                  <AttractionFacts item={item} className="mt-2.5" />
 
                   <div className="mt-4 flex items-center justify-between pt-3 border-t border-slate-100">
                     <div>
@@ -276,6 +318,7 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
                 <span className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
                   <MapPin className="w-3.5 h-3.5 text-cyan-600" /> {selectedAttraction.island}
                 </span>
+                <AttractionFacts item={selectedAttraction} className="mt-1.5" />
               </div>
               <button
                 onClick={() => setSelectedAttraction(null)}
