@@ -67,6 +67,9 @@ export function StatusChip({ status }) {
   );
 }
 
+/* Ferry tickets are titled "Ferry: Green Ocean 1 (PORT_BLAIR -> HAVELOCK)"; keep just the vessel name. */
+const ferryName = (title) => (title || '').replace(/^Ferry:\s*/i, '').replace(/\s*\(.*\)\s*$/, '');
+
 /* One entitlement, laid out from the backend's structured fields. */
 export function TripLines({ ent, dim }) {
   const isFerry = ent.item_type === 'FERRY';
@@ -80,7 +83,7 @@ export function TripLines({ ent, dim }) {
     <div className="flex items-start gap-2.5 min-w-0">
       <Icon className={`w-5 h-5 mt-0.5 shrink-0 ${dim ? 'text-slate-400' : 'text-cyan-700'}`} />
       <div className="min-w-0">
-        <p className="text-sm font-bold text-navy-800 leading-snug">{isFerry ? 'Ferry: ' : ''}{ent.title}</p>
+        <p className="text-sm font-bold text-navy-800 leading-snug">{isFerry ? `Ferry: ${ferryName(ent.title)}` : ent.title}</p>
         {route && <p className="text-xs text-slate-500">{route}</p>}
         {(date || time) && (
           <p className={`mt-1 text-sm font-semibold flex items-center gap-1.5 flex-wrap ${dim ? 'text-slate-500' : 'text-navy-800'}`}>
@@ -103,7 +106,7 @@ function CardImage({ ent }) {
       src={ent.image_url}
       alt={ent.title}
       loading="lazy"
-      className="print-hide hidden sm:block xl:hidden 2xl:block w-[130px] h-[96px] object-cover rounded-xl border border-slate-200 shrink-0"
+      className="print-hide hidden sm:block w-[130px] h-[96px] object-cover rounded-xl border border-slate-200 shrink-0"
     />
   );
 }
