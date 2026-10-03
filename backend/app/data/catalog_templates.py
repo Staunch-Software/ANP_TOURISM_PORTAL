@@ -9,6 +9,8 @@ from datetime import time
 REAL_ATTRACTIONS = [
     {
         "title": "Cellular Jail National Memorial",
+        "description": "Colonial-era prison in Port Blair, now a national memorial to the freedom fighters of India. Walk the cell wings and the central tower, and see the exhibits on the independence struggle.",
+        "estimated_exploration_minutes": 60,
         "island": "PORT_BLAIR",
         "category": "MONUMENT",
         "base_price_inr": 30.00,
@@ -24,6 +26,8 @@ REAL_ATTRACTIONS = [
     },
     {
         "title": "Cellular Jail Light & Sound Show",
+        "description": "Evening light-and-sound show held in the Cellular Jail grounds, narrating the history of the jail and the freedom struggle.",
+        "estimated_exploration_minutes": 60,
         "island": "PORT_BLAIR",
         "category": "LIGHT_SOUND",
         "base_price_inr": 150.00,
@@ -36,6 +40,8 @@ REAL_ATTRACTIONS = [
     },
     {
         "title": "Ross Island (Netaji Subhash Chandra Bose Dweep)",
+        "description": "Former British administrative headquarters, reached by a short boat ride from Port Blair. Explore the colonial-era ruins in the forest, home to free-roaming deer.",
+        "estimated_exploration_minutes": 180,
         "island": "PORT_BLAIR",
         "category": "MONUMENT",
         "base_price_inr": 50.00,
@@ -47,6 +53,8 @@ REAL_ATTRACTIONS = [
     },
     {
         "title": "Elephant Beach Scuba Diving & Sea Walk",
+        "description": "Beach on Havelock Island known for its coral reefs. Guided scuba diving and sea-walk sessions let you see the corals and marine life up close.",
+        "estimated_exploration_minutes": 120,
         "island": "HAVELOCK",
         "category": "WATER_SPORT",
         "base_price_inr": 2500.00,
@@ -59,6 +67,8 @@ REAL_ATTRACTIONS = [
     },
     {
         "title": "North Bay Coral Glass-Bottom Safari",
+        "description": "Glass-bottom boat trip over the coral reef at North Bay near Port Blair, for viewing corals and marine life without getting in the water.",
+        "estimated_exploration_minutes": 120,
         "island": "PORT_BLAIR",
         "category": "WATER_SPORT",
         "base_price_inr": 800.00,
@@ -70,6 +80,13 @@ REAL_ATTRACTIONS = [
         ],
     },
 ]
+
+# Opening/closing hours are derived from each attraction's slot windows --
+# the same data bookings are validated against -- so the published hours can
+# never disagree with what a tourist is actually able to book.
+for _item in REAL_ATTRACTIONS:
+    _item["opening_time"] = min(start for start, _end, _cap in _item["slots"])
+    _item["closing_time"] = max(end for _start, end, _cap in _item["slots"])
 
 VESSELS_DATA = [
     {"name": "MV Makruzz Diamond", "operator": "Makruzz Catamarans", "capacity": 120},

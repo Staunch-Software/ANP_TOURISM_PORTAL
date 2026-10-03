@@ -47,6 +47,10 @@ async def list_attractions(
             base_price_inr=float(item.base_price_inr),
             foreign_price_inr=float(item.foreign_price_inr),
             is_active=item.is_active,
+            description=item.description,
+            opening_time=item.opening_time,
+            closing_time=item.closing_time,
+            estimated_exploration_minutes=item.estimated_exploration_minutes,
         )
         for item in items
     ]
@@ -72,6 +76,10 @@ async def get_attraction(attraction_id: str, db: AsyncSession = Depends(get_db))
         base_price_inr=float(attraction.base_price_inr),
         foreign_price_inr=float(attraction.foreign_price_inr),
         is_active=attraction.is_active,
+        description=attraction.description,
+        opening_time=attraction.opening_time,
+        closing_time=attraction.closing_time,
+        estimated_exploration_minutes=attraction.estimated_exploration_minutes,
     )
 
 
@@ -183,6 +191,9 @@ async def suggest_itinerary(
             end_time=slot.end_time,
             price=price,
             available_seats=available,
+            opening_time=attraction.opening_time,
+            closing_time=attraction.closing_time,
+            estimated_exploration_minutes=attraction.estimated_exploration_minutes,
         )
 
     used_attraction_ids = set()

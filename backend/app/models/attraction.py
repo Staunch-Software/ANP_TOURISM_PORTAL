@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Column, String, Integer, Numeric, Boolean, ForeignKey
+from sqlalchemy import Column, String, Integer, Numeric, Boolean, ForeignKey, Text
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.core.database import Base
@@ -24,6 +24,17 @@ class Attraction(Base):
     # the upgrade feature entirely.
     express_price_inr = Column(Numeric(10, 2), nullable=True)
     express_price_foreign_inr = Column(Numeric(10, 2), nullable=True)
+
+    # RFP p.24 Visitors Dashboard item (b): each attraction must carry
+    # "names, concise descriptions, images, estimated exploration times,
+    # opening and closing hours, as well as available time slots".
+    # Nullable so attractions created before these existed still load;
+    # availability_service backfills them (only where still NULL, so an
+    # admin's later edit is never overwritten).
+    description = Column(Text, nullable=True)
+    opening_time = Column(String(5), nullable=True)  # "09:00"
+    closing_time = Column(String(5), nullable=True)  # "16:00"
+    estimated_exploration_minutes = Column(Integer, nullable=True)
 
 
 class AttractionSlot(Base):

@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel
 
@@ -11,6 +11,10 @@ class AttractionResponse(BaseModel):
     base_price_inr: float
     foreign_price_inr: float
     is_active: bool
+    description: Optional[str] = None
+    opening_time: Optional[str] = None  # "HH:MM"
+    closing_time: Optional[str] = None  # "HH:MM"
+    estimated_exploration_minutes: Optional[int] = None
 
     class Config:
         from_attributes = True

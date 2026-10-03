@@ -24,6 +24,10 @@ async def seed():
                     category=item["category"],
                     base_price_inr=item["base_price_inr"],
                     foreign_price_inr=item["foreign_price_inr"],
+                    description=item["description"],
+                    opening_time=item["opening_time"],
+                    closing_time=item["closing_time"],
+                    estimated_exploration_minutes=item["estimated_exploration_minutes"],
                 )
                 db.add(attraction)
                 await db.commit()

@@ -48,6 +48,13 @@ async def _ensure_attraction_slots(db: AsyncSession, days_ahead: int) -> int:
             # catalog itself the first time.
             continue
 
+        # Backfill the RFP attraction-detail fields on attractions created
+        # before they existed -- only where still NULL, so a value an admin
+        # has since edited is never overwritten.
+        for field in ("description", "opening_time", "closing_time", "estimated_exploration_minutes"):
+            if getattr(attraction, field) is None:
+                setattr(attraction, field, item[field])
+
         for d_str in date_strings:
             for start_t, end_t, cap in item["slots"]:
                 slot_res = await db.execute(

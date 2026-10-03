@@ -21,6 +21,9 @@ class ItineraryStop(BaseModel):
     end_time: str
     price: float
     available_seats: int
+    opening_time: Optional[str] = None
+    closing_time: Optional[str] = None
+    estimated_exploration_minutes: Optional[int] = None
 
 
 class ItineraryDay(BaseModel):
