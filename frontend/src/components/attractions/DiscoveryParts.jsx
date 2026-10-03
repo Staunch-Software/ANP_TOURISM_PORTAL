@@ -5,28 +5,6 @@ import { ArrowRight, Sparkles, Ticket, Compass, Sun } from 'lucide-react';
 /* Decorative layers for the hero. All are aria-hidden, and the motion
    is switched off for people who prefer reduced motion (see index.css). */
 
-export function PalmFrond({ className = '', flip = false }) {
-  const leaves = [-70, -48, -26, -4, 18, 40, 62];
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 200 200"
-      className={`pointer-events-none absolute ${className}`}
-      style={flip ? { transform: 'scaleX(-1)' } : undefined}
-      fill="currentColor"
-    >
-      {leaves.map((angle) => (
-        <path
-          key={angle}
-          d="M100 190 C 92 140, 96 90, 100 20 C 104 90, 108 140, 100 190 Z"
-          transform={`rotate(${angle} 100 190)`}
-          opacity="0.9"
-        />
-      ))}
-    </svg>
-  );
-}
-
 const PARTICLES = [
   { left: '8%', size: 4, delay: 0, dur: 9 },
   { left: '19%', size: 3, delay: 2.5, dur: 11 },
@@ -56,9 +34,6 @@ export function AttractionsHero({ slides, activeSlide, onSelectSlide }) {
       {/* navy → teal readability gradient, lighter on the right so the scenery stays visible */}
       <div className="absolute inset-0 bg-gradient-to-r from-navy-950/85 via-navy-900/55 to-cyan-900/25" />
       <div className="absolute inset-0 bg-gradient-to-t from-navy-950/60 via-transparent to-transparent" />
-
-      <PalmFrond className="left-[-30px] bottom-[-40px] w-52 h-52 text-navy-950/45 -rotate-12 hidden sm:block" />
-      <PalmFrond className="right-[-30px] bottom-[-40px] w-56 h-56 text-navy-950/40 rotate-12 hidden sm:block" flip />
 
       {PARTICLES.map((p, i) => (
         <span
@@ -267,11 +242,6 @@ export function TransitionBanner({ bandColor = '#dcf3f8', bottomColor = '#f4fbfd
         </svg>
       </div>
 
-      {/* palms stay still: faint, cropped at the edges */}
-      <PalmFrond className="left-[-30px] top-6 w-36 h-36 sm:w-44 sm:h-44 text-cyan-800/[0.12]" />
-      <PalmFrond className="right-[-30px] top-6 w-36 h-36 sm:w-44 sm:h-44 text-cyan-800/[0.12]" flip />
-      <PalmFrond className="hidden md:block left-24 bottom-6 w-20 h-20 text-cyan-700/[0.08] rotate-12" />
-      <PalmFrond className="hidden md:block right-24 bottom-6 w-20 h-20 text-cyan-700/[0.08] -rotate-12" flip />
 
       <div className="relative z-[2] max-w-6xl mx-auto px-4 pt-10 sm:pt-12 pb-11 sm:pb-14">
         <div
