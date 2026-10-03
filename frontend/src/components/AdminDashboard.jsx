@@ -952,6 +952,36 @@ export function AdminDashboard({ user, onLogout, isSidebarOpen, onCloseSidebar }
     }
   };
 
+  // Cancel + refund + notify everyone holding an unused ticket in a CLOSED slot.
+  // Previews what would happen first; the reason is shown to the visitors.
+  const handleCancelSlotBookings = async (slot) => {
+    setExpandingSlotId(slot.slot_id);
+    try {
+      const { data: pv } = await API.get(`/admin/slots/${slot.slot_id}/affected-bookings`);
+      if (pv.tickets_affected === 0) {
+        alert('There are no unused tickets to cancel in this slot.');
+        return;
+      }
+      const reason = window.prompt(
+        `Cancel ${pv.tickets_affected} ticket(s) in ${pv.orders_affected} booking(s) and refund ₹${pv.total_refund_inr.toLocaleString('en-IN')}?\n\n` +
+        `Each visitor is notified by email/WhatsApp. Tickets already checked in are not touched.\n\n` +
+        `Enter the reason to show the visitors (leave empty to cancel this action):`,
+        ''
+      );
+      if (!reason || !reason.trim()) return;
+      const { data } = await API.post(`/admin/slots/${slot.slot_id}/cancel-bookings`, { reason: reason.trim() });
+      alert(
+        `${data.tickets_affected} ticket(s) cancelled in ${data.orders_affected} booking(s); ₹${data.total_refund_inr.toLocaleString('en-IN')} refunded. Visitors have been notified.` +
+        (data.refunds_failed > 0 ? `\n\n${data.refunds_failed} refund(s) could not be processed automatically — retry them under Cancellations & Refunds.` : '')
+      );
+      fetchSlots(selectedAttractionId);
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Could not cancel the bookings.');
+    } finally {
+      setExpandingSlotId(null);
+    }
+  };
+
   const fetchManifest = async (scheduleId, { silent = false } = {}) => {
     if (!scheduleId) return;
     if (!silent) setManifestLoading(true);
@@ -2340,7 +2370,7 @@ export function AdminDashboard({ user, onLogout, isSidebarOpen, onCloseSidebar }
                 </div>
 
                 {/* Dynamic Expansion Actions */}
-                <div className="pt-3 border-t border-slate-200 flex items-center justify-between gap-2">
+                <div className="pt-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2">
                   <button
                     type="button"
                     disabled={isExpanding}
@@ -2353,6 +2383,17 @@ export function AdminDashboard({ user, onLogout, isSidebarOpen, onCloseSidebar }
                   >
                     {isClosed ? 'Reopen' : 'Close slot'}
                   </button>
+                  {isClosed && slot.booked_count > 0 && (
+                    <button
+                      type="button"
+                      disabled={isExpanding}
+                      onClick={() => handleCancelSlotBookings(slot)}
+                      title="Cancel tickets already sold for this closed slot, refund and notify the visitors"
+                      className="px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors disabled:opacity-50 bg-red-50 hover:bg-red-100 text-red-700 border-red-200"
+                    >
+                      Cancel bookings
+                    </button>
+                  )}
                   <div className="flex gap-1.5">
                     <button
                       type="button"

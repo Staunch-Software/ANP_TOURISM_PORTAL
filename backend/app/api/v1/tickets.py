@@ -4,6 +4,7 @@ from typing import List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import or_
 from sqlalchemy.future import select
 
 from app.core.database import get_db
@@ -171,7 +172,7 @@ async def get_my_cancellations(
 ):
     res = await db.execute(
         select(Order)
-        .where(Order.user_id == current_user.id, Order.status == "CANCELLED")
+        .where(Order.user_id == current_user.id, or_(Order.status == "CANCELLED", Order.cancelled_at.isnot(None)))
         .order_by(Order.cancelled_at.desc())
     )
     orders = res.scalars().all()

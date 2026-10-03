@@ -218,6 +218,20 @@ export function DigitalWallet({ user, onRequireLogin }) {
                 </div>
               )}
 
+              {/* Partial cancellation (admin closed one attraction's slot): the
+                  booking stays valid for its other tickets, so say so. */}
+              {pass.order_status !== 'CANCELLED' && pass.cancelled_at && (pass.refund_status === 'PROCESSED' || pass.refund_status === 'FAILED') && (
+                <div className={`px-5 py-2.5 text-xs font-semibold border-b ${
+                  pass.refund_status === 'FAILED'
+                    ? 'bg-red-50 text-red-700 border-red-100'
+                    : 'bg-amber-50 text-amber-800 border-amber-100'
+                }`}>
+                  {pass.refund_status === 'PROCESSED'
+                    ? <>A ticket in this booking was cancelled by ANIIDCO — ₹{pass.refund_amount?.toFixed(2)} refunded on {new Date(pass.cancelled_at).toLocaleDateString('en-IN')}. Your other tickets are still valid.</>
+                    : <>A ticket in this booking was cancelled by ANIIDCO, but its refund could not be processed automatically. ANIIDCO support has been notified. Your other tickets are still valid.</>}
+                </div>
+              )}
+
               {/* Pass Mid Section: One QR Code covering the whole order */}
               <div className="p-6 flex flex-col sm:flex-row items-center gap-6">
                 <div className="bg-white p-3 rounded-2xl shadow-inner border-2 border-slate-200 flex-shrink-0">

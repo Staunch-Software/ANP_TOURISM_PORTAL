@@ -178,3 +178,17 @@ async def send_voyage_cancellation_notice(user_email: str, order_ref: str, route
         f"</body></html>"
     )
     await asyncio.to_thread(_send_email_sync, user_email, subject, html_content)
+
+
+async def send_slot_cancellation_notice(user_email: str, order_ref: str, details: str, reason: str, refund_amount: float, refund_to: str, whole_order: bool):
+    subject = f"Your booking {order_ref} has been cancelled by ANIIDCO"
+    remaining = "" if whole_order else "<p>The other attractions in your booking are <strong>not affected</strong> and your pass remains valid for them.</p>"
+    html_content = (
+        f"<html><body><h2 style='color:#b91c1c;'>Booking Cancelled</h2>"
+        f"<p>We are sorry: {details} (booking <strong>{order_ref}</strong>) has been cancelled by ANIIDCO due to: <strong>{reason}</strong>.</p>"
+        f"<p>A refund of <strong>₹{refund_amount:.2f}</strong> has been initiated to {refund_to}.</p>"
+        f"{remaining}"
+        f"<p>We apologise for the inconvenience. You can book another slot on the portal.</p>"
+        f"</body></html>"
+    )
+    await asyncio.to_thread(_send_email_sync, user_email, subject, html_content)

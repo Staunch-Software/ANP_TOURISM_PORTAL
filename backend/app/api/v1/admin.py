@@ -11,7 +11,7 @@ from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
 from openpyxl.utils import get_column_letter
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from app.core.database import get_db
 from app.core.redis import get_redis
@@ -1770,7 +1770,7 @@ async def list_cancellations(
     admin_user: User = Depends(verify_admin_role),
     db: AsyncSession = Depends(get_db),
 ):
-    query = select(Order).where(Order.status == "CANCELLED").order_by(Order.cancelled_at.desc())
+    query = select(Order).where(or_(Order.status == "CANCELLED", Order.cancelled_at.isnot(None))).order_by(Order.cancelled_at.desc())
     if refund_status_filter and refund_status_filter != "ALL":
         query = query.where(Order.refund_status == refund_status_filter)
     res = await db.execute(query)
@@ -1799,7 +1799,7 @@ async def retry_refund(
     order = res.scalars().first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    if order.status != "CANCELLED":
+    if order.status != "CANCELLED" and order.cancelled_at is None:
         raise HTTPException(status_code=400, detail="Only a cancelled order can have its refund retried")
     if order.refund_status != "FAILED":
         raise HTTPException(status_code=400, detail=f"Refund is not in a FAILED state (currently: {order.refund_status})")

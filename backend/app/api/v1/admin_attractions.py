@@ -8,7 +8,7 @@ import re
 import uuid
 from datetime import date as date_type
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -21,7 +21,10 @@ from app.models.attraction import (
 from app.api.v1.admin import verify_admin_role
 from app.services.availability_service import _ensure_attraction_slots, ROLLING_WINDOW_DAYS
 from app.services.slot_service import (
-    apply_closure, reopen_after_closure_removed, closure_covers, closures_for,
+    apply_closure, reopen_after_closure_removed, closure_covers, closures_for, slots_in_closure_range,
+)
+from app.services.slot_cancellation_service import (
+    plan_slot_cancellations, summarize, execute_slot_cancellations,
 )
 from app.services.time_service import now_ist
 from app.schemas.attraction_admin import (
@@ -35,6 +38,9 @@ from app.schemas.attraction_admin import (
     SlotStatusUpdateRequest,
     SlotStatusResponse,
     AdminAttractionResponse,
+    CancelBookingsRequest,
+    AffectedBookingsResponse,
+    CancelBookingsResponse,
 )
 
 router = APIRouter(prefix="/admin", tags=["Admin - Attraction Management"])
@@ -389,3 +395,91 @@ async def set_slot_status(
         slot_id=str(slot.id), slot_date=slot.slot_date, start_time=slot.start_time,
         end_time=slot.end_time, is_active=slot.is_active, booked_count=slot.booked_count or 0,
     )
+
+
+async def _get_closure(db: AsyncSession, attraction_id: str, closure_id: str) -> AttractionClosure:
+    a = await _get_attraction(db, attraction_id)
+    try:
+        cid = uuid.UUID(closure_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid closure id")
+    closure = (await db.execute(
+        select(AttractionClosure).where(AttractionClosure.id == cid, AttractionClosure.attraction_id == a.id)
+    )).scalars().first()
+    if not closure:
+        raise HTTPException(status_code=404, detail="Closure not found")
+    return closure
+
+
+async def _get_closed_slot(db: AsyncSession, slot_id: str) -> AttractionSlot:
+    try:
+        sid = uuid.UUID(slot_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid slot id")
+    slot = (await db.execute(select(AttractionSlot).where(AttractionSlot.id == sid))).scalars().first()
+    if not slot:
+        raise HTTPException(status_code=404, detail="Slot not found")
+    if slot.is_active:
+        raise HTTPException(status_code=409, detail="Close the slot first -- bookings can only be cancelled for a closed slot.")
+    return slot
+
+
+@router.get("/slots/{slot_id}/affected-bookings", response_model=AffectedBookingsResponse)
+async def slot_affected_bookings(
+    slot_id: str,
+    admin_user: User = Depends(verify_admin_role),
+    db: AsyncSession = Depends(get_db),
+):
+    """Preview: what cancelling this closed slot's bookings would touch."""
+    slot = await _get_closed_slot(db, slot_id)
+    return AffectedBookingsResponse(**summarize(await plan_slot_cancellations(db, [slot.id])))
+
+
+@router.post("/slots/{slot_id}/cancel-bookings", response_model=CancelBookingsResponse)
+async def slot_cancel_bookings(
+    slot_id: str,
+    req: CancelBookingsRequest,
+    background_tasks: BackgroundTasks,
+    admin_user: User = Depends(verify_admin_role),
+    db: AsyncSession = Depends(get_db),
+):
+    """Cancels every unused ticket in a CLOSED slot, refunds each visitor
+    and notifies them (email + WhatsApp)."""
+    if not (req.reason or "").strip():
+        raise HTTPException(status_code=400, detail="A reason is required -- it is shown to the visitors")
+    slot = await _get_closed_slot(db, slot_id)
+    plans = await plan_slot_cancellations(db, [slot.id])
+    result = await execute_slot_cancellations(db, background_tasks, plans, req.reason.strip())
+    await db.commit()
+    return CancelBookingsResponse(**result)
+
+
+@router.get("/attractions/{attraction_id}/closures/{closure_id}/affected-bookings", response_model=AffectedBookingsResponse)
+async def closure_affected_bookings(
+    attraction_id: str,
+    closure_id: str,
+    admin_user: User = Depends(verify_admin_role),
+    db: AsyncSession = Depends(get_db),
+):
+    closure = await _get_closure(db, attraction_id, closure_id)
+    slot_ids = [s.id for s in await slots_in_closure_range(db, closure)]
+    return AffectedBookingsResponse(**summarize(await plan_slot_cancellations(db, slot_ids)))
+
+
+@router.post("/attractions/{attraction_id}/closures/{closure_id}/cancel-bookings", response_model=CancelBookingsResponse)
+async def closure_cancel_bookings(
+    attraction_id: str,
+    closure_id: str,
+    req: CancelBookingsRequest,
+    background_tasks: BackgroundTasks,
+    admin_user: User = Depends(verify_admin_role),
+    db: AsyncSession = Depends(get_db),
+):
+    if not (req.reason or "").strip():
+        raise HTTPException(status_code=400, detail="A reason is required -- it is shown to the visitors")
+    closure = await _get_closure(db, attraction_id, closure_id)
+    slot_ids = [s.id for s in await slots_in_closure_range(db, closure)]
+    plans = await plan_slot_cancellations(db, slot_ids)
+    result = await execute_slot_cancellations(db, background_tasks, plans, req.reason.strip())
+    await db.commit()
+    return CancelBookingsResponse(**result)

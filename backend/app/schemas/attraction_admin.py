@@ -102,3 +102,19 @@ class AdminAttractionResponse(BaseModel):
     image_url: Optional[str] = None
     slot_times: List[SlotTimeInput]
     closures: List[ClosureResponse]
+
+
+class CancelBookingsRequest(BaseModel):
+    # Shown to the affected visitors in their cancellation notice.
+    reason: str
+
+
+class AffectedBookingsResponse(BaseModel):
+    orders_affected: int
+    tickets_affected: int
+    orders_fully_cancelled: int
+    total_refund_inr: float
+
+
+class CancelBookingsResponse(AffectedBookingsResponse):
+    refunds_failed: int  # visible under Cancellations & Refunds for retry

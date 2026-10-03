@@ -30,7 +30,7 @@ async def closures_for(db: AsyncSession, attraction_id) -> list:
     return list(res.scalars().all())
 
 
-async def _slots_in_closure_range(db: AsyncSession, closure: AttractionClosure) -> list:
+async def slots_in_closure_range(db: AsyncSession, closure: AttractionClosure) -> list:
     res = await db.execute(
         select(AttractionSlot).where(
             AttractionSlot.attraction_id == closure.attraction_id,
@@ -45,7 +45,7 @@ async def apply_closure(db: AsyncSession, closure: AttractionClosure) -> dict:
     """Closes every existing slot the closure covers. Returns how many slots
     were closed and how many confirmed seats are already booked in them, so
     the admin knows existing bookings are NOT touched."""
-    slots = await _slots_in_closure_range(db, closure)
+    slots = await slots_in_closure_range(db, closure)
     closed = 0
     booked_seats = 0
     for s in slots:
@@ -61,7 +61,7 @@ async def reopen_after_closure_removed(db: AsyncSession, closure: AttractionClos
     remaining closure still covers."""
     others = [c for c in await closures_for(db, closure.attraction_id) if c.id != closure.id]
     reopened = 0
-    for s in await _slots_in_closure_range(db, closure):
+    for s in await slots_in_closure_range(db, closure):
         if s.is_active:
             continue
         if any(closure_covers(o, s.slot_date, s.start_time, s.end_time) for o in others):

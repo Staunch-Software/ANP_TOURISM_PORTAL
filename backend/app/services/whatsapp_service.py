@@ -193,3 +193,20 @@ async def send_whatsapp_voyage_cancellation(phone_number: str, order_ref: str, r
     }
     await asyncio.to_thread(_post_sync, payload, phone_number, "voyage cancellation notice")
 
+
+
+async def send_whatsapp_slot_cancellation(phone_number: str, order_ref: str, details: str, reason: str, refund_amount: float, refund_to: str, whole_order: bool) -> None:
+    text = (
+        f"*BOOKING CANCELLED*\n\n"
+        f"{details} (booking {order_ref}) has been cancelled by ANIIDCO due to: {reason}.\n\n"
+        f"A refund of Rs.{refund_amount:.2f} has been initiated to {refund_to}.\n\n"
+        + ("" if whole_order else "The other attractions in your booking are not affected.\n\n")
+        + "We apologise for the inconvenience."
+    )
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": _to_e164(phone_number),
+        "type": "text",
+        "text": {"body": text},
+    }
+    await asyncio.to_thread(_post_sync, payload, phone_number, "slot cancellation notice")
