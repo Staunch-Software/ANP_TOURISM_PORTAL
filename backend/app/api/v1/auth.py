@@ -1,3 +1,4 @@
+import logging
 import uuid
 import secrets
 from datetime import datetime, timedelta
@@ -16,6 +17,8 @@ from app.core.redis import get_redis
 from app.models.user import User
 from app.services.password_service import hash_password, verify_password, MIN_PASSWORD_LENGTH
 from app.services.whatsapp_service import send_whatsapp_otp
+logger = logging.getLogger("anp.auth")
+
 from app.schemas.auth import (
     OTPRequest,
     OTPRequestOnly,
@@ -71,11 +74,20 @@ async def request_otp(req: OTPRequestOnly, r=Depends(get_redis)):
     """
     Sends a randomly generated OTP via the WhatsApp sidecar.
     Stores the OTP in Redis for 5 minutes.
+
+    If WhatsApp can't deliver it (token expired, not configured, recipient
+    not allowed on the developer test number) and OTP_DEV_FALLBACK is on,
+    the stored code is switched to the fixed developer code so login still
+    works during development.
     """
     otp_code = str(random.randint(100000, 999999))
     await r.set(f"otp:{req.phone_number}", otp_code, ex=300)
-    
-    await send_whatsapp_otp(req.phone_number, otp_code)
+
+    sent = await send_whatsapp_otp(req.phone_number, otp_code)
+    if not sent and settings.OTP_DEV_FALLBACK:
+        await r.set(f"otp:{req.phone_number}", settings.OTP_DEV_FALLBACK_CODE, ex=300)
+        logger.warning("WhatsApp OTP not delivered -- developer fallback OTP is active for this login")
+
     return OTPRequestResponse(message="OTP sent")
 
 

@@ -54,6 +54,17 @@ class Settings(BaseSettings):
     WHATSAPP_TICKET_TEMPLATE_LANG: str = "en_GB"
     
     WHATSAPP_WEBHOOK_VERIFY_TOKEN: str = "AndamanDemoWebhook2026"
+
+    # Developer-stage safety net: the Meta developer WhatsApp token expires
+    # daily and the test number only reaches pre-approved recipients, so OTP
+    # delivery is often down while developing. When the WhatsApp send fails
+    # (or isn't configured), the OTP becomes OTP_DEV_FALLBACK_CODE instead of
+    # nobody being able to log in. A successful WhatsApp send always uses the
+    # random code, so this never weakens a working deployment. MUST be set to
+    # false in production -- with it on, a WhatsApp outage means anyone can
+    # log in as anyone using the fixed code.
+    OTP_DEV_FALLBACK: bool = True
+    OTP_DEV_FALLBACK_CODE: str = "123456"
     
     # --- AI Settings ---
     GEMINI_API_KEY: str = ""

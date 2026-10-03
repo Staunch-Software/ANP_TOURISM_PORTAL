@@ -105,7 +105,9 @@ Open `http://localhost:5173`.
 ## 4. Log in
 
 - Phone: any 10-digit number
-- OTP: `123456` (hardcoded for demo/dev — no real SMS is sent)
+- OTP: normally a random code sent over WhatsApp. If WhatsApp isn't set up (or its daily developer token has
+  expired), the backend falls back to the developer default `123456` (`OTP_DEV_FALLBACK=true`, the default).
+  Set `OTP_DEV_FALLBACK=false` in production.
 - To get **Admin** access, run the admin seed script:
 
   ```bash

@@ -41,11 +41,13 @@ def _to_e164(phone_number: str) -> str:
     return digits if len(digits) > 10 else f"91{digits}"
 
 
-def _post_sync(payload: dict, phone_number: str, label: str) -> None:
+def _post_sync(payload: dict, phone_number: str, label: str) -> bool:
+    """Returns True only if Meta accepted the message -- callers that need to
+    know (OTP delivery) can fall back; everyone else just ignores it."""
     if not _is_configured():
         # SECURITY: Do not name specific env variable keys in logs
         logger.warning(f"Skipping WhatsApp {label} — API credentials not configured")
-        return
+        return False
 
     url = f"https://graph.facebook.com/{GRAPH_API_VERSION}/{settings.WHATSAPP_PHONE_NUMBER_ID}/messages"
     # SECURITY: Authorization token is in headers only — never logged anywhere
@@ -55,12 +57,13 @@ def _post_sync(payload: dict, phone_number: str, label: str) -> None:
         resp = requests.post(url, json=payload, headers=headers, timeout=10)
         if resp.status_code == 200:
             logger.info(f"Sent WhatsApp {label} to {phone_number}")
-        else:
-            # SECURITY: Do NOT log resp.text — Meta API error responses can contain
-            # auth context, token fragments, or user phone data
-            logger.error(f"WhatsApp Cloud API returned HTTP {resp.status_code} for {label} (response body hidden)")
+            return True
+        # SECURITY: Do NOT log resp.text — Meta API error responses can contain
+        # auth context, token fragments, or user phone data
+        logger.error(f"WhatsApp Cloud API returned HTTP {resp.status_code} for {label} (response body hidden)")
     except Exception as e:
         logger.error(f"Failed to reach WhatsApp Cloud API for {label}: {e}")
+    return False
 
 
 def _make_qr_png_bytes(qr_data: str) -> bytes:
@@ -107,7 +110,7 @@ def _send_qr_image_sync(phone_number: str, qr_data: str, caption: str) -> None:
     _post_sync(payload, phone_number, "QR boarding pass image")
 
 
-async def send_whatsapp_otp(phone_number: str, otp_code: str) -> None:
+async def send_whatsapp_otp(phone_number: str, otp_code: str) -> bool:
     payload = {
         "messaging_product": "whatsapp",
         "to": _to_e164(phone_number),
@@ -123,7 +126,7 @@ async def send_whatsapp_otp(phone_number: str, otp_code: str) -> None:
             ],
         },
     }
-    await asyncio.to_thread(_post_sync, payload, phone_number, "OTP template")
+    return await asyncio.to_thread(_post_sync, payload, phone_number, "OTP template")
 
 
 async def send_whatsapp_ticket_confirmation(phone_number: str, order_ref: str, tickets: list) -> None:
