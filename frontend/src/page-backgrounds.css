@@ -2,6 +2,7 @@
    Photos are reserved for the home hero so cards and text stay readable. */
 .bg-slate-100[data-portal-page="FERRY"],
 .bg-slate-100[data-portal-page="PASSES"],
+.bg-slate-100[data-portal-page="WALLET"],
 .bg-slate-100[data-portal-page="GROUP_BOOKINGS"],
 .bg-slate-100[data-portal-page="SUPPORT"] {
   background-color: #e6f4fb;

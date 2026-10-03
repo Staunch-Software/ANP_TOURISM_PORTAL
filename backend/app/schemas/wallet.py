@@ -35,6 +35,7 @@ class WalletTransactionResponse(BaseModel):
     balance_after: float
     description: Optional[str] = None
     reference_order_id: Optional[str] = None
+    razorpay_payment_id: Optional[str] = None  # TOPUP rows: the Razorpay payment reference
     created_at: str
 
 

@@ -64,6 +64,7 @@ async def get_my_wallet_transactions(
                 balance_after=float(t.balance_after),
                 description=t.description,
                 reference_order_id=str(t.reference_order_id) if t.reference_order_id else None,
+                razorpay_payment_id=t.razorpay_payment_id,
                 created_at=t.created_at.isoformat(),
             )
             for t in rows
