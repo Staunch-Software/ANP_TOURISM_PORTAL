@@ -587,3 +587,10 @@ html.accessible-mode :focus-visible {
   outline: none; border-color: #0b9bb5; box-shadow: 0 0 0 3px rgba(11,155,181,0.18);
 }
 @media (prefers-reduced-motion: reduce) { .gb-pop { animation: none; } }
+
+/* Attractions discovery hero: gentle ocean drift and floating light specks. */
+@keyframes hero-drift { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes hero-rise { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: 0.7; } 100% { transform: translateY(-190px); opacity: 0; } }
+.hero-ripple { animation: hero-drift 38s linear infinite; }
+.hero-particle { animation: hero-rise 10s ease-in infinite; opacity: 0; }
+@media (prefers-reduced-motion: reduce) { .hero-ripple, .hero-particle { animation: none; } }

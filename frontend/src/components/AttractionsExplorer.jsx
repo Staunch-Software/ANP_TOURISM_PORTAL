@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import API from '../api/client';
 import * as Select from '@radix-ui/react-select';
 import {
-  MapPin, Users, ArrowRight, Calendar, ChevronDown, Landmark, Sparkles, Waves, SearchX, X, Clock, Timer
+  MapPin, Users, ArrowRight, Calendar, ChevronDown, Landmark, Sparkles, Waves, SearchX, X, Clock, Timer, Trees, Mountain, Filter
 } from 'lucide-react';
 import { DayPicker } from 'react-day-picker';
 import 'react-day-picker/style.css';
@@ -15,11 +15,15 @@ export const ATTRACTION_IMAGES = {
   "North Bay Coral Glass-Bottom Safari": "/images/north-bay-glassboat.jpg",
 };
 
+// Small per-category variations so the cards don't all read the same.
 const CATEGORY_STYLE = {
-  MONUMENT: { icon: Landmark, label: 'Monument' },
-  LIGHT_SOUND: { icon: Sparkles, label: 'Light & Sound Show' },
-  WATER_SPORT: { icon: Waves, label: 'Water Sport' },
+  MONUMENT: { icon: Landmark, label: 'Monument', badge: 'bg-amber-50 text-amber-800', bar: 'bg-amber-400' },
+  LIGHT_SOUND: { icon: Sparkles, label: 'Light & Sound Show', badge: 'bg-indigo-50 text-indigo-700', bar: 'bg-indigo-400' },
+  WATER_SPORT: { icon: Waves, label: 'Water Sport', badge: 'bg-cyan-50 text-cyan-800', bar: 'bg-cyan-500' },
+  NATURE: { icon: Trees, label: 'Nature', badge: 'bg-emerald-50 text-emerald-700', bar: 'bg-emerald-400' },
+  ADVENTURE: { icon: Mountain, label: 'Adventure', badge: 'bg-orange-50 text-orange-700', bar: 'bg-orange-400' },
 };
+const FALLBACK_CATEGORY = { badge: 'bg-slate-100 text-slate-700', bar: 'bg-slate-400' };
 
 export const ISLAND_LABELS = {
   PORT_BLAIR: 'Port Blair',
@@ -73,6 +77,7 @@ function AttractionFacts({ item, className = '' }) {
 export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRequest }) {
   const [attractions, setAttractions] = useState([]);
   const [selectedIsland, setSelectedIsland] = useState('ALL');
+  const [selectedType, setSelectedType] = useState('ALL');
   const [nationality, setNationality] = useState('INDIAN');
   const [selectedAttraction, setSelectedAttraction] = useState(null);
   const [availableSlots, setAvailableSlots] = useState([]);
@@ -272,10 +277,23 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
   const priceFor = (nat) => Number(nat === 'FOREIGN' ? selectedAttraction?.foreign_price_inr : selectedAttraction?.base_price_inr) || 0;
   const estimatedTotal = (pickedKeys.reduce((sum, v) => sum + priceFor(v.nationality), 0) + (newRequired ? priceFor(nationality) : 0)) * 1.05;
 
+  const typeOptions = Array.from(new Set(attractions.map((a) => a.category))).filter(Boolean);
+  const visibleAttractions = selectedType === 'ALL' ? attractions : attractions.filter((a) => a.category === selectedType);
+  const typeLabel = (c) => CATEGORY_STYLE[c]?.label || c.replace(/_/g, ' ');
+  const todayIso = new Date().toISOString().split('T')[0];
+
   return (
-    <div id="popular-attractions" className="space-y-8 scroll-mt-24">
+    <div id="popular-attractions" className="space-y-5 scroll-mt-24">
+      {/* Section heading */}
+      <div className="text-center pt-1">
+        <span className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-cyan-700">Book an Attraction</span>
+        <h2 className="font-serif text-2xl md:text-3xl font-black text-navy-800 leading-tight">Find Your Experience</h2>
+        <p className="text-sm text-slate-500 mt-0.5">Choose an attraction, select your date and reserve your spot.</p>
+      </div>
+
       {/* Island & Filter Header */}
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200">
+      <div className="flex flex-col gap-3 bg-white p-3.5 rounded-2xl border border-cyan-100 shadow-md">
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
         {/* Island Pills */}
         <div className="flex flex-wrap items-center gap-2 xl:flex-nowrap xl:overflow-x-auto xl:pb-0">
           {[
@@ -286,11 +304,11 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
           ].map((isl) => (
             <button
               key={isl.id}
-              onClick={() => setSelectedIsland(isl.id)}
-              className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+              onClick={() => { setSelectedIsland(isl.id); setSelectedType('ALL'); }}
+              className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
                 selectedIsland === isl.id
-                  ? 'bg-navy-800 text-white shadow-sm'
-                  : 'bg-slate-100 text-slate-500 hover:text-navy-800 hover:bg-slate-200'
+                  ? 'bg-cyan-700 text-white shadow-sm'
+                  : 'bg-cyan-50/70 text-slate-600 hover:text-navy-800 hover:bg-cyan-100'
               }`}
             >
               {isl.label}
@@ -304,7 +322,7 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
           <button
             onClick={() => setNationality('INDIAN')}
             className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${
-              nationality === 'INDIAN' ? 'bg-navy-800 text-white' : 'text-slate-500 hover:text-navy-800'
+              nationality === 'INDIAN' ? 'bg-cyan-700 text-white' : 'text-slate-500 hover:text-navy-800'
             }`}
           >
             Indian Citizen (₹)
@@ -312,11 +330,39 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
           <button
             onClick={() => setNationality('FOREIGN')}
             className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${
-              nationality === 'FOREIGN' ? 'bg-navy-800 text-white' : 'text-slate-500 hover:text-navy-800'
+              nationality === 'FOREIGN' ? 'bg-cyan-700 text-white' : 'text-slate-500 hover:text-navy-800'
             }`}
           >
             Foreign National ($)
           </button>
+        </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-slate-100">
+          <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
+            <Filter className="w-3.5 h-3.5 text-cyan-600" /> Attraction Type
+            <select
+              value={selectedType}
+              onChange={(e) => setSelectedType(e.target.value)}
+              className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-navy-800 focus:border-cyan-500 focus:outline-none"
+            >
+              <option value="ALL">All Types</option>
+              {typeOptions.map((c) => <option key={c} value={c}>{typeLabel(c)}</option>)}
+            </select>
+          </label>
+          <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
+            <Calendar className="w-3.5 h-3.5 text-cyan-600" /> Visit Date
+            <input
+              type="date"
+              min={todayIso}
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold font-mono text-navy-800 focus:border-cyan-500 focus:outline-none"
+            />
+          </label>
+          <span className="ml-auto text-[11px] text-slate-500">
+            {visibleAttractions.length} experience{visibleAttractions.length === 1 ? '' : 's'}
+          </span>
         </div>
       </div>
 
@@ -325,7 +371,7 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
       )}
 
       {/* Honest empty state — e.g. Neil Island has no bookable attraction listed yet */}
-      {!loading && attractions.length === 0 && (
+      {!loading && visibleAttractions.length === 0 && (
         <div className="text-center py-16 bg-white border border-dashed border-slate-300 rounded-2xl">
           <SearchX className="w-8 h-8 text-slate-300 mx-auto mb-3" />
           <h3 className="font-serif text-base font-bold text-navy-800">No attractions listed here yet</h3>
@@ -337,26 +383,27 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
 
       {/* Grid of Attractions */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-        {attractions.map((item) => {
+        {visibleAttractions.map((item) => {
           const img = item.image_url || ATTRACTION_IMAGES[item.title] || FALLBACK_IMAGE;
           const displayPrice = nationality === 'INDIAN' ? item.base_price_inr : item.foreign_price_inr;
-          const categoryMeta = CATEGORY_STYLE[item.category] || { icon: Landmark, label: item.category.replace('_', ' ') };
+          const categoryMeta = { ...FALLBACK_CATEGORY, icon: Landmark, label: item.category.replace(/_/g, ' '), ...(CATEGORY_STYLE[item.category] || {}) };
           const CategoryIcon = categoryMeta.icon;
 
           return (
             <div
               key={item.id}
-              className="bg-white border border-slate-200 hover:border-cyan-400 rounded-2xl overflow-hidden transition-all hover:shadow-lg group flex flex-col"
+              className="bg-white border border-slate-200 hover:border-cyan-400 rounded-3xl overflow-hidden transition-all duration-300 hover:!-translate-y-1.5 hover:shadow-[0_18px_40px_-12px_rgba(0,137,168,0.35)] group flex flex-col"
             >
-              <div className="relative h-36 overflow-hidden">
+              <span className={`h-1 w-full ${categoryMeta.bar}`} aria-hidden="true" />
+              <div className="relative h-44 overflow-hidden">
                 <img
                   src={img}
                   alt={item.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-navy-900/70 via-transparent to-transparent"></div>
-                <span className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-white/95 text-navy-800 flex items-center gap-1">
-                  <CategoryIcon className="w-3 h-3 text-cyan-700" /> {categoryMeta.label}
+                <span className={`absolute top-2.5 left-2.5 px-2.5 py-1 rounded-full text-[10px] font-bold shadow-sm flex items-center gap-1 ${categoryMeta.badge}`}>
+                  <CategoryIcon className="w-3 h-3" /> {categoryMeta.label}
                 </span>
                 <span className="absolute bottom-2.5 left-3 text-[11px] font-semibold text-white flex items-center gap-1">
                   <MapPin className="w-3 h-3" /> {ISLAND_LABELS[item.island] || item.island.replace('_', ' ')}
@@ -381,9 +428,9 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
 
                   <button
                     onClick={() => openSlotDrawer(item)}
-                    className="px-4 py-2 bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition-all"
+                    className="px-4 py-2 bg-cyan-700 group-hover:bg-navy-800 hover:!bg-cyan-600 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm group-hover:shadow-md transition-all"
                   >
-                    Book slot <ArrowRight className="w-3.5 h-3.5" />
+                    Book Slot <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                   </button>
                 </div>
               </div>

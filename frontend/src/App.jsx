@@ -12,6 +12,7 @@ import { FerrySearch } from './components/FerrySearch';
 import { HeroBanner } from './components/ferry/FerryParts';
 import { WaveDivider } from './components/WaveDivider';
 import { HeroSlogan } from './components/HeroSlogan';
+import { AttractionsHero, IslandCarousel, WaveTransition } from './components/attractions/DiscoveryParts';
 import { CartDrawer } from './components/CartDrawer';
 import { DigitalWallet } from './components/DigitalWallet';
 import { MyWallet } from './components/MyWallet';
@@ -72,6 +73,14 @@ const DISCOVER_CARDS = [
     blurb: "A limestone sea arch carved by centuries of tide, best seen at low tide against the Bay of Bengal's turquoise water.",
     island: 'NEIL',
     attractionTitle: null, // no bookable attraction listed for Neil Island yet — filtering the grid to it is the honest behavior
+  },
+  {
+    img: '/images/elephant-beach-coral.jpg',
+    title: 'Havelock Island',
+    subtitle: 'Swaraj Dweep',
+    blurb: 'Clear coral waters, white-sand beaches and the Andamans\' best scuba diving and sea-walk experiences.',
+    island: 'HAVELOCK',
+    attractionTitle: 'Elephant Beach Scuba Diving & Sea Walk',
   },
   {
     img: '/images/cellular-jail-corridor.jpg',
@@ -312,195 +321,17 @@ export default function App() {
       />
 
       {!isHeritageSitesPage && !isConnectedIslandsPage && activeTab === 'ATTRACTIONS' && (
-      <div>
-      {/* Hero Section — editorial rotating carousel of real Andaman locations */}
-      <section className="relative min-h-[300px] flex items-center justify-center overflow-hidden bg-navy-800">
-        {HERO_SLIDES.map((slide, idx) => (
-          <div
-            key={slide.img}
-            className={`absolute inset-0 bg-cover bg-center ease-in-out ${
-              idx === heroSlide ? 'opacity-75' : 'opacity-0'
-            }`}
-            style={{
-              backgroundImage: `url('${slide.img}')`,
-              transform: idx === heroSlide ? 'scale(1.06)' : 'scale(1)',
-              transitionProperty: 'opacity, transform',
-              transitionDuration: '1500ms, 6500ms',
-            }}
-          ></div>
-        ))}
-        <div className="absolute inset-0 bg-gradient-to-b from-navy-900/45 via-navy-900/65 to-navy-900/90"></div>
+        <div>
+          <AttractionsHero slides={HERO_SLIDES} activeSlide={heroSlide} onSelectSlide={setHeroSlide} />
 
-        {/* Slide caption + dots */}
-        <div className="absolute bottom-5 left-0 right-0 z-10 flex flex-col items-center gap-3">
-          <span className="text-[11px] text-cyan-200/90 font-semibold tracking-wide">
-            {HERO_SLIDES[heroSlide].caption}
-          </span>
-          <div className="flex items-center gap-1.5">
-            {HERO_SLIDES.map((slide, idx) => (
-              <button
-                key={slide.img}
-                onClick={() => setHeroSlide(idx)}
-                aria-label={`Show slide ${idx + 1}`}
-                className={`h-1.5 rounded-full transition-all ${
-                  idx === heroSlide ? 'w-6 bg-cyan-400' : 'w-1.5 bg-white/40 hover:bg-white/60'
-                }`}
-              ></button>
-            ))}
+          {/* Island discovery: cinematic carousel on a pale ocean band */}
+          <div className="bg-gradient-to-b from-cyan-50 to-[#dcf3f8]">
+            <div className="max-w-7xl mx-auto px-4 pt-7 pb-2 relative z-10">
+              <IslandCarousel cards={DISCOVER_CARDS} onSelect={handleDiscoverCardClick} />
+            </div>
+            <WaveTransition fill="#f4fbfd" />
           </div>
         </div>
-
-        <div className="relative z-10 max-w-4xl mx-auto px-4 pt-8 pb-14 text-center space-y-3">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 border border-white/25 text-cyan-200 text-[11px] font-bold tracking-wide">
-            <Waves className="w-3.5 h-3.5" />
-            <span>An Official Government of India Initiative</span>
-          </div>
-
-          <h1 className="font-serif text-3xl md:text-4xl font-black tracking-tight text-white leading-tight">
-            Explore the Andamans. <span className="text-cyan-300">Book It All Here.</span>
-          </h1>
-
-          <p className="hidden sm:block text-slate-200 text-sm md:text-base max-w-2xl mx-auto leading-relaxed">
-            Monument entry, dive slots and inter-island ferry seats — one verified single-window booking, one tamper-proof digital pass for every gate.
-          </p>
-        </div>
-      </section>
-
-      {/* Floating search card, Wanderly-style pill fields, straddling the
-          hero/trust-strip boundary */}
-      <div className="relative z-20 max-w-2xl mx-auto px-4 -mt-8">
-        <form
-          onSubmit={handleQuickSearch}
-          className="bg-white rounded-2xl shadow-xl border border-slate-200 p-2"
-        >
-          <div className="flex bg-slate-100 rounded-xl p-1 mb-3 w-fit">
-            <button
-              type="button"
-              onClick={() => setQuickSearchType('ATTRACTIONS')}
-              className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                quickSearchType === 'ATTRACTIONS' ? 'bg-navy-800 text-white' : 'text-slate-500'
-              }`}
-            >
-              Attractions
-            </button>
-            <button
-              type="button"
-              onClick={() => setQuickSearchType('FERRY')}
-              className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                quickSearchType === 'FERRY' ? 'bg-navy-800 text-white' : 'text-slate-500'
-              }`}
-            >
-              Ferry
-            </button>
-          </div>
-
-          <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
-            <div className="flex-1 flex items-center gap-2.5 px-3.5 py-2 rounded-xl border border-slate-200 md:border-0">
-              <MapPin className="w-4 h-4 text-cyan-600 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wide">Where to?</label>
-                {quickSearchType === 'ATTRACTIONS' ? (
-                  <select
-                    value={quickSearchIsland}
-                    onChange={(e) => setQuickSearchIsland(e.target.value)}
-                    className="w-full text-sm text-navy-800 font-semibold focus:outline-none bg-transparent -ml-0.5"
-                  >
-                    <option value="ALL">Any Destination</option>
-                    <option value="PORT_BLAIR">Port Blair</option>
-                    <option value="HAVELOCK">Havelock (Swaraj Dweep)</option>
-                    <option value="NEIL">Neil (Shaheed Dweep)</option>
-                  </select>
-                ) : (
-                  <span className="block text-sm text-slate-500">Choose your route next</span>
-                )}
-              </div>
-            </div>
-
-            <div className="hidden md:block w-px self-stretch bg-slate-200"></div>
-
-            <div className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl border border-slate-200 md:border-0">
-              <Clock3 className="w-4 h-4 text-cyan-600 shrink-0" />
-              <div>
-                <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wide">Date</label>
-                <input
-                  type="date"
-                  value={quickSearchDate}
-                  onChange={(e) => setQuickSearchDate(e.target.value)}
-                  className="text-sm text-navy-800 font-semibold font-mono focus:outline-none bg-transparent"
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              className="px-6 py-3 md:py-0 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-xl text-sm shadow-md transition-all whitespace-nowrap flex items-center justify-center gap-2"
-            >
-              <Search className="w-4 h-4" /> Search
-            </button>
-          </div>
-        </form>
-      </div>
-
-      {/* Trust strip */}
-      <div className="portal-trust-strip mt-3 border-b border-cyan-100">
-        <div className="portal-trust-grid w-full px-0 py-5 grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-0">
-          {[
-            { Icon: ShieldCheck, value: '9', label: 'Heritage & Nature Sites' },
-            { Icon: Palmtree, value: '3', label: 'Islands Connected' },
-            { Icon: Landmark, value: '100%', label: 'Tamper-Proof Digital Passes' },
-            { Icon: Clock3, value: '24×7', label: 'Booking Availability' },
-          ].map(({ Icon, value, label }) => (
-            <div key={label} className="portal-trust-item flex items-center gap-2.5">
-              <div className="portal-trust-icon w-10 h-10 rounded-full bg-cyan-50 text-cyan-700 border border-cyan-100 flex items-center justify-center shrink-0">
-                <Icon className="w-4.5 h-4.5" />
-              </div>
-              <span className="portal-trust-copy">
-                <strong>{value}</strong>
-                <span>{label}</span>
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-
-      {/* Discover the Islands — editorial gallery of real Andaman landmarks */}
-      <div className="portal-explore-band bg-slate-100 py-5 border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="flex items-end justify-between mb-3">
-            <div>
-              <span className="text-[10px] font-extrabold uppercase tracking-widest text-cyan-700">Explore</span>
-              <h2 className="font-serif text-xl md:text-2xl font-black text-navy-800">Discover the Islands</h2>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {DISCOVER_CARDS.map((card) => (
-              <button
-                key={card.title}
-                onClick={() => handleDiscoverCardClick(card)}
-                className="relative h-40 rounded-2xl overflow-hidden group text-left shadow-sm hover:shadow-xl hover:ring-2 hover:ring-cyan-500/60 transition-all cursor-pointer"
-              >
-                <img
-                  src={card.img}
-                  alt={card.title}
-                  className="absolute inset-0 w-full h-full object-cover brightness-110 group-hover:scale-110 transition-transform duration-700"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-navy-900/95 via-navy-900/30 to-transparent"></div>
-                <div className="absolute bottom-0 left-0 right-0 p-4 space-y-1">
-                  <span className="text-[10px] font-bold text-cyan-300 uppercase tracking-wider">{card.subtitle}</span>
-                  <h3 className="font-serif text-lg font-black text-white flex items-center gap-1.5">
-                    {card.title}
-                    <ArrowUpRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </h3>
-                  <p className="text-[11px] text-slate-300 leading-snug line-clamp-2">{card.blurb}</p>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-      </div>
       )}
 
       {/* Main Content Area — each staff dashboard owns its own full-height
@@ -541,6 +372,7 @@ export default function App() {
             <WaveDivider />
           </section>
         )}
+        <div className={activeTab === 'ATTRACTIONS' ? 'flex-1 flex flex-col bg-[#f4fbfd]' : 'contents'}>
         <main id="attractions-section" className={`flex-1 max-w-7xl w-full mx-auto px-4 py-6 ${['FERRY', 'PASSES'].includes(activeTab) ? '-mt-8 relative z-10' : ''}`}>
           {activeTab === 'ATTRACTIONS' && (
             <AttractionsExplorer
@@ -596,6 +428,7 @@ export default function App() {
             />
           )}
         </main>
+        </div>
         </>
       )}
 
