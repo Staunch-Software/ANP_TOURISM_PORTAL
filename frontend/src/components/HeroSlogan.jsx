@@ -6,7 +6,7 @@ export function HeroSlogan() {
   return (
     <div
       aria-hidden="true"
-      className="hidden md:block absolute right-8 lg:right-14 top-1/2 -translate-y-[72%] z-10 text-right select-none pointer-events-none"
+      className="hidden md:block absolute right-8 lg:right-14 top-[42%] -translate-y-1/2 z-10 text-right select-none pointer-events-none"
       style={{ fontFamily: "'Caveat', cursive", textShadow: '0 2px 8px rgba(3,35,65,0.45)' }}
     >
       <p className="text-white/90 text-[26px] lg:text-[32px] leading-[1.05] font-bold -rotate-3">

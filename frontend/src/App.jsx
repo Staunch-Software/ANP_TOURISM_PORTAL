@@ -365,11 +365,11 @@ export default function App() {
         {activeTab === 'FERRY' && <HeroBanner />}
         {activeTab !== 'ATTRACTIONS' && activeTab !== 'FERRY' && (
           <section
-            className="relative h-32 sm:h-40 flex items-center overflow-hidden bg-navy-800"
+            className="relative h-40 sm:h-52 flex items-center overflow-hidden bg-navy-800"
             style={{ backgroundImage: `linear-gradient(90deg, rgba(5,26,48,0.5) 0%, rgba(5,26,48,0.12) 55%, rgba(5,26,48,0) 100%), url('/images/inner-hero.jpg')`, backgroundSize: 'cover', backgroundPosition: 'center 55%' }}
           >
-            <div className="relative z-10 max-w-7xl w-full mx-auto px-4 pb-8 sm:pb-10">
-              <h1 className="font-serif text-xl sm:text-2xl font-black text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.45)]">Explore Andaman &amp; Nicobar Islands</h1>
+            <div className="relative z-10 max-w-7xl w-full mx-auto px-4 pb-8 sm:pb-12">
+              <h1 className="font-serif text-2xl sm:text-3xl font-black text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.45)]">Explore Andaman &amp; Nicobar Islands</h1>
               <p className="text-sm text-slate-100 mt-1">Pristine Beaches <span className="mx-2 opacity-60">|</span> Historic Landmarks <span className="mx-2 opacity-60">|</span> Unique Experiences</p>
             </div>
             <HeroSlogan />

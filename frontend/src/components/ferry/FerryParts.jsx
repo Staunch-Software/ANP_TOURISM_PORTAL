@@ -45,7 +45,7 @@ function formatTime12(t) {
 export function HeroBanner() {
   return (
     <section
-      className="relative h-36 sm:h-44 flex items-center overflow-hidden bg-navy-800"
+      className="relative h-40 sm:h-52 flex items-center overflow-hidden bg-navy-800"
       style={{
         backgroundImage: "linear-gradient(90deg, rgba(5,26,48,0.82) 0%, rgba(5,26,48,0.45) 45%, rgba(5,26,48,0.05) 100%), url('/images/ferry-catamaran.jpg')",
         backgroundSize: 'cover',
