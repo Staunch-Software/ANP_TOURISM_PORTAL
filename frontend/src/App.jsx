@@ -535,7 +535,7 @@ export default function App() {
         {activeTab !== 'ATTRACTIONS' && activeTab !== 'FERRY' && (
           <section
             className="relative h-36 sm:h-40 flex items-center overflow-hidden bg-navy-800"
-            style={{ backgroundImage: `linear-gradient(90deg, rgba(5,26,48,0.5) 0%, rgba(5,26,48,0.12) 55%, rgba(5,26,48,0) 100%), url('${activeTab === 'PASSES' ? '/images/my-passes-hero.jpg' : '/images/inner-banner.jpg'}')`, backgroundSize: 'cover', backgroundPosition: activeTab === 'PASSES' ? 'center 78%' : 'center 62%' }}
+            style={{ backgroundImage: `linear-gradient(90deg, rgba(5,26,48,0.5) 0%, rgba(5,26,48,0.12) 55%, rgba(5,26,48,0) 100%), url('/images/inner-hero.jpg')`, backgroundSize: 'cover', backgroundPosition: 'center 55%' }}
           >
             <div className="max-w-7xl w-full mx-auto px-4 pb-6">
               <h1 className="font-serif text-2xl sm:text-3xl font-black text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.45)]">Explore Andaman &amp; Nicobar Islands</h1>
