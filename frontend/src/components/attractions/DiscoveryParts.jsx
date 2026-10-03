@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { ArrowRight, ChevronLeft, ChevronRight, Sparkles, Ticket, Compass, Sun } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ArrowRight, Sparkles, Ticket, Compass, Sun } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
 /* Decorative layers for the hero. All are aria-hidden, and the motion
@@ -105,91 +105,44 @@ export function AttractionsHero({ slides, activeSlide, onSelectSlide }) {
 
 /* ------------------------------------------------------------------ */
 export function IslandCarousel({ cards, onSelect }) {
-  const trackRef = useRef(null);
-  const [active, setActive] = useState(0);
-
-  const step = useCallback(() => {
-    const track = trackRef.current;
-    const first = track?.firstElementChild;
-    if (!track || !first) return 1;
-    const gap = parseFloat(getComputedStyle(track).columnGap || '0') || 0;
-    return first.getBoundingClientRect().width + gap;
-  }, []);
-
-  const onScroll = () => {
-    const track = trackRef.current;
-    if (!track) return;
-    setActive(Math.min(cards.length - 1, Math.round(track.scrollLeft / step())));
-  };
-
-  const go = (dir) => {
-    const track = trackRef.current;
-    if (!track) return;
-    const atEnd = track.scrollLeft + track.clientWidth >= track.scrollWidth - 4;
-    if (dir > 0 && atEnd) track.scrollTo({ left: 0, behavior: 'smooth' });
-    else track.scrollBy({ left: dir * step(), behavior: 'smooth' });
-  };
-
-  useEffect(() => {
-    const track = trackRef.current;
-    if (track) track.scrollLeft = 0;
-  }, [cards.length]);
+  // The destinations glide past on their own (a slow, endless loop). Hovering or
+  // focusing a card pauses it so it can be read and clicked. For visitors who
+  // prefer reduced motion it becomes a plain scrollable row instead.
+  const loop = [...cards, ...cards];
 
   return (
     <div>
-      <div className="flex items-end justify-between gap-3 mb-4">
-        <div>
-          <span className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-cyan-700">Explore</span>
-          <h2 className="font-serif text-2xl md:text-3xl font-black text-navy-800 leading-tight">Discover the Islands</h2>
-          <p className="text-sm text-slate-500 mt-0.5">{cards.length} places to start planning your visit.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="hidden sm:flex flex-col items-end leading-tight mr-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Explore Islands</span>
-            <span className="text-sm font-bold text-navy-800 tabular-nums">{active + 1} <span className="text-slate-400">/ {cards.length}</span></span>
-          </span>
-          <button type="button" onClick={() => go(-1)} aria-label="Previous destination"
-            className="w-10 h-10 rounded-full bg-white border border-slate-200 text-navy-800 shadow-sm hover:bg-cyan-700 hover:text-white hover:border-cyan-700 flex items-center justify-center transition-colors">
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-          <button type="button" onClick={() => go(1)} aria-label="Next destination"
-            className="w-10 h-10 rounded-full bg-white border border-slate-200 text-navy-800 shadow-sm hover:bg-cyan-700 hover:text-white hover:border-cyan-700 flex items-center justify-center transition-colors">
-            <ChevronRight className="w-5 h-5" />
-          </button>
-        </div>
+      <div className="mb-4">
+        <span className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-cyan-700">Explore</span>
+        <h2 className="font-serif text-2xl md:text-3xl font-black text-navy-800 leading-tight">Discover the Islands</h2>
+        <p className="text-sm text-slate-500 mt-0.5">{cards.length} places to start planning your visit.</p>
       </div>
 
-      <div
-        ref={trackRef}
-        onScroll={onScroll}
-        className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-3 -mx-1 px-1 scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      >
-        {cards.map((card) => (
-          <button
-            key={card.title}
-            type="button"
-            onClick={() => onSelect(card)}
-            className="group relative shrink-0 snap-start w-[82%] sm:w-[46%] lg:w-[31.5%] xl:w-[24%] h-[236px] rounded-3xl overflow-hidden text-left shadow-md hover:shadow-2xl hover:-translate-y-1.5 transition-all duration-300 ring-0 hover:ring-2 hover:ring-cyan-400/70"
-          >
-            <img src={card.img} alt={card.title} loading="lazy"
-              className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
-            <div className="absolute inset-0 bg-gradient-to-t from-navy-950 via-navy-900/70 via-35% to-transparent group-hover:from-navy-950 group-hover:via-navy-900/80 transition-colors duration-300" />
-            <div className="absolute inset-x-0 bottom-0 p-4 pr-16 min-w-0">
-              <span className="block truncate text-[10px] font-bold uppercase tracking-wider text-cyan-200">{card.subtitle}</span>
-              <h3 className="font-serif text-2xl font-black text-white leading-tight drop-shadow-[0_1px_4px_rgba(0,0,0,0.5)]">{card.title}</h3>
-              <p className="text-xs text-slate-100 leading-snug truncate mt-0.5">{card.tags || card.blurb}</p>
-            </div>
-            <span className="absolute bottom-4 right-4 w-10 h-10 rounded-full bg-white text-navy-800 flex items-center justify-center shadow-lg group-hover:bg-cyan-500 group-hover:text-white transition-colors">
-              <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-            </span>
-          </button>
-        ))}
-      </div>
-
-      <div className="flex items-center justify-center gap-1.5 mt-1" aria-hidden="true">
-        {cards.map((card, i) => (
-          <span key={card.title} className={`h-1.5 rounded-full transition-all ${i === active ? 'w-6 bg-cyan-600' : 'w-1.5 bg-cyan-600/30'}`} />
-        ))}
+      <div className="island-marquee overflow-hidden -mx-1 px-1 py-1">
+        <div className="island-marquee-track flex w-max">
+          {loop.map((card, i) => (
+            <button
+              key={`${card.title}-${i}`}
+              type="button"
+              onClick={() => onSelect(card)}
+              aria-hidden={i >= cards.length ? 'true' : undefined}
+              tabIndex={i >= cards.length ? -1 : 0}
+              className="group relative shrink-0 mr-4 w-[280px] sm:w-[340px] lg:w-[400px] h-[236px] rounded-3xl overflow-hidden text-left shadow-md hover:shadow-2xl hover:-translate-y-1.5 transition-all duration-300 ring-0 hover:ring-2 hover:ring-cyan-400/70"
+            >
+              <img src={card.img} alt={i >= cards.length ? '' : card.title} loading="lazy" draggable={false}
+                className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+              <div className="absolute inset-0 bg-gradient-to-t from-navy-950 via-navy-900/70 via-35% to-transparent" />
+              <div className="absolute inset-x-0 bottom-0 p-4 pr-16 min-w-0">
+                <span className="block truncate text-[10px] font-bold uppercase tracking-wider text-cyan-200">{card.subtitle}</span>
+                <h3 className="font-serif text-2xl font-black text-white leading-tight drop-shadow-[0_1px_4px_rgba(0,0,0,0.5)]">{card.title}</h3>
+                <p className="text-xs text-slate-100 leading-snug truncate mt-0.5">{card.tags || card.blurb}</p>
+              </div>
+              <span className="absolute bottom-4 right-4 w-10 h-10 rounded-full bg-white text-navy-800 flex items-center justify-center shadow-lg group-hover:bg-cyan-500 group-hover:text-white transition-colors">
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -258,28 +211,74 @@ const JOURNEY = [
 
 export function TransitionBanner({ bandColor = '#dcf3f8', bottomColor = '#f4fbfd' }) {
   const [ref, shown] = useRevealOnce();
+
+  // Very light parallax: the wave layers drift sideways a few pixels as the
+  // section moves through the viewport (--p runs from -1 to 1).
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined;
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const r = el.getBoundingClientRect();
+      const mid = r.top + r.height / 2;
+      const p = Math.max(-1, Math.min(1, (mid - window.innerHeight / 2) / window.innerHeight));
+      el.style.setProperty('--p', p.toFixed(3));
+    };
+    const onScroll = () => { if (!frame) frame = requestAnimationFrame(update); };
+    update();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [ref]);
+
+  const drift = (k) => ({ transform: `translate3d(calc(var(--p, 0) * ${k}px), 0, 0)` });
+
   return (
     <section ref={ref} className="relative overflow-hidden bg-gradient-to-b from-white to-[#eaf9fc]" aria-label="Book your experience">
-      {/* waves: the top blends from the carousel band, the bottom into the booking area */}
-      <svg aria-hidden="true" viewBox="0 0 1440 90" preserveAspectRatio="none" className="absolute top-0 left-0 w-full h-9 sm:h-12 z-[1]">
-        <path d="M0,0 L1440,0 L1440,38 C1200,86 980,6 720,44 S260,92 0,34 Z" fill={bandColor} />
-        <path d="M0,0 L1440,0 L1440,22 C1180,64 940,0 700,28 S240,70 0,20 Z" fill="#a5e3ee" fillOpacity="0.35" />
-      </svg>
-      <svg aria-hidden="true" viewBox="0 0 2880 90" preserveAspectRatio="none" className="wave-slow absolute bottom-0 left-0 h-9 sm:h-12 w-[200%] z-[1]" fill="#bfeaf5" fillOpacity="0.45">
-        <path d="M0,50 C240,10 480,90 720,50 S1200,10 1440,50 C1680,10 1920,90 2160,50 S2640,10 2880,50 L2880,90 L0,90 Z" />
-      </svg>
-      <svg aria-hidden="true" viewBox="0 0 1440 90" preserveAspectRatio="none" className="absolute bottom-0 left-0 w-full h-8 sm:h-10 z-[1]">
-        <path d="M0,60 C220,24 460,92 720,58 S1180,26 1440,62 L1440,90 L0,90 Z" fill={bottomColor} />
-      </svg>
+      {/* top: turquoise, aqua and band-coloured waves flow down out of the carousel band */}
+      <div className="absolute top-0 inset-x-0 h-9 sm:h-12 z-[1] pointer-events-none" aria-hidden="true">
+        <svg viewBox="0 0 1440 90" preserveAspectRatio="none" className="absolute -inset-x-6 top-0 w-[calc(100%+3rem)] h-full" style={drift(14)}>
+          <path d="M0,0 L1440,0 L1440,52 C1220,92 1000,18 740,56 S260,96 0,48 Z" fill="#7fd6e4" fillOpacity="0.45" />
+        </svg>
+        <svg viewBox="0 0 1440 90" preserveAspectRatio="none" className="absolute -inset-x-6 top-0 w-[calc(100%+3rem)] h-full" style={drift(-10)}>
+          <path d="M0,0 L1440,0 L1440,40 C1200,86 980,8 720,46 S260,92 0,36 Z" fill="#bfeaf5" fillOpacity="0.7" />
+        </svg>
+        <svg viewBox="0 0 1440 90" preserveAspectRatio="none" className="absolute inset-0 w-full h-full">
+          <path d="M0,0 L1440,0 L1440,26 C1180,66 940,0 700,28 S240,70 0,22 Z" fill={bandColor} />
+        </svg>
+      </div>
 
-      <PalmFrond className="palm-sway left-[-26px] top-8 w-36 h-36 sm:w-44 sm:h-44 text-cyan-700/15" />
-      <PalmFrond className="palm-sway right-[-26px] top-8 w-36 h-36 sm:w-44 sm:h-44 text-cyan-700/15" flip />
-      <PalmFrond className="palm-sway hidden md:block left-24 bottom-6 w-20 h-20 text-cyan-600/10 rotate-12" />
-      <PalmFrond className="palm-sway hidden md:block right-24 bottom-6 w-20 h-20 text-cyan-600/10 -rotate-12" flip />
+      {/* bottom: drifting turquoise and aqua swells, then the white wave into the booking area */}
+      <div className="absolute bottom-0 inset-x-0 h-10 sm:h-14 z-[1] pointer-events-none" aria-hidden="true">
+        <svg viewBox="0 0 2880 90" preserveAspectRatio="none" className="wave-slow absolute bottom-0 left-0 h-full w-[200%]" fill="#7fd6e4" fillOpacity="0.35">
+          <path d="M0,46 C240,6 480,86 720,46 S1200,6 1440,46 C1680,6 1920,86 2160,46 S2640,6 2880,46 L2880,90 L0,90 Z" />
+        </svg>
+        <svg viewBox="0 0 1440 90" preserveAspectRatio="none" className="absolute -inset-x-6 bottom-0 w-[calc(100%+3rem)] h-full" style={drift(12)}>
+          <path d="M0,54 C240,22 500,92 760,56 S1200,24 1440,58 L1440,90 L0,90 Z" fill="#bfeaf5" fillOpacity="0.75" />
+        </svg>
+        <svg viewBox="0 0 1440 90" preserveAspectRatio="none" className="absolute inset-0 w-full h-full">
+          <path d="M0,64 C220,34 460,94 720,62 S1180,34 1440,66 L1440,90 L0,90 Z" fill={bottomColor} />
+        </svg>
+      </div>
 
-      <div className={`relative z-[2] max-w-6xl mx-auto px-4 pt-10 sm:pt-12 pb-11 sm:pb-14 transition-all duration-1000 ease-out ${shown ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-        <div className="text-center" style={{ fontFamily: "'Caveat', cursive" }}>
-          <div className="flex flex-col md:flex-row items-center justify-center gap-x-6 gap-y-1 text-cyan-800 text-[26px] sm:text-[32px] leading-tight font-semibold">
+      {/* palms stay still: faint, cropped at the edges */}
+      <PalmFrond className="left-[-30px] top-6 w-36 h-36 sm:w-44 sm:h-44 text-cyan-800/[0.12]" />
+      <PalmFrond className="right-[-30px] top-6 w-36 h-36 sm:w-44 sm:h-44 text-cyan-800/[0.12]" flip />
+      <PalmFrond className="hidden md:block left-24 bottom-6 w-20 h-20 text-cyan-700/[0.08] rotate-12" />
+      <PalmFrond className="hidden md:block right-24 bottom-6 w-20 h-20 text-cyan-700/[0.08] -rotate-12" flip />
+
+      <div className="relative z-[2] max-w-6xl mx-auto px-4 pt-10 sm:pt-12 pb-11 sm:pb-14">
+        <div
+          className={`text-center transition-all duration-1000 ease-out ${shown ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}
+          style={{ fontFamily: "'Caveat', cursive" }}
+        >
+          <div className="flex flex-col md:flex-row items-center justify-center gap-x-6 gap-y-1 text-cyan-900 text-[26px] sm:text-[32px] leading-tight font-semibold">
             <span>From Islands of History</span>
             <IslandIllustration />
             <span>to Experiences for a Lifetime</span>
@@ -287,23 +286,30 @@ export function TransitionBanner({ bandColor = '#dcf3f8', bottomColor = '#f4fbfd
         </div>
 
         <div className="mt-7 flex flex-col md:flex-row md:items-end md:justify-between gap-5">
-          <div className="text-center md:text-left">
+          <div className={`text-center md:text-left transition-all duration-1000 delay-150 ease-out ${shown ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
             <span className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-cyan-700">Book your experience</span>
             <h2 className="font-serif text-2xl md:text-3xl font-black text-navy-800 leading-tight">Choose an Attraction</h2>
             <p className="text-sm text-slate-500 mt-0.5">Select a destination and book your preferred date and time.</p>
           </div>
-          <ol className="grid grid-cols-3 gap-2 sm:flex sm:items-start sm:justify-center md:justify-end sm:gap-8">
-            {JOURNEY.map(({ n, icon: Icon, title, sub }) => (
-              <li key={n} className="flex flex-col items-center text-center sm:flex-row sm:items-start sm:text-left gap-1.5 sm:gap-2.5 sm:max-w-[150px]">
-                <span className="w-10 h-10 rounded-full bg-white border border-cyan-200 text-cyan-700 flex items-center justify-center shadow-sm shrink-0">
-                  <Icon className="w-5 h-5" />
-                </span>
-                <span className="leading-tight">
-                  <span className="block text-[10px] font-bold text-cyan-600">{n}</span>
-                  <span className="block text-sm font-bold text-navy-800">{title}</span>
-                  <span className="block text-[11px] text-slate-500">{sub}</span>
-                </span>
-              </li>
+
+          <ol className="flex items-start justify-center md:justify-end">
+            {JOURNEY.map(({ n, icon: Icon, title, sub }, i) => (
+              <React.Fragment key={n}>
+                {i > 0 && <li aria-hidden="true" className="mt-5 w-6 sm:w-12 border-t border-cyan-300/80 shrink-0" />}
+                <li
+                  className={`flex flex-col items-center text-center sm:flex-row sm:items-start sm:text-left gap-1.5 sm:gap-2.5 sm:max-w-[150px] transition-all duration-700 ease-out ${shown ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-3'}`}
+                  style={{ transitionDelay: shown ? `${400 + i * 220}ms` : '0ms' }}
+                >
+                  <span className="w-10 h-10 rounded-full border-2 border-cyan-500/70 text-cyan-700 bg-white/60 flex items-center justify-center shrink-0">
+                    <Icon className="w-[18px] h-[18px]" />
+                  </span>
+                  <span className="leading-tight">
+                    <span className="block text-[10px] font-bold text-cyan-600">{n}</span>
+                    <span className="block text-sm font-bold text-navy-800">{title}</span>
+                    <span className="block text-[11px] text-slate-500">{sub}</span>
+                  </span>
+                </li>
+              </React.Fragment>
             ))}
           </ol>
         </div>

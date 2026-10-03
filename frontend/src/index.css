@@ -603,3 +603,13 @@ html.accessible-mode :focus-visible {
 .palm-sway { animation: palm-sway 9s ease-in-out infinite; }
 .island-float { animation: island-float 7s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .wave-slow, .palm-sway, .island-float { animation: none; } }
+
+/* Island discovery marquee: endless slow glide, paused on hover/focus. */
+@keyframes island-glide { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.island-marquee-track { animation: island-glide 55s linear infinite; }
+.island-marquee:hover .island-marquee-track,
+.island-marquee:focus-within .island-marquee-track { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .island-marquee { overflow-x: auto; }
+  .island-marquee-track { animation: none; }
+}
