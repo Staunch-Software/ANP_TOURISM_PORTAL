@@ -262,7 +262,7 @@ export function FerrySearch({ onAddToCart, onRequireLogin, user }) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <FerryRouteSearch
         ports={PORTS}
         sourcePort={sourcePort}

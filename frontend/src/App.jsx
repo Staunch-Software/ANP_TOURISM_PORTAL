@@ -534,16 +534,16 @@ export default function App() {
         {activeTab === 'FERRY' && <HeroBanner />}
         {activeTab !== 'ATTRACTIONS' && activeTab !== 'FERRY' && (
           <section
-            className="relative h-36 sm:h-40 flex items-center overflow-hidden bg-navy-800"
+            className="relative h-28 sm:h-32 flex items-center overflow-hidden bg-navy-800"
             style={{ backgroundImage: `linear-gradient(90deg, rgba(5,26,48,0.5) 0%, rgba(5,26,48,0.12) 55%, rgba(5,26,48,0) 100%), url('/images/inner-hero.jpg')`, backgroundSize: 'cover', backgroundPosition: 'center 55%' }}
           >
             <div className="max-w-7xl w-full mx-auto px-4 pb-6">
-              <h1 className="font-serif text-2xl sm:text-3xl font-black text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.45)]">Explore Andaman &amp; Nicobar Islands</h1>
+              <h1 className="font-serif text-xl sm:text-2xl font-black text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.45)]">Explore Andaman &amp; Nicobar Islands</h1>
               <p className="text-sm text-slate-100 mt-1">Pristine Beaches <span className="mx-2 opacity-60">|</span> Historic Landmarks <span className="mx-2 opacity-60">|</span> Unique Experiences</p>
             </div>
           </section>
         )}
-        <main id="attractions-section" className={`flex-1 max-w-7xl w-full mx-auto px-4 py-6 ${['FERRY', 'PASSES'].includes(activeTab) ? '-mt-10 relative z-10' : ''}`}>
+        <main id="attractions-section" className={`flex-1 max-w-7xl w-full mx-auto px-4 py-6 ${['FERRY', 'PASSES'].includes(activeTab) ? '-mt-8 relative z-10' : ''}`}>
           {activeTab === 'ATTRACTIONS' && (
             <AttractionsExplorer
               onAddToCart={refreshCartCount}

@@ -130,21 +130,21 @@ export function MyWallet({ user, onRequireLogin }) {
   const filteredTxns = txnFilter === 'ALL' ? transactions : transactions.filter((t) => t.txn_type === txnFilter);
 
   return (
-    <div className="max-w-5xl mx-auto space-y-5 pb-4">
+    <div className="max-w-5xl mx-auto space-y-3.5 pb-2">
       {/* Header */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
-          <span className="w-12 h-12 rounded-2xl bg-white border border-cyan-200 text-cyan-700 flex items-center justify-center shadow-sm">
-            <Wallet className="w-6 h-6" />
+          <span className="w-10 h-10 rounded-xl bg-white border border-cyan-200 text-cyan-700 flex items-center justify-center shadow-sm">
+            <Wallet className="w-5 h-5" />
           </span>
           <div>
-            <h2 className="font-serif text-3xl font-black text-navy-800 leading-tight">My Wallet</h2>
-            <p className="text-sm text-slate-500">Pre-loaded balance for faster checkout across attractions &amp; ferries</p>
+            <h2 className="font-serif text-2xl font-black text-navy-800 leading-tight">My Wallet</h2>
+            <p className="text-xs text-slate-500">Pre-loaded balance for faster checkout across attractions &amp; ferries</p>
           </div>
         </div>
         <button
           onClick={() => fetchWallet()}
-          className="px-5 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-navy-800 flex items-center gap-2 shadow-sm transition-colors"
+          className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-navy-800 flex items-center gap-2 shadow-sm transition-colors"
           title="Refresh"
         >
           <RefreshCcw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh Balance
@@ -152,13 +152,13 @@ export function MyWallet({ user, onRequireLogin }) {
       </div>
 
       {/* Balance Card */}
-      <div className="rounded-2xl p-6 sm:p-7 text-white shadow-lg relative overflow-hidden bg-gradient-to-br from-navy-800 via-navy-700 to-cyan-800">
+      <div className="rounded-2xl px-5 py-4 text-white shadow-lg relative overflow-hidden bg-gradient-to-br from-navy-800 via-navy-700 to-cyan-800">
         <div className="absolute -right-10 -top-12 w-56 h-56 rounded-full bg-cyan-400/10"></div>
         <div className="absolute right-16 -bottom-16 w-48 h-48 rounded-full bg-cyan-300/10"></div>
-        <Wallet className="absolute right-8 top-1/2 -translate-y-1/2 w-16 h-16 text-white/20 hidden sm:block" />
+        <Wallet className="absolute right-8 top-1/2 -translate-y-1/2 w-12 h-12 text-white/20 hidden sm:block" />
         <div className="relative">
           <span className="text-xs uppercase tracking-widest text-cyan-200 font-semibold">Available Balance</span>
-          <div className="font-serif text-4xl sm:text-5xl font-black mt-1">
+          <div className="font-serif text-3xl font-black mt-0.5">
             ₹{(wallet?.balance ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
           </div>
           {isSuspended && (
@@ -172,18 +172,18 @@ export function MyWallet({ user, onRequireLogin }) {
 
       {/* Top-up */}
       {!isSuspended && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3">
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-2.5">
           <div className="flex items-center gap-2 flex-wrap">
             <PlusCircle className="w-5 h-5 text-cyan-700" />
-            <h3 className="text-base font-bold text-navy-800">Add Money</h3>
+            <h3 className="text-sm font-bold text-navy-800">Add Money</h3>
             <span className="text-xs text-slate-500">Add funds to your wallet for quick and hassle-free bookings.</span>
           </div>
-          <div className="flex flex-wrap gap-2.5">
+          <div className="flex flex-wrap gap-2">
             {TOPUP_PRESETS.map((amt) => (
               <button
                 key={amt}
                 onClick={() => setTopupAmount(String(amt))}
-                className={`px-5 py-2.5 rounded-xl text-sm font-bold border transition-colors ${
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
                   String(amt) === topupAmount
                     ? 'bg-cyan-700 text-white border-cyan-700 shadow'
                     : 'bg-white text-navy-800 border-slate-300 hover:border-cyan-400'
@@ -194,20 +194,20 @@ export function MyWallet({ user, onRequireLogin }) {
             ))}
           </div>
           <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex-1 flex items-center bg-white border border-slate-300 rounded-xl px-4 focus-within:border-cyan-500">
+            <div className="flex-1 flex items-center bg-white border border-slate-300 rounded-lg px-3 focus-within:border-cyan-500">
               <span className="text-slate-400 text-base mr-2">₹</span>
               <input
                 type="number"
                 min="1"
                 value={topupAmount}
                 onChange={(e) => setTopupAmount(e.target.value)}
-                className="w-full py-3 text-base font-mono outline-none bg-transparent"
+                className="w-full py-2 text-sm font-mono outline-none bg-transparent"
               />
             </div>
             <button
               disabled={topupLoading}
               onClick={handleTopup}
-              className="px-8 py-3 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-xl text-sm shadow-md disabled:opacity-60 flex items-center justify-center gap-2"
+              className="px-6 py-2 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-lg text-xs shadow-md disabled:opacity-60 flex items-center justify-center gap-2"
             >
               <Wallet className="w-4 h-4" /> {topupLoading ? 'Processing...' : 'Add Money'}
             </button>

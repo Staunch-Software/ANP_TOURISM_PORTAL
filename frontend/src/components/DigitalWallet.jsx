@@ -223,24 +223,24 @@ export function DigitalWallet({ user, onRequireLogin }) {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3.5">
       {/* Header */}
-      <div className="bg-white border border-slate-200 rounded-2xl px-6 py-5 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white border border-slate-200 rounded-2xl px-5 py-3.5 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <p className="text-sm font-semibold text-navy-800 flex items-center gap-2 flex-wrap">
             <ShieldCheck className="w-4 h-4 text-cyan-700" /> Secure Digital Pass
             <span className="text-slate-300">•</span>
             <span className="text-cyan-800">Unified QR per Order</span>
           </p>
-          <h2 className="font-serif text-3xl font-black text-navy-800 mt-1">My Digital Passes</h2>
-          <p className="text-sm text-slate-500 mt-0.5">
+          <h2 className="font-serif text-2xl font-black text-navy-800 mt-0.5">My Digital Passes</h2>
+          <p className="text-xs text-slate-500 mt-0.5">
             One QR code per booking covers every attraction and ferry seat in that order — each gate checks off only its own entry.
           </p>
         </div>
         <button
           onClick={fetchPasses}
           disabled={loading}
-          className="px-5 py-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-sm font-bold text-navy-800 flex items-center gap-2 transition-all self-start md:self-auto"
+          className="px-4 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-navy-800 flex items-center gap-2 transition-all self-start md:self-auto"
         >
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh Wallet
         </button>

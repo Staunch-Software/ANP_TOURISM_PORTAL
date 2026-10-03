@@ -53,7 +53,7 @@ export function TransactionTypeBadge({ txn }) {
   const Icon = credit ? ArrowDownLeft : ArrowUpRight;
   return (
     <div className="flex items-center gap-2.5">
-      <span className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${credit ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+      <span className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${credit ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
         <Icon className="w-4 h-4" />
       </span>
       <div>
@@ -75,7 +75,7 @@ export function TransactionRow({ txn }) {
   const title = TXN_LABEL[txn.txn_type] || txn.txn_type;
 
   return (
-    <div className={`px-4 py-4 border-b border-slate-100 last:border-b-0 hover:bg-cyan-50/40 transition-colors ${GRID}`}>
+    <div className={`px-4 py-2.5 border-b border-slate-100 last:border-b-0 hover:bg-cyan-50/40 transition-colors ${GRID}`}>
       {/* Date & time */}
       <div className="hidden md:block">
         <p className="text-sm font-semibold text-navy-800">{date}</p>
@@ -101,7 +101,7 @@ export function TransactionRow({ txn }) {
       <div className="mt-2 md:mt-0 flex items-end justify-between md:block">
         <div className="md:text-right">
           <p className="md:hidden text-[10px] uppercase tracking-wide text-slate-400">Amount</p>
-          <p className={`text-base font-black font-mono ${credit ? 'text-emerald-600' : 'text-red-600'}`}>{amount}</p>
+          <p className={`text-sm font-black font-mono ${credit ? 'text-emerald-600' : 'text-red-600'}`}>{amount}</p>
         </div>
         <div className="md:hidden text-right">
           <p className="text-[10px] uppercase tracking-wide text-slate-400">Balance</p>
@@ -120,9 +120,9 @@ export function TransactionHistory({ loading, transactions, filter, setFilter, v
   const shown = transactions.slice(0, visibleCount);
   return (
     <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-      <div className="px-5 py-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <span className="w-10 h-10 rounded-xl bg-cyan-50 text-cyan-700 border border-cyan-200 flex items-center justify-center"><Wallet className="w-5 h-5" /></span>
+          <span className="w-8 h-8 rounded-lg bg-cyan-50 text-cyan-700 border border-cyan-200 flex items-center justify-center"><Wallet className="w-4 h-4" /></span>
           <div>
             <h3 className="font-bold text-navy-800 leading-tight">Transaction History</h3>
             <p className="text-xs text-slate-500">Your recent wallet transactions</p>
@@ -133,7 +133,7 @@ export function TransactionHistory({ loading, transactions, filter, setFilter, v
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="appearance-none pl-4 pr-9 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-navy-800 focus:border-cyan-500 focus:outline-none"
+            className="appearance-none pl-3 pr-8 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-navy-800 focus:border-cyan-500 focus:outline-none"
           >
             {TXN_FILTERS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
           </select>
@@ -153,7 +153,7 @@ export function TransactionHistory({ loading, transactions, filter, setFilter, v
         <div className="text-center py-10 border-t border-slate-100 text-sm text-slate-500">No transactions of this type.</div>
       ) : (
         <div className="border-t border-slate-100">
-          <div className={`hidden md:grid md:grid-cols-[125px_115px_minmax(0,1fr)_115px_115px_120px] md:gap-4 px-4 py-2.5 bg-cyan-50/70 text-[11px] font-bold uppercase tracking-wide text-slate-500`}>
+          <div className={`hidden md:grid md:grid-cols-[125px_115px_minmax(0,1fr)_115px_115px_120px] md:gap-4 px-4 py-2 bg-cyan-50/70 text-[10px] font-bold uppercase tracking-wide text-slate-500`}>
             <span>Date &amp; Time</span>
             <span>Type</span>
             <span>Description</span>
@@ -188,10 +188,10 @@ export function WalletInfoBar() {
     { icon: Undo2, title: 'Refunds & Cancellations', sub: 'Refunds will be credited to your wallet' },
   ];
   return (
-    <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <section className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
       {items.map(({ icon: Icon, title, sub }) => (
         <div key={title} className="flex items-center gap-3">
-          <Icon className="w-7 h-7 text-cyan-700 shrink-0" />
+          <Icon className="w-6 h-6 text-cyan-700 shrink-0" />
           <div>
             <p className="text-sm font-bold text-navy-800 leading-tight">{title}</p>
             <p className="text-xs text-slate-500">{sub}</p>

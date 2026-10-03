@@ -106,7 +106,7 @@ function CardImage({ ent }) {
       src={ent.image_url}
       alt={ent.title}
       loading="lazy"
-      className="print-hide hidden sm:block w-[130px] h-[96px] object-cover rounded-xl border border-slate-200 shrink-0"
+      className="print-hide hidden sm:block w-[110px] h-[80px] object-cover rounded-xl border border-slate-200 shrink-0"
     />
   );
 }
@@ -118,12 +118,12 @@ export function PassCard({ pass, status, onZoom, onDetails, onPrint, menuOpen, o
   const dim = cancelled || status === 'expired';
 
   return (
-    <article data-pass-card={pass.booking_ref} className={`rounded-2xl border p-4 shadow-sm ${cancelled ? 'bg-red-50/50 border-red-200' : 'bg-white border-slate-200 hover:border-cyan-300 transition-colors'}`}>
+    <article data-pass-card={pass.booking_ref} className={`rounded-2xl border p-3 shadow-sm ${cancelled ? 'bg-red-50/50 border-red-200' : 'bg-white border-slate-200 hover:border-cyan-300 transition-colors'}`}>
       <div className="flex flex-col sm:flex-row gap-4">
         {/* QR */}
-        <div className="shrink-0 w-[140px] sm:w-[112px] mx-auto sm:mx-0 flex flex-col items-center gap-2">
+        <div className="shrink-0 w-[130px] sm:w-[96px] mx-auto sm:mx-0 flex flex-col items-center gap-2">
           {cancelled ? (
-            <div className="w-full h-[150px] rounded-xl border-2 border-dashed border-red-200 bg-white/60 flex flex-col items-center justify-center text-center">
+            <div className="w-full h-[120px] rounded-xl border-2 border-dashed border-red-200 bg-white/60 flex flex-col items-center justify-center text-center">
               <XCircle className="w-8 h-8 text-red-400 mb-1" />
               <span className="text-xs font-extrabold text-red-500">QR VOID</span>
               <span className="text-[10px] text-red-400 mt-0.5 px-1">Booking cancelled</span>
@@ -153,7 +153,7 @@ export function PassCard({ pass, status, onZoom, onDetails, onPrint, menuOpen, o
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <StatusChip status={status} />
-              <h3 className="font-serif text-xl font-black text-navy-800 leading-tight mt-1.5 truncate">{pass.lead_passenger_name}</h3>
+              <h3 className="font-serif text-lg font-black text-navy-800 leading-tight mt-1 truncate">{pass.lead_passenger_name}</h3>
             </div>
             {cancelled && <RefundSummary pass={pass} />}
           </div>
@@ -251,7 +251,7 @@ const FILTERS = [
 
 export function PassFilterBar({ counts, filter, setFilter, query, setQuery, sort, setSort }) {
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm flex flex-col lg:flex-row lg:items-center gap-3">
+    <div className="bg-white border border-slate-200 rounded-2xl p-2.5 shadow-sm flex flex-col lg:flex-row lg:items-center gap-2.5">
       <div className="flex flex-wrap gap-2">
         {FILTERS.filter(([key]) => key !== 'expired' || counts.expired > 0).map(([key, label]) => (
           <button
@@ -259,7 +259,7 @@ export function PassFilterBar({ counts, filter, setFilter, query, setQuery, sort
             type="button"
             onClick={() => setFilter(key)}
             aria-pressed={filter === key}
-            className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
               filter === key ? 'bg-cyan-700 text-white shadow' : 'bg-slate-50 text-navy-800 hover:bg-slate-100 border border-slate-200'
             }`}
           >
@@ -275,12 +275,12 @@ export function PassFilterBar({ counts, filter, setFilter, query, setQuery, sort
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by booking ID, attraction or ferry..."
-            className="w-full pl-9 pr-3 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-navy-800 focus:border-cyan-500 focus:outline-none"
+            className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-navy-800 focus:border-cyan-500 focus:outline-none"
           />
         </label>
         <label className="flex items-center gap-2 text-sm font-semibold text-slate-600">
           <ArrowDownUp className="w-4 h-4 text-slate-500" /> Sort by
-          <select value={sort} onChange={(e) => setSort(e.target.value)} className="px-3 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-navy-800">
+          <select value={sort} onChange={(e) => setSort(e.target.value)} className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-navy-800">
             <option value="latest">Travel Date (Latest)</option>
             <option value="earliest">Travel Date (Earliest)</option>
           </select>
@@ -293,15 +293,15 @@ export function PassFilterBar({ counts, filter, setFilter, query, setQuery, sort
 export function PassSection({ title, count, hint, icon: Icon, tone = 'cyan', children }) {
   const toneCls = tone === 'red' ? 'text-red-500 border-red-200' : tone === 'slate' ? 'text-slate-500 border-slate-300' : 'text-cyan-700 border-cyan-300';
   return (
-    <section className="space-y-3">
+    <section className="space-y-2.5">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="font-serif text-xl font-black text-navy-800 flex items-center gap-2.5">
-          <span className={`w-9 h-9 rounded-full bg-white border-2 flex items-center justify-center ${toneCls}`}><Icon className="w-5 h-5" /></span>
+        <h3 className="font-serif text-lg font-black text-navy-800 flex items-center gap-2.5">
+          <span className={`w-8 h-8 rounded-full bg-white border-2 flex items-center justify-center ${toneCls}`}><Icon className="w-4 h-4" /></span>
           {title} <span className="font-sans text-base font-semibold text-slate-500">({count})</span>
         </h3>
         {hint && <p className="hidden sm:block text-xs text-slate-500">{hint}</p>}
       </div>
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">{children}</div>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">{children}</div>
     </section>
   );
 }
@@ -314,10 +314,10 @@ export function PassInfoBar() {
     { icon: Info, title: 'Schedules Subject to Change', sub: 'Due to weather and operational conditions' },
   ];
   return (
-    <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <section className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
       {items.map(({ icon: Icon, title, sub }) => (
         <div key={title} className="flex items-center gap-3">
-          <Icon className="w-7 h-7 text-cyan-700 shrink-0" />
+          <Icon className="w-6 h-6 text-cyan-700 shrink-0" />
           <div>
             <p className="text-sm font-bold text-navy-800 leading-tight">{title}</p>
             <p className="text-xs text-slate-500">{sub}</p>
