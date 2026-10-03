@@ -42,6 +42,15 @@ API.interceptors.response.use(
     return response;
   },
   (error) => {
+    // FastAPI answers rule violations (422) with a list of {msg, loc} objects.
+    // Every caller shows `detail` as text, so flatten the list into one readable line.
+    const detailList = error.response?.data?.detail;
+    if (Array.isArray(detailList)) {
+      error.response.data.detail = detailList
+        .map((d) => (typeof d === 'string' ? d : d?.msg))
+        .filter(Boolean)
+        .join('; ') || 'Please check the details you entered.';
+    }
     if (error.response?.status === 401 && localStorage.getItem('aniidco_token')) {
       localStorage.removeItem('aniidco_token');
       localStorage.removeItem('aniidco_user');
