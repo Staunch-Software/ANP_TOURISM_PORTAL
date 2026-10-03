@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ShieldCheck, ShoppingBag, LogOut, LogIn, Anchor, Waves, Menu, X, Wallet,
-  Home, Landmark, Ship, Ticket, LifeBuoy, Users
+  Home, Landmark, Ship, Ticket, LifeBuoy, Users, ChevronDown, Accessibility, Languages
 } from 'lucide-react';
 
 // Tourist top-nav: one data-driven list so desktop and the phone drawer match.
@@ -45,6 +45,7 @@ export function Navbar({
 }) {
   const [accessibleMode, setAccessibleMode] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const headerRef = useRef(null);
 
   useEffect(() => {
@@ -105,14 +106,14 @@ export function Navbar({
         </button>
 
         <div
-          className="portal-header-brand flex items-center gap-3 cursor-pointer group min-w-0"
+          className="portal-header-brand flex items-center gap-3 cursor-pointer group shrink-0"
           onClick={() => { setActiveTab(homeTab); setIsMobileMenuOpen(false); }}
         >
           <img src="/images/govt-seal.png" alt="Emblem" className="w-11 h-11 object-contain bg-white rounded-lg p-1 shadow-md shrink-0" />
           <div className="min-w-0">
-            <div className="hidden sm:block text-[11px] text-slate-300 leading-tight truncate">Andaman &amp; Nicobar Administration</div>
-            <div className="brand-title font-sans font-extrabold text-base sm:text-xl tracking-tight text-white leading-tight truncate">ANIIDCO Tourism Portal</div>
-            <span className="brand-subtitle text-[10px] text-cyan-200 tracking-wider uppercase font-semibold hidden sm:block truncate">
+            <div className="hidden sm:block text-[11px] text-slate-300 leading-tight whitespace-nowrap">Andaman &amp; Nicobar Administration</div>
+            <div className="brand-title font-sans font-extrabold text-base sm:text-xl tracking-tight text-white leading-tight whitespace-nowrap">ANIIDCO Tourism Portal</div>
+            <span className="brand-subtitle text-[10px] text-cyan-200 tracking-wider uppercase font-semibold hidden sm:block whitespace-nowrap">
               Official Single-Window Ticketing
             </span>
           </div>
@@ -135,7 +136,7 @@ export function Navbar({
                       setTimeout(() => document.getElementById('popular-attractions')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
                     }
                   }}
-                  className={`px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap flex items-center gap-1.5 transition-colors ${
+                  className={`px-2 xl:px-3 py-2 rounded-lg text-[13px] xl:text-sm font-semibold whitespace-nowrap flex items-center gap-1.5 transition-colors ${
                     isActive ? 'bg-cyan-700 text-white shadow-md' : 'text-slate-200 hover:text-white hover:bg-white/10'
                   }`}
                 >
@@ -160,10 +161,6 @@ export function Navbar({
 
         {/* Right Section: Cart + Account */}
         <div className="portal-header-actions flex items-center gap-3 shrink-0">
-          <div className="hidden 2xl:flex items-center gap-3 text-xs text-slate-300">
-            <button onClick={toggleAccessibleMode} title="Toggle larger text & high-contrast mode" className="underline underline-offset-2 hover:text-white">Screen Reader</button>
-            <button onClick={() => alert('हिन्दी इंटरफ़ेस जल्द उपलब्ध होगा (Hindi interface coming soon).')} className="underline underline-offset-2 hover:text-white">हिन्दी</button>
-          </div>
           {!isStaffUser && (
             <button
               onClick={onOpenCart}
@@ -181,25 +178,43 @@ export function Navbar({
           )}
 
           {user ? (
-            <div className="flex items-center gap-3 bg-navy-700 border border-navy-600 px-3 py-1.5 rounded-lg">
-              <div className="portal-account-badge w-8 h-8 rounded-md bg-cyan-600/20 text-cyan-300 border border-cyan-600/40 flex items-center justify-center font-bold text-xs">
-                {ROLE_BADGE[user.role] || 'TR'}
-              </div>
-              <div className="portal-mobile-identity lg:hidden min-w-0" title={displayName}>
-                <span className="portal-mobile-name block text-xs font-bold text-white">{displayName}</span>
-                <span className="portal-mobile-status block text-emerald-400 font-medium">Verified Visitor</span>
-              </div>
-              <div className="hidden lg:block text-left">
-                <div className="text-xs font-bold text-white leading-tight max-w-36 break-words">{displayName}</div>
-                <div className="text-[10px] text-emerald-400 font-medium">Verified Visitor</div>
-              </div>
+            <div className="relative">
               <button
-                onClick={onLogout}
-                title="Log Out"
-                className="text-slate-300 hover:text-red-400 p-1.5 rounded-lg hover:bg-navy-600 transition-colors shrink-0"
+                type="button"
+                onClick={() => setAccountMenuOpen((v) => !v)}
+                aria-haspopup="menu"
+                aria-expanded={accountMenuOpen}
+                className="flex items-center gap-2.5 bg-navy-700/70 hover:bg-navy-700 border border-navy-600 pl-1.5 pr-2.5 py-1.5 rounded-full transition-colors"
               >
-                <LogOut className="w-4 h-4" />
+                <span className="portal-account-badge w-8 h-8 rounded-full bg-white text-navy-800 flex items-center justify-center font-extrabold text-xs">
+                  {ROLE_BADGE[user.role] || (displayName.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase() || 'TR')}
+                </span>
+                <span className="hidden xl:block text-left leading-tight">
+                  <span className="block text-xs font-bold text-white max-w-28 truncate">{displayName}</span>
+                  <span className="block text-[10px] text-emerald-300 font-medium">Verified Visitor</span>
+                </span>
+                <ChevronDown className="w-4 h-4 text-slate-300" />
               </button>
+              {accountMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setAccountMenuOpen(false)} />
+                  <div role="menu" className="absolute right-0 top-12 z-50 w-56 bg-white border border-slate-200 rounded-xl shadow-xl py-1.5 text-sm font-semibold text-navy-800">
+                    <div className="px-4 py-2 border-b border-slate-100">
+                      <p className="font-bold truncate">{displayName}</p>
+                      <p className="text-[11px] text-emerald-600">Verified Visitor</p>
+                    </div>
+                    <button type="button" role="menuitem" onClick={() => { toggleAccessibleMode(); setAccountMenuOpen(false); }} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2">
+                      <Accessibility className="w-4 h-4 text-cyan-700" /> Screen Reader mode
+                    </button>
+                    <button type="button" role="menuitem" onClick={() => { alert('हिन्दी इंटरफ़ेस जल्द उपलब्ध होगा (Hindi interface coming soon).'); setAccountMenuOpen(false); }} className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2">
+                      <Languages className="w-4 h-4 text-cyan-700" /> हिन्दी
+                    </button>
+                    <button type="button" role="menuitem" onClick={() => { setAccountMenuOpen(false); onLogout(); }} className="w-full text-left px-4 py-2 hover:bg-red-50 text-red-600 flex items-center gap-2 border-t border-slate-100">
+                      <LogOut className="w-4 h-4" /> Log out
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           ) : (
             // Straight into the tourist login (Google Sign-In front and

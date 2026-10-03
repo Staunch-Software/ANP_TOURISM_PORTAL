@@ -11,6 +11,7 @@ import {
 import { LoginModal } from './components/LoginModal';
 import { AttractionsExplorer } from './components/AttractionsExplorer';
 import { FerrySearch } from './components/FerrySearch';
+import { HeroBanner } from './components/ferry/FerryParts';
 import { CartDrawer } from './components/CartDrawer';
 import { DigitalWallet } from './components/DigitalWallet';
 import { MyWallet } from './components/MyWallet';
@@ -530,7 +531,8 @@ export default function App() {
         </div>
       ) : (
         <>
-        {activeTab !== 'ATTRACTIONS' && (
+        {activeTab === 'FERRY' && <HeroBanner />}
+        {activeTab !== 'ATTRACTIONS' && activeTab !== 'FERRY' && (
           <section
             className="relative h-28 sm:h-32 flex items-center overflow-hidden bg-navy-800"
             style={{ backgroundImage: "linear-gradient(90deg, rgba(5,26,48,0.78), rgba(5,26,48,0.35)), url('/images/home-hero-beach.jpg')", backgroundSize: 'cover', backgroundPosition: 'center 40%' }}
@@ -541,7 +543,7 @@ export default function App() {
             </div>
           </section>
         )}
-        <main id="attractions-section" className={`flex-1 max-w-7xl w-full mx-auto px-4 py-6 ${activeTab !== 'ATTRACTIONS' ? '-mt-8 relative z-10' : ''}`}>
+        <main id="attractions-section" className={`flex-1 max-w-7xl w-full mx-auto px-4 py-6 ${['FERRY', 'PASSES'].includes(activeTab) ? '-mt-10 relative z-10' : ''}`}>
           {activeTab === 'ATTRACTIONS' && (
             <AttractionsExplorer
               onAddToCart={refreshCartCount}
