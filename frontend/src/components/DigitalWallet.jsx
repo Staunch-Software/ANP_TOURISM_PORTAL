@@ -183,7 +183,19 @@ export function DigitalWallet({ user, onRequireLogin }) {
       status={status}
       onZoom={() => setZoomPass(pass)}
       onDetails={() => setDetailsPass(pass.booking_ref)}
-      onPrint={() => window.print()}
+      onPrint={() => {
+        // Print just this pass (no nav, other passes or photo) and tidy up afterwards.
+        const card = document.querySelector(`[data-pass-card="${pass.booking_ref}"]`);
+        card?.classList.add('print-target');
+        document.body.classList.add('print-one-pass');
+        const cleanup = () => {
+          card?.classList.remove('print-target');
+          document.body.classList.remove('print-one-pass');
+          window.removeEventListener('afterprint', cleanup);
+        };
+        window.addEventListener('afterprint', cleanup);
+        window.print();
+      }}
       menuOpen={menuFor === pass.booking_ref}
       onToggleMenu={() => setMenuFor(menuFor === pass.booking_ref ? null : pass.booking_ref)}
       menuItems={menuItemsFor(pass, status)}

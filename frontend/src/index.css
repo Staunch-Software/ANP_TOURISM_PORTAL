@@ -566,3 +566,13 @@ html.accessible-mode :focus-visible {
     padding: 0.25rem;
   }
 }
+
+/* Download Pass prints only the chosen pass: no navigation, other passes,
+   photo or action buttons. */
+@media print {
+  body.print-one-pass * { visibility: hidden; }
+  body.print-one-pass .print-target,
+  body.print-one-pass .print-target * { visibility: visible; }
+  body.print-one-pass .print-target { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none; }
+  .print-target .print-hide { display: none !important; }
+}

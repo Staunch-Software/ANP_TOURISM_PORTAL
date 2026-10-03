@@ -103,7 +103,7 @@ function CardImage({ ent }) {
       src={ent.image_url}
       alt={ent.title}
       loading="lazy"
-      className="hidden sm:block xl:hidden 2xl:block w-[130px] h-[96px] object-cover rounded-xl border border-slate-200 shrink-0"
+      className="print-hide hidden sm:block xl:hidden 2xl:block w-[130px] h-[96px] object-cover rounded-xl border border-slate-200 shrink-0"
     />
   );
 }
@@ -115,7 +115,7 @@ export function PassCard({ pass, status, onZoom, onDetails, onPrint, menuOpen, o
   const dim = cancelled || status === 'expired';
 
   return (
-    <article className={`rounded-2xl border p-4 shadow-sm ${cancelled ? 'bg-red-50/50 border-red-200' : 'bg-white border-slate-200 hover:border-cyan-300 transition-colors'}`}>
+    <article data-pass-card={pass.booking_ref} className={`rounded-2xl border p-4 shadow-sm ${cancelled ? 'bg-red-50/50 border-red-200' : 'bg-white border-slate-200 hover:border-cyan-300 transition-colors'}`}>
       <div className="flex flex-col sm:flex-row gap-4">
         {/* QR */}
         <div className="shrink-0 w-[140px] sm:w-[112px] mx-auto sm:mx-0 flex flex-col items-center gap-2">
@@ -165,7 +165,7 @@ export function PassCard({ pass, status, onZoom, onDetails, onPrint, menuOpen, o
           </div>
           <p className="text-[11px] text-slate-500 mt-2">Order <span className="font-mono">{pass.order_ref}</span></p>
 
-          <div className="mt-auto pt-3 flex items-center justify-end gap-2 relative flex-wrap">
+          <div className="print-hide mt-auto pt-3 flex items-center justify-end gap-2 relative flex-wrap">
             <button
               type="button"
               onClick={onDetails}
