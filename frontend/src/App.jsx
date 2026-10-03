@@ -4,9 +4,7 @@ import API from './api/client';
 import { Navbar } from './components/Navbar';
 import {
   ConnectedIslandsPage,
-  ConnectedIslandsPreview,
   HeritageSitesPage,
-  HeritageSitesPreview,
 } from './components/HeritageSites';
 import { LoginModal } from './components/LoginModal';
 import { AttractionsExplorer } from './components/AttractionsExplorer';
@@ -28,7 +26,7 @@ import { SupportCenter } from './components/SupportCenter';
 import { AIChatWidget } from './components/AIChatWidget';
 import {
   Waves, ArrowUpRight, Users2, MapPin, Search, ShieldCheck,
-  Landmark, Clock3, Ship
+  Landmark, Clock3, Ship, Palmtree
 } from 'lucide-react';
 
 // Editorial hero carousel — every image here is a verified, real Andaman
@@ -446,13 +444,9 @@ export default function App() {
       {/* Trust strip */}
       <div className="portal-trust-strip mt-3 border-b border-cyan-100">
         <div className="portal-trust-grid w-full px-0 py-5 grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-0">
-          <div className="portal-trust-item">
-            <HeritageSitesPreview />
-          </div>
-          <div className="portal-trust-item">
-            <ConnectedIslandsPreview />
-          </div>
           {[
+            { Icon: ShieldCheck, value: '9', label: 'Heritage & Nature Sites' },
+            { Icon: Palmtree, value: '3', label: 'Islands Connected' },
             { Icon: Landmark, value: '100%', label: 'Tamper-Proof Digital Passes' },
             { Icon: Clock3, value: '24×7', label: 'Booking Availability' },
           ].map(({ Icon, value, label }) => (
