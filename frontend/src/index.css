@@ -576,3 +576,14 @@ html.accessible-mode :focus-visible {
   body.print-one-pass .print-target { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none; }
   .print-target .print-hide { display: none !important; }
 }
+
+/* Group / Institutional booking modal: soft ocean-blue field styling and a gentle entrance. */
+@keyframes gb-pop { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
+.gb-pop { animation: gb-pop 200ms ease-out both; }
+.gbm input, .gbm select, .gbm textarea {
+  border-color: #b9e3ef; border-radius: 10px; transition: border-color 150ms, box-shadow 150ms;
+}
+.gbm input:focus, .gbm select:focus, .gbm textarea:focus {
+  outline: none; border-color: #0b9bb5; box-shadow: 0 0 0 3px rgba(11,155,181,0.18);
+}
+@media (prefers-reduced-motion: reduce) { .gb-pop { animation: none; } }

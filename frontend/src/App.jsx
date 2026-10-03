@@ -13,6 +13,7 @@ import { AttractionsExplorer } from './components/AttractionsExplorer';
 import { FerrySearch } from './components/FerrySearch';
 import { HeroBanner } from './components/ferry/FerryParts';
 import { WaveDivider } from './components/WaveDivider';
+import { HeroSlogan } from './components/HeroSlogan';
 import { CartDrawer } from './components/CartDrawer';
 import { DigitalWallet } from './components/DigitalWallet';
 import { MyWallet } from './components/MyWallet';
@@ -542,6 +543,7 @@ export default function App() {
               <h1 className="font-serif text-xl sm:text-2xl font-black text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.45)]">Explore Andaman &amp; Nicobar Islands</h1>
               <p className="text-sm text-slate-100 mt-1">Pristine Beaches <span className="mx-2 opacity-60">|</span> Historic Landmarks <span className="mx-2 opacity-60">|</span> Unique Experiences</p>
             </div>
+            <HeroSlogan />
             <WaveDivider />
           </section>
         )}

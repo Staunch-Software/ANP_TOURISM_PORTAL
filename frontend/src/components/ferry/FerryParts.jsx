@@ -1,5 +1,6 @@
 import React from 'react';
 import { WaveDivider } from '../WaveDivider';
+import { HeroSlogan } from '../HeroSlogan';
 import {
   Ship, Calendar, Clock, MapPin, Armchair, ArrowLeftRight, ArrowRight, Search, Heart,
   Snowflake, UtensilsCrossed, Luggage, Bath, Star, Info, BadgeCheck, Ticket, ShieldCheck, CalendarClock,
@@ -58,6 +59,7 @@ export function HeroBanner() {
           Safe <span className="mx-2 opacity-60">|</span> Comfortable <span className="mx-2 opacity-60">|</span> Scenic Journeys
         </p>
       </div>
+      <HeroSlogan />
       <WaveDivider />
     </section>
   );

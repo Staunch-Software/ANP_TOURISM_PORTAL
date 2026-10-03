@@ -164,7 +164,7 @@ function BookingCard({ booking, onPaymentSuccess, onViewPasses }) {
       </div>
 
       {/* Body */}
-      <div className="p-5 space-y-4">
+      <div className="p-4 space-y-3">
         {/* Status banner */}
         <div
           className={`p-3 rounded-xl border text-[11px] leading-relaxed flex items-start gap-2 ${meta.banner}`}
@@ -290,24 +290,43 @@ export function MyGroupBookings({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const fetchBookings = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const fetchBookings = useCallback(async (silent = false) => {
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const res = await API.get('/group-bookings/my-requests');
       setBookings(res.data);
     } catch (err) {
-      setError(
-        err.response?.data?.detail ||
-          'Could not load your group booking requests. Please try again.'
-      );
+      if (!silent) {
+        setError(
+          err.response?.data?.detail ||
+            'Could not load your group booking requests. Please try again.'
+        );
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     if (user) fetchBookings();
+  }, [user, fetchBookings]);
+
+  // Approval status changes when ANIIDCO reviews a request, so quietly
+  // re-read the list every 30s and when the tab regains focus.
+  useEffect(() => {
+    if (!user) return undefined;
+    const refresh = () => {
+      if (document.visibilityState === 'visible') fetchBookings(true);
+    };
+    const timer = setInterval(refresh, 30000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', refresh);
+    };
   }, [user, fetchBookings]);
 
   // ── Not logged in ──────────────────────────────────────────────────────────
@@ -365,20 +384,22 @@ export function MyGroupBookings({
   // ── Empty state ────────────────────────────────────────────────────────────
   if (bookings.length === 0) {
     return (
-      <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center max-w-md mx-auto my-12 shadow-sm">
-        <div className="w-14 h-14 rounded-2xl bg-cyan-50 text-cyan-700 border border-cyan-200 flex items-center justify-center mx-auto mb-4">
-          <Users2 className="w-7 h-7" />
+      <div className="bg-white border border-slate-200 rounded-3xl px-8 py-8 text-center max-w-lg mx-auto my-6 shadow-lg">
+        <div className="w-16 h-16 rounded-full bg-cyan-50 text-cyan-700 border border-cyan-200 flex items-center justify-center mx-auto mb-3">
+          <Users2 className="w-8 h-8" />
         </div>
-        <h3 className="font-serif text-lg font-black text-navy-800">
+        <h3 className="font-serif text-xl font-black text-navy-800">
           No Group Bookings Yet
         </h3>
-        <p className="text-xs text-slate-500 mt-1 mb-6 max-w-xs mx-auto">
-          You haven't submitted any group booking requests. Group bookings are
-          available for schools, colleges, corporates, and tour operators.
+        <p className="text-sm text-navy-800 mt-1">
+          You haven&apos;t submitted any group booking requests.
+        </p>
+        <p className="text-xs text-slate-500 mt-1 mb-5 max-w-xs mx-auto">
+          Group bookings are available for schools, colleges, corporates, and tour operators.
         </p>
         <button
           onClick={onOpenGroupBooking}
-          className="w-full py-2.5 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-lg text-xs shadow-md flex items-center justify-center gap-2"
+          className="w-full sm:w-auto sm:px-8 h-11 bg-cyan-700 hover:bg-cyan-600 hover:-translate-y-px active:translate-y-0 text-white font-bold rounded-xl text-sm shadow-md hover:shadow-lg transition-all duration-150 flex items-center justify-center gap-2 mx-auto"
         >
           <Users2 className="w-3.5 h-3.5" />
           Start a Group Booking
@@ -389,7 +410,7 @@ export function MyGroupBookings({
 
   // ── Full list ──────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
@@ -462,7 +483,7 @@ export function MyGroupBookings({
       </div>
 
       {/* Cards grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {bookings.map((booking) => (
           <BookingCard
             key={booking.id}
