@@ -23,6 +23,9 @@ export function FerrySearch({ onAddToCart, onRequireLogin, user }) {
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [sort, setSort] = useState('time');
+  const [favorites, setFavorites] = useState(new Set());
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   // Seat Selection Modal State
   const [activeSchedule, setActiveSchedule] = useState(null);
@@ -42,6 +45,52 @@ export function FerrySearch({ onAddToCart, onRequireLogin, user }) {
   useEffect(() => {
     handleSearch();
   }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setFavorites(new Set());
+      return;
+    }
+    API.get('/ferry/favorites')
+      .then((res) => setFavorites(new Set(res.data)))
+      .catch(() => setFavorites(new Set()));
+  }, [user]);
+
+  // Seat availability is live (other tourists hold and book seats), so quietly
+  // re-check the current search every 30 seconds and whenever the tab regains focus.
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === 'visible' && !activeSchedule) runSearch(true);
+    };
+    const timer = setInterval(refresh, 30000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [sourcePort, destinationPort, travelDate, activeSchedule]);
+
+  const handleToggleFavorite = async (trip) => {
+    if (!user) {
+      onRequireLogin();
+      return;
+    }
+    const id = trip.vessel_id;
+    const wasFavorite = favorites.has(id);
+    const apply = (on) => setFavorites((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id); else next.delete(id);
+      return next;
+    });
+    apply(!wasFavorite); // optimistic
+    try {
+      if (wasFavorite) await API.delete(`/ferry/favorites/${id}`);
+      else await API.put(`/ferry/favorites/${id}`);
+    } catch (err) {
+      apply(wasFavorite); // roll back
+      alert(err.response?.data?.detail || 'Could not update your favourites. Please try again.');
+    }
+  };
 
   useEffect(() => {
     if (!activeSchedule || !user) {
@@ -66,26 +115,33 @@ export function FerrySearch({ onAddToCart, onRequireLogin, user }) {
     setDestinationPort(sourcePort);
   };
 
+  const runSearch = async (silent = false) => {
+    if (sourcePort === destinationPort) return;
+    if (!silent) {
+      setLoading(true);
+      setSearched(true);
+    }
+    try {
+      const res = await API.get(
+        `/ferry/schedules?source_port=${sourcePort}&destination_port=${destinationPort}&travel_date=${travelDate}`
+      );
+      setSchedules(res.data);
+      setLastUpdated(new Date());
+    } catch (err) {
+      console.error(err);
+      if (!silent) setSchedules([]);
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  };
+
   const handleSearch = async (e) => {
     if (e) e.preventDefault();
     if (sourcePort === destinationPort) {
       alert("Source and Destination ports cannot be the same");
       return;
     }
-
-    setLoading(true);
-    setSearched(true);
-    try {
-      const res = await API.get(
-        `/ferry/schedules?source_port=${sourcePort}&destination_port=${destinationPort}&travel_date=${travelDate}`
-      );
-      setSchedules(res.data);
-    } catch (err) {
-      console.error(err);
-      setSchedules([]);
-    } finally {
-      setLoading(false);
-    }
+    await runSearch(false);
   };
 
   const openSeatMap = async (sched) => {
@@ -220,7 +276,18 @@ export function FerrySearch({ onAddToCart, onRequireLogin, user }) {
         loading={loading}
       />
 
-      <SailingList trips={schedules} travelDate={travelDate} sort={sort} setSort={setSort} onSelect={openSeatMap}>
+      <SailingList
+        trips={schedules}
+        travelDate={travelDate}
+        sort={sort}
+        setSort={setSort}
+        onSelect={openSeatMap}
+        favorites={favorites}
+        onToggleFavorite={handleToggleFavorite}
+        favoritesOnly={favoritesOnly}
+        setFavoritesOnly={setFavoritesOnly}
+        lastUpdated={lastUpdated}
+      >
         {schedules.length === 0 && searched && !loading && (
           <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center">
             <AlertCircle className="w-8 h-8 text-amber-500 mx-auto mb-2" />

@@ -23,6 +23,7 @@ from app.models.attraction import Attraction, AttractionSlot, AttractionSlotTemp
 from app.services.slot_service import closure_covers, closures_for
 from app.models.ferry import Vessel, FerrySchedule, FerrySeat
 from app.data.catalog_templates import (
+    arrival_for,
     REAL_ATTRACTIONS,
     VESSELS_DATA,
     ROUTE_TEMPLATES,
@@ -122,6 +123,16 @@ async def _ensure_ferry_schedules(db: AsyncSession, days_ahead: int) -> int:
         vessel = res.scalars().first()
         if vessel:
             vessel_map[vessel.name] = vessel
+            # Catch existing vessels up with the photo and amenity details.
+            if not vessel.image_url and v_data.get("image_url"):
+                vessel.image_url = v_data["image_url"]
+            if not vessel.amenities and v_data.get("amenities"):
+                vessel.amenities = v_data["amenities"]
+
+    # Backfill the arrival time on sailings created before the column existed.
+    missing = await db.execute(select(FerrySchedule).where(FerrySchedule.arrival_time.is_(None)))
+    for old in missing.scalars().all():
+        old.arrival_time = arrival_for(old.source_port, old.destination_port, old.departure_time)
 
     for d in dates:
         for rt in ROUTE_TEMPLATES:
@@ -149,6 +160,7 @@ async def _ensure_ferry_schedules(db: AsyncSession, days_ahead: int) -> int:
                 destination_port=rt["dst"],
                 departure_date=d,
                 departure_time=rt["dep_time"],
+                arrival_time=arrival_for(rt["src"], rt["dst"], rt["dep_time"]),
                 status="SCHEDULED",
             )
             db.add(sched)

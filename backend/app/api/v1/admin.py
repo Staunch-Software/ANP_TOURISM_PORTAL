@@ -18,6 +18,7 @@ from app.core.redis import get_redis
 from app.models.user import User
 from app.models.order import Order, OrderItem
 from app.models.ticket import Ticket
+from app.data.catalog_templates import arrival_for
 from app.models.ferry import FerrySchedule, FerrySeat, Vessel
 from app.services.email_service import send_voyage_cancellation_notice
 from app.services.whatsapp_service import send_whatsapp_voyage_cancellation
@@ -678,8 +679,9 @@ async def assign_ferry_roster(
     try:
         parsed_date = date_type.fromisoformat(req.departure_date)
         parsed_time = time_type.fromisoformat(req.departure_time)
+        parsed_arrival = time_type.fromisoformat(req.arrival_time) if req.arrival_time else None
     except ValueError:
-        raise HTTPException(status_code=400, detail="departure_date must be YYYY-MM-DD and departure_time HH:MM")
+        raise HTTPException(status_code=400, detail="departure_date must be YYYY-MM-DD and times HH:MM")
 
     sched = FerrySchedule(
         vessel_id=vessel.id,
@@ -687,6 +689,7 @@ async def assign_ferry_roster(
         destination_port=req.destination_port.upper(),
         departure_date=parsed_date,
         departure_time=parsed_time,
+        arrival_time=parsed_arrival or arrival_for(req.source_port.upper(), req.destination_port.upper(), parsed_time),
         status="SCHEDULED",
         captain_name=req.captain_name,
     )

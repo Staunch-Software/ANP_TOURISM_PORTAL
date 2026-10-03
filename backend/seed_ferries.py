@@ -5,7 +5,7 @@ from sqlalchemy.future import select
 
 from app.core.database import AsyncSessionLocal
 from app.models.ferry import Vessel, FerrySchedule, FerrySeat
-from app.data.catalog_templates import VESSELS_DATA, ROUTE_TEMPLATES
+from app.data.catalog_templates import VESSELS_DATA, ROUTE_TEMPLATES, arrival_for
 
 
 async def seed_ferry_data():
@@ -19,6 +19,8 @@ async def seed_ferry_data():
                     name=v_data["name"],
                     operator_name=v_data["operator"],
                     total_capacity=v_data["capacity"],
+                    image_url=v_data.get("image_url"),
+                    amenities=v_data.get("amenities"),
                 )
                 db.add(vessel)
                 await db.commit()
@@ -51,6 +53,7 @@ async def seed_ferry_data():
                         destination_port=rt["dst"],
                         departure_date=d,
                         departure_time=rt["dep_time"],
+                        arrival_time=arrival_for(rt["src"], rt["dst"], rt["dep_time"]),
                         status="SCHEDULED",
                     )
                     db.add(sched)

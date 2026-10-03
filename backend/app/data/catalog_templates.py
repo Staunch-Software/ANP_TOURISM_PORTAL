@@ -94,9 +94,34 @@ for _item in REAL_ATTRACTIONS:
     _item["closing_time"] = max(end for _start, end, _cap in _item["slots"])
 
 VESSELS_DATA = [
-    {"name": "MV Makruzz Diamond", "operator": "Makruzz Catamarans", "capacity": 120},
-    {"name": "Green Ocean 1", "operator": "Green Ocean Lines", "capacity": 100},
+    {
+        "name": "MV Makruzz Diamond", "operator": "Makruzz Catamarans", "capacity": 120,
+        "image_url": "/images/ferry-catamaran.jpg",
+        "amenities": "Air-conditioned,Reclining Seats,Snacks Available,Onboard Restroom",
+    },
+    {
+        "name": "Green Ocean 1", "operator": "Green Ocean Lines", "capacity": 100,
+        "image_url": "/images/ferry-green-ocean.jpg",
+        "amenities": "Air-conditioned,Cafeteria,Onboard Restroom,Luggage Space",
+    },
 ]
+
+# Usual crossing time per route, in minutes. Used to fill each sailing's
+# arrival time when the roster entry doesn't give one explicitly.
+ROUTE_DURATION_MIN = {
+    ("PORT_BLAIR", "HAVELOCK"): 90, ("HAVELOCK", "PORT_BLAIR"): 90,
+    ("PORT_BLAIR", "NEIL"): 120, ("NEIL", "PORT_BLAIR"): 120,
+    ("HAVELOCK", "NEIL"): 60, ("NEIL", "HAVELOCK"): 60,
+}
+
+
+def arrival_for(src: str, dst: str, dep: time):
+    """Scheduled arrival for a route, or None if the route has no known duration."""
+    from datetime import datetime, timedelta, date as _date
+    mins = ROUTE_DURATION_MIN.get((src, dst))
+    if mins is None:
+        return None
+    return (datetime.combine(_date.today(), dep) + timedelta(minutes=mins)).time()
 
 ROUTE_TEMPLATES = [
     {"vessel": "MV Makruzz Diamond", "src": "PORT_BLAIR", "dst": "HAVELOCK", "dep_time": time(8, 0)},

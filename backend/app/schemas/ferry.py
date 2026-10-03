@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel
 
@@ -11,12 +11,17 @@ class CabinSummary(BaseModel):
 
 class FerryTripResponse(BaseModel):
     schedule_id: str
+    vessel_id: str
     vessel_name: str
+    vessel_image_url: Optional[str] = None
+    amenities: List[str] = []
     operator_name: str
     source_port: str
     destination_port: str
     departure_date: str
     departure_time: str
+    arrival_time: Optional[str] = None
+    duration_minutes: Optional[int] = None
     status: str
     cabins: List[CabinSummary]
 

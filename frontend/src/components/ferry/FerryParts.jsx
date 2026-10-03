@@ -2,7 +2,7 @@ import React from 'react';
 import {
   Ship, Calendar, Clock, MapPin, Armchair, ArrowLeftRight, ArrowRight, Search, Heart,
   Snowflake, UtensilsCrossed, Luggage, Bath, Star, Info, BadgeCheck, Ticket, ShieldCheck, CalendarClock,
-  ArrowDownUp, Zap
+  ArrowDownUp, Zap, Check, Wifi, Users
 } from 'lucide-react';
 
 const PORT_SHORT_NAME = { PORT_BLAIR: 'Port Blair', HAVELOCK: 'Havelock', NEIL: 'Neil' };
@@ -12,34 +12,24 @@ const PORT_LONG_NAME = {
   NEIL: 'Neil (Shaheed Dweep)',
 };
 
-// Approximate crossing times by route (minutes). The schedule API only returns
-// the departure, so the arrival shown on each card is an estimate and labelled so.
-const ROUTE_MINUTES = {
-  'PORT_BLAIR-HAVELOCK': 90, 'HAVELOCK-PORT_BLAIR': 90,
-  'PORT_BLAIR-NEIL': 120, 'NEIL-PORT_BLAIR': 120,
-  'HAVELOCK-NEIL': 60, 'NEIL-HAVELOCK': 60,
-};
-
-const AMENITY_SETS = [
-  [['Air-conditioned', Snowflake], ['Reclining Seats', Armchair], ['Snacks Available', UtensilsCrossed], ['Onboard Restroom', Bath]],
-  [['Air-conditioned', Snowflake], ['Cafeteria', UtensilsCrossed], ['Onboard Restroom', Bath], ['Luggage Space', Luggage]],
+// Icons for amenity labels. The labels themselves come from the vessel record
+// in the database (Vessel.amenities); only the icon is picked here.
+const AMENITY_ICONS = [
+  [/air|a\/c|ac\b/i, Snowflake],
+  [/seat|recline/i, Armchair],
+  [/snack|cafe|food|meal|canteen/i, UtensilsCrossed],
+  [/rest ?room|toilet|washroom/i, Bath],
+  [/luggage|baggage/i, Luggage],
+  [/wi-?fi/i, Wifi],
 ];
+const amenityIcon = (label) => (AMENITY_ICONS.find(([re]) => re.test(label)) || [null, Check])[1];
 
-const VESSEL_IMAGES = ['/images/ferry-catamaran.jpg', '/images/ferry-green-ocean.jpg'];
-
-export function estimateArrival(departure, source, destination) {
-  const mins = ROUTE_MINUTES[`${source}-${destination}`];
-  const m = /^(\d{1,2}):(\d{2})/.exec(departure || '');
-  if (!mins || !m) return null;
-  const total = parseInt(m[1], 10) * 60 + parseInt(m[2], 10) + mins;
-  const h = Math.floor(total / 60) % 24;
-  const mm = total % 60;
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  return {
-    arrival: `${String(h12).padStart(2, '0')}:${String(mm).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`,
-    duration: `${Math.floor(mins / 60)} hr${mins % 60 ? ` ${mins % 60} mins` : ''}`,
-  };
-}
+const formatDuration = (mins) => {
+  if (mins == null) return null;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${h ? `${h} hr${h > 1 ? 's' : ''}` : ''}${h && m ? ' ' : ''}${m ? `${m} mins` : ''}`;
+};
 
 function formatTime12(t) {
   const m = /^(\d{1,2}):(\d{2})/.exec(t || '');
@@ -144,25 +134,34 @@ export function FareCard({ cabin }) {
   );
 }
 
-export function SailingCard({ trip, index, badge, onSelect }) {
-  const times = estimateArrival(trip.departure_time, trip.source_port, trip.destination_port);
-  const amenities = AMENITY_SETS[index % AMENITY_SETS.length];
-  const img = VESSEL_IMAGES[index % VESSEL_IMAGES.length];
+export function SailingCard({ trip, badge, isFavorite, onToggleFavorite, onSelect }) {
   const route = `${PORT_LONG_NAME[trip.source_port] || trip.source_port} → ${PORT_LONG_NAME[trip.destination_port] || trip.destination_port}`;
+  const duration = formatDuration(trip.duration_minutes);
 
   return (
     <article className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm hover:shadow-md hover:border-cyan-300 transition-all grid grid-cols-1 lg:grid-cols-[300px_1fr_auto] gap-5">
-      <div className="relative h-44 lg:h-full min-h-[150px] rounded-xl overflow-hidden">
-        <img src={img} alt={trip.vessel_name} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+      <div className="relative h-44 lg:h-full min-h-[150px] rounded-xl overflow-hidden bg-gradient-to-br from-navy-700 to-cyan-700">
+        {trip.vessel_image_url ? (
+          <img src={trip.vessel_image_url} alt={trip.vessel_name} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+        ) : (
+          <Ship className="absolute inset-0 m-auto w-12 h-12 text-white/40" />
+        )}
         {badge && (
           <span className="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-white/95 text-xs font-bold text-navy-800 flex items-center gap-1 shadow">
             {badge.icon === 'star' ? <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400" /> : <BadgeCheck className="w-3.5 h-3.5 text-cyan-700" />}
             {badge.label}
           </span>
         )}
-        <span className="absolute top-3 right-3 w-8 h-8 rounded-full bg-navy-900/70 text-white flex items-center justify-center">
-          <Heart className="w-4 h-4" />
-        </span>
+        <button
+          type="button"
+          onClick={onToggleFavorite}
+          aria-pressed={isFavorite}
+          aria-label={isFavorite ? `Remove ${trip.vessel_name} from favourites` : `Add ${trip.vessel_name} to favourites`}
+          title={isFavorite ? 'Remove from favourites' : 'Add to favourites'}
+          className="absolute top-3 right-3 w-8 h-8 rounded-full bg-navy-900/70 hover:bg-navy-900 text-white flex items-center justify-center transition-colors"
+        >
+          <Heart className={`w-4 h-4 ${isFavorite ? 'fill-red-500 text-red-500' : ''}`} />
+        </button>
       </div>
 
       <div className="min-w-0 py-1">
@@ -177,20 +176,22 @@ export function SailingCard({ trip, index, badge, onSelect }) {
               <p className="text-[11px] text-slate-500">{route}</p>
             </div>
           </div>
-          {times && (
+          {trip.arrival_time && (
             <div className="flex items-start gap-2 lg:border-l lg:border-slate-200 lg:pl-6">
               <Clock className="w-4 h-4 text-cyan-700 mt-0.5" />
               <div>
-                <p className="text-sm font-bold text-navy-800">~{times.arrival} <span className="font-semibold text-slate-600">Arrival</span></p>
-                <p className="text-[11px] text-slate-500">Travel time: ~ {times.duration}</p>
+                <p className="text-sm font-bold text-navy-800">{formatTime12(trip.arrival_time)} <span className="font-semibold text-slate-600">Arrival</span></p>
+                {duration && <p className="text-[11px] text-slate-500">Travel time: ~ {duration}</p>}
               </div>
             </div>
           )}
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          {amenities.map(([label, Icon]) => <AmenityBadge key={label} icon={Icon} label={label} />)}
-        </div>
+        {trip.amenities?.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {trip.amenities.map((label) => <AmenityBadge key={label} icon={amenityIcon(label)} label={label} />)}
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col justify-between gap-3 lg:w-[420px]">
@@ -210,20 +211,23 @@ export function SailingCard({ trip, index, badge, onSelect }) {
 }
 
 /* ------------------------------------------------------------------ */
-export function SailingList({ trips, travelDate, sort, setSort, onSelect, children }) {
-  const sorted = [...trips].sort((a, b) => {
-    if (sort === 'price') {
-      const pa = Math.min(...a.cabins.map((c) => c.starting_price_inr));
-      const pb = Math.min(...b.cabins.map((c) => c.starting_price_inr));
-      return pa - pb;
-    }
-    return (a.departure_time || '').localeCompare(b.departure_time || '');
-  });
-  const mostSeats = trips.reduce((best, t) => {
-    const n = t.cabins.reduce((s, c) => s + c.available_seats, 0);
-    return !best || n > best.n ? { id: t.schedule_id, n } : best;
-  }, null);
+const totalSeats = (t) => t.cabins.reduce((n, c) => n + c.available_seats, 0);
+const cheapest = (t) => Math.min(...t.cabins.map((c) => c.starting_price_inr));
+
+export function SailingList({
+  trips, travelDate, sort, setSort, onSelect, children,
+  favorites, onToggleFavorite, favoritesOnly, setFavoritesOnly, lastUpdated,
+}) {
   const earliest = [...trips].sort((a, b) => (a.departure_time || '').localeCompare(b.departure_time || ''))[0];
+  const mostSeats = trips.reduce((best, t) => (!best || totalSeats(t) > totalSeats(best) ? t : best), null);
+
+  const visible = trips
+    .filter((t) => !favoritesOnly || favorites.has(t.vessel_id))
+    .sort((a, b) => {
+      if (sort === 'price') return cheapest(a) - cheapest(b);
+      if (sort === 'seats') return totalSeats(b) - totalSeats(a);
+      return (a.departure_time || '').localeCompare(b.departure_time || '');
+    });
 
   const prettyDate = (() => {
     const d = new Date(`${travelDate}T00:00:00`);
@@ -237,27 +241,57 @@ export function SailingList({ trips, travelDate, sort, setSort, onSelect, childr
           <span className="w-11 h-11 rounded-full bg-white border border-cyan-200 text-cyan-700 flex items-center justify-center shadow-sm"><Ship className="w-5 h-5" /></span>
           Available Sailings for {prettyDate}
         </h3>
-        <div className="flex items-center gap-3 text-sm text-slate-600">
-          <span className="hidden sm:inline text-xs text-slate-500">{trips.length} vessel(s) scheduled · Prices are per passenger</span>
+        <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
+          <button
+            type="button"
+            onClick={() => setFavoritesOnly(!favoritesOnly)}
+            aria-pressed={favoritesOnly}
+            className={`px-3 py-2 rounded-xl border text-sm font-semibold flex items-center gap-1.5 transition-colors ${
+              favoritesOnly ? 'bg-red-50 border-red-200 text-red-700' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <Heart className={`w-4 h-4 ${favoritesOnly ? 'fill-red-500 text-red-500' : ''}`} /> Favourites
+          </button>
           <label className="flex items-center gap-2 font-semibold">
             <ArrowDownUp className="w-4 h-4 text-slate-500" /> Sort by
             <select value={sort} onChange={(e) => setSort(e.target.value)} className="px-3 py-2 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-navy-800">
               <option value="time">Departure Time (Earliest)</option>
               <option value="price">Price (Lowest)</option>
+              <option value="seats">Seats Available (Most)</option>
             </select>
           </label>
         </div>
       </div>
 
+      <p className="text-xs text-slate-500 text-right -mt-2">
+        {visible.length} of {trips.length} vessel(s) · Prices are per passenger
+        {lastUpdated && <> · Live seats, updated {lastUpdated.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</>}
+      </p>
+
       {children}
 
-      {sorted.map((trip, i) => {
+      {favoritesOnly && trips.length > 0 && visible.length === 0 && (
+        <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-sm text-slate-500">
+          None of these sailings are on your favourite vessels. Tap the heart on a ferry to save it.
+        </div>
+      )}
+
+      {visible.map((trip) => {
         let badge = null;
         if (trips.length > 1) {
           if (trip.schedule_id === earliest?.schedule_id) badge = { label: 'Earliest', icon: 'star' };
-          else if (trip.schedule_id === mostSeats?.id) badge = { label: 'Most seats', icon: 'check' };
+          else if (trip.schedule_id === mostSeats?.schedule_id) badge = { label: 'Most seats', icon: 'check' };
         }
-        return <SailingCard key={trip.schedule_id} trip={trip} index={i} badge={badge} onSelect={() => onSelect(trip)} />;
+        return (
+          <SailingCard
+            key={trip.schedule_id}
+            trip={trip}
+            badge={badge}
+            isFavorite={favorites.has(trip.vessel_id)}
+            onToggleFavorite={() => onToggleFavorite(trip)}
+            onSelect={() => onSelect(trip)}
+          />
+        );
       })}
     </section>
   );

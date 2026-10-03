@@ -8,7 +8,7 @@ from sqlalchemy.future import select
 
 from app.core.database import get_db
 from app.core.redis import get_redis
-from app.models.ferry import Vessel, FerrySchedule, FerrySeat
+from app.models.ferry import Vessel, FerrySchedule, FerrySeat, UserFavoriteVessel
 from app.models.user import User
 from app.api.v1.auth import get_current_user
 from app.schemas.ferry import (
@@ -74,9 +74,20 @@ async def search_ferries(
             for cls_name, data in cabin_data.items()
         ]
 
+        duration_minutes = None
+        if schedule.arrival_time:
+            dep_m = schedule.departure_time.hour * 60 + schedule.departure_time.minute
+            arr_m = schedule.arrival_time.hour * 60 + schedule.arrival_time.minute
+            duration_minutes = (arr_m - dep_m) % (24 * 60)
+
         response.append(
             FerryTripResponse(
                 schedule_id=str(schedule.id),
+                vessel_id=str(vessel.id),
+                vessel_image_url=vessel.image_url,
+                amenities=[a.strip() for a in (vessel.amenities or "").split(",") if a.strip()],
+                arrival_time=schedule.arrival_time.strftime("%H:%M") if schedule.arrival_time else None,
+                duration_minutes=duration_minutes,
                 vessel_name=vessel.name,
                 operator_name=vessel.operator_name,
                 source_port=schedule.source_port,
@@ -208,3 +219,63 @@ async def release_ferry_seat(
         return {"status": "RELEASED", "seat_number": req.seat_number}
 
     return {"status": "IGNORED", "message": "You do not hold this seat lock"}
+
+
+
+# -------------------------------------------------------------
+# Favourite vessels (per signed-in tourist)
+# -------------------------------------------------------------
+@router.get("/favorites", response_model=List[str])
+async def list_favorite_vessels(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(
+        select(UserFavoriteVessel.vessel_id).where(UserFavoriteVessel.user_id == current_user.id)
+    )
+    return [str(v) for v in res.scalars().all()]
+
+
+@router.put("/favorites/{vessel_id}")
+async def add_favorite_vessel(
+    vessel_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        vid = uuid.UUID(vessel_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid vessel id")
+    if not (await db.execute(select(Vessel).where(Vessel.id == vid))).scalars().first():
+        raise HTTPException(status_code=404, detail="Vessel not found")
+    existing = await db.execute(
+        select(UserFavoriteVessel).where(
+            UserFavoriteVessel.user_id == current_user.id, UserFavoriteVessel.vessel_id == vid
+        )
+    )
+    if not existing.scalars().first():
+        db.add(UserFavoriteVessel(user_id=current_user.id, vessel_id=vid))
+        await db.commit()
+    return {"vessel_id": vessel_id, "favorite": True}
+
+
+@router.delete("/favorites/{vessel_id}")
+async def remove_favorite_vessel(
+    vessel_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        vid = uuid.UUID(vessel_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid vessel id")
+    existing = await db.execute(
+        select(UserFavoriteVessel).where(
+            UserFavoriteVessel.user_id == current_user.id, UserFavoriteVessel.vessel_id == vid
+        )
+    )
+    row = existing.scalars().first()
+    if row:
+        await db.delete(row)
+        await db.commit()
+    return {"vessel_id": vessel_id, "favorite": False}

@@ -165,6 +165,7 @@ class RosterAssignRequest(BaseModel):
     destination_port: str
     departure_date: str  # YYYY-MM-DD
     departure_time: str  # HH:MM
+    arrival_time: Optional[str] = None  # HH:MM; defaults from the route's usual crossing time
     captain_name: Optional[str] = None
 
 
