@@ -2063,7 +2063,7 @@ export function AdminDashboard({ user, onLogout, isSidebarOpen, onCloseSidebar }
                 {reportRows.map((r) => (
                   <tr key={r.ticket_ref} className="hover:bg-slate-50 transition-colors">
                     <td className="p-3 font-mono text-slate-500">
-                      {r.checked_in_at ? new Date(r.checked_in_at + 'Z').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
+                      {r.checked_in_at ? new Date(r.checked_in_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
                     </td>
                     <td className="p-3 font-mono font-bold text-cyan-700">{r.booking_ref || r.ticket_ref}</td>
                     <td className="p-3 text-navy-800">{r.title}</td>
