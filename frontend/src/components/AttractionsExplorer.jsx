@@ -284,13 +284,6 @@ export function AttractionsExplorer({ onAddToCart, onRequireLogin, user, focusRe
 
   return (
     <div id="popular-attractions" className="space-y-5 scroll-mt-24">
-      {/* Section heading */}
-      <div className="text-center pt-1">
-        <span className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-cyan-700">Book an Attraction</span>
-        <h2 className="font-serif text-2xl md:text-3xl font-black text-navy-800 leading-tight">Find Your Experience</h2>
-        <p className="text-sm text-slate-500 mt-0.5">Choose an attraction, select your date and reserve your spot.</p>
-      </div>
-
       {/* Island & Filter Header */}
       <div className="flex flex-col gap-3 bg-white p-3.5 rounded-2xl border border-cyan-100 shadow-md">
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">

@@ -12,7 +12,7 @@ import { FerrySearch } from './components/FerrySearch';
 import { HeroBanner } from './components/ferry/FerryParts';
 import { WaveDivider } from './components/WaveDivider';
 import { HeroSlogan } from './components/HeroSlogan';
-import { AttractionsHero, IslandCarousel, WaveTransition } from './components/attractions/DiscoveryParts';
+import { AttractionsHero, IslandCarousel, TransitionBanner } from './components/attractions/DiscoveryParts';
 import { CartDrawer } from './components/CartDrawer';
 import { DigitalWallet } from './components/DigitalWallet';
 import { MyWallet } from './components/MyWallet';
@@ -329,8 +329,8 @@ export default function App() {
             <div className="max-w-7xl mx-auto px-4 pt-7 pb-2 relative z-10">
               <IslandCarousel cards={DISCOVER_CARDS} onSelect={handleDiscoverCardClick} />
             </div>
-            <WaveTransition fill="#f4fbfd" />
           </div>
+          <TransitionBanner />
         </div>
       )}
 

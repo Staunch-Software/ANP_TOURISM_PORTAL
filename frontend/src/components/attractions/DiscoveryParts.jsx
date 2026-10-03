@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { ArrowRight, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
+import { ArrowRight, ChevronLeft, ChevronRight, Sparkles, Ticket, Compass, Sun } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
 /* Decorative layers for the hero. All are aria-hidden, and the motion
    is switched off for people who prefer reduced motion (see index.css). */
 
-function PalmFrond({ className = '', flip = false }) {
+export function PalmFrond({ className = '', flip = false }) {
   const leaves = [-70, -48, -26, -4, 18, 40, 62];
   return (
     <svg
@@ -203,5 +203,107 @@ export function WaveTransition({ fill = '#f4fbfd' }) {
         <path d="M0,84 C240,60 460,118 720,88 S1140,56 1440,92 L1440,120 L0,120 Z" fill={fill} />
       </svg>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Inspirational transition between the island carousel and the booking
+   area: waves, palms, a script tagline and a short "how it works" row. */
+function useRevealOnce() {
+  const ref = useRef(null);
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    if (!('IntersectionObserver' in window)) { setShown(true); return undefined; }
+    const io = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) { setShown(true); io.disconnect(); }
+    }, { threshold: 0.15 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  return [ref, shown];
+}
+
+function IslandIllustration() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 140 70" className="island-float w-24 sm:w-28 h-auto" fill="none">
+      <path d="M4 52 C 20 46, 36 58, 54 52 S 90 46, 108 52 S 128 56, 136 50" stroke="#18c6d9" strokeWidth="3" strokeLinecap="round" />
+      <path d="M14 62 C 30 56, 46 66, 64 60 S 100 56, 124 62" stroke="#0089a8" strokeWidth="2.5" strokeLinecap="round" opacity="0.8" />
+      <path d="M36 52 C 46 40, 90 40, 104 52 Z" fill="#0089a8" />
+      <g stroke="#082b49" strokeWidth="2.4" strokeLinecap="round">
+        <path d="M62 46 C 60 34, 63 24, 68 16" />
+        <path d="M84 46 C 85 36, 82 28, 78 22" />
+      </g>
+      <g fill="#082b49">
+        <path d="M68 16 C 58 10, 50 14, 46 20 C 54 16, 60 16, 68 16 Z" />
+        <path d="M68 16 C 70 6, 78 4, 86 8 C 78 8, 74 11, 68 16 Z" />
+        <path d="M68 16 C 76 18, 82 24, 82 30 C 78 24, 74 20, 68 16 Z" />
+        <path d="M78 22 C 72 16, 66 18, 64 24 C 69 21, 73 21, 78 22 Z" />
+        <path d="M78 22 C 80 14, 88 14, 92 18 C 86 18, 82 19, 78 22 Z" />
+      </g>
+    </svg>
+  );
+}
+
+const JOURNEY = [
+  { n: '01', icon: Ticket, title: 'Book', sub: 'Choose your attraction' },
+  { n: '02', icon: Compass, title: 'Explore', sub: 'Discover the island' },
+  { n: '03', icon: Sun, title: 'Experience', sub: 'Enjoy your visit' },
+];
+
+export function TransitionBanner({ bandColor = '#dcf3f8', bottomColor = '#f4fbfd' }) {
+  const [ref, shown] = useRevealOnce();
+  return (
+    <section ref={ref} className="relative overflow-hidden bg-gradient-to-b from-white to-[#eaf9fc]" aria-label="Book your experience">
+      {/* waves: the top blends from the carousel band, the bottom into the booking area */}
+      <svg aria-hidden="true" viewBox="0 0 1440 90" preserveAspectRatio="none" className="absolute top-0 left-0 w-full h-12 sm:h-16 z-[1]">
+        <path d="M0,0 L1440,0 L1440,38 C1200,86 980,6 720,44 S260,92 0,34 Z" fill={bandColor} />
+        <path d="M0,0 L1440,0 L1440,22 C1180,64 940,0 700,28 S240,70 0,20 Z" fill="#a5e3ee" fillOpacity="0.35" />
+      </svg>
+      <svg aria-hidden="true" viewBox="0 0 2880 90" preserveAspectRatio="none" className="wave-slow absolute bottom-0 left-0 h-12 sm:h-16 w-[200%] z-[1]" fill="#bfeaf5" fillOpacity="0.45">
+        <path d="M0,50 C240,10 480,90 720,50 S1200,10 1440,50 C1680,10 1920,90 2160,50 S2640,10 2880,50 L2880,90 L0,90 Z" />
+      </svg>
+      <svg aria-hidden="true" viewBox="0 0 1440 90" preserveAspectRatio="none" className="absolute bottom-0 left-0 w-full h-10 sm:h-14 z-[1]">
+        <path d="M0,60 C220,24 460,92 720,58 S1180,26 1440,62 L1440,90 L0,90 Z" fill={bottomColor} />
+      </svg>
+
+      <PalmFrond className="palm-sway left-[-26px] top-8 w-36 h-36 sm:w-44 sm:h-44 text-cyan-700/15" />
+      <PalmFrond className="palm-sway right-[-26px] top-8 w-36 h-36 sm:w-44 sm:h-44 text-cyan-700/15" flip />
+      <PalmFrond className="palm-sway hidden md:block left-24 bottom-6 w-20 h-20 text-cyan-600/10 rotate-12" />
+      <PalmFrond className="palm-sway hidden md:block right-24 bottom-6 w-20 h-20 text-cyan-600/10 -rotate-12" flip />
+
+      <div className={`relative z-[2] max-w-6xl mx-auto px-4 pt-14 sm:pt-20 pb-14 sm:pb-20 transition-all duration-1000 ease-out ${shown ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+        <div className="text-center" style={{ fontFamily: "'Caveat', cursive" }}>
+          <div className="flex flex-col md:flex-row items-center justify-center gap-x-6 gap-y-1 text-cyan-800 text-[26px] sm:text-[32px] leading-tight font-semibold">
+            <span>From Islands of History</span>
+            <IslandIllustration />
+            <span>to Experiences for a Lifetime</span>
+          </div>
+        </div>
+
+        <div className="mt-7 flex flex-col md:flex-row md:items-end md:justify-between gap-5">
+          <div className="text-center md:text-left">
+            <span className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-cyan-700">Book your experience</span>
+            <h2 className="font-serif text-2xl md:text-3xl font-black text-navy-800 leading-tight">Choose an Attraction</h2>
+            <p className="text-sm text-slate-500 mt-0.5">Select a destination and book your preferred date and time.</p>
+          </div>
+          <ol className="grid grid-cols-3 gap-2 sm:flex sm:items-start sm:justify-center md:justify-end sm:gap-8">
+            {JOURNEY.map(({ n, icon: Icon, title, sub }) => (
+              <li key={n} className="flex flex-col items-center text-center sm:flex-row sm:items-start sm:text-left gap-1.5 sm:gap-2.5 sm:max-w-[150px]">
+                <span className="w-10 h-10 rounded-full bg-white border border-cyan-200 text-cyan-700 flex items-center justify-center shadow-sm shrink-0">
+                  <Icon className="w-5 h-5" />
+                </span>
+                <span className="leading-tight">
+                  <span className="block text-[10px] font-bold text-cyan-600">{n}</span>
+                  <span className="block text-sm font-bold text-navy-800">{title}</span>
+                  <span className="block text-[11px] text-slate-500">{sub}</span>
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </div>
+    </section>
   );
 }

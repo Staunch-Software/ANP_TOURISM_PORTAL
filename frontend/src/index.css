@@ -594,3 +594,12 @@ html.accessible-mode :focus-visible {
 .hero-ripple { animation: hero-drift 38s linear infinite; }
 .hero-particle { animation: hero-rise 10s ease-in infinite; opacity: 0; }
 @media (prefers-reduced-motion: reduce) { .hero-ripple, .hero-particle { animation: none; } }
+
+/* Transition banner: slow wave drift, swaying palms, floating island. */
+@keyframes wave-slow { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes palm-sway { 0%, 100% { translate: 0 0; } 50% { translate: 0 -6px; } }
+@keyframes island-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+.wave-slow { animation: wave-slow 46s linear infinite; }
+.palm-sway { animation: palm-sway 9s ease-in-out infinite; }
+.island-float { animation: island-float 7s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .wave-slow, .palm-sway, .island-float { animation: none; } }
