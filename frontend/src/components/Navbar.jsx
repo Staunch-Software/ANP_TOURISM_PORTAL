@@ -1,13 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ShieldCheck, ShoppingBag, LogOut, LogIn, Anchor, Waves, Menu, X, Wallet,
-  Home, Landmark, Ship, Ticket, LifeBuoy, Users, ChevronDown, Accessibility, Languages
+  Landmark, Ship, Ticket, LifeBuoy, Users, ChevronDown, Accessibility, Languages
 } from 'lucide-react';
 
 // Tourist top-nav: one data-driven list so desktop and the phone drawer match.
 const TOURIST_TABS = [
-  { key: 'ATTRACTIONS', label: 'Home', icon: Home },
-  { key: 'ATTRACTIONS_LIST', label: 'Attractions', icon: Landmark, tab: 'ATTRACTIONS' },
+  { key: 'ATTRACTIONS', label: 'Attractions', icon: Landmark },
   { key: 'FERRY', label: 'Ferries', icon: Ship },
   { key: 'PASSES', label: 'My Passes', icon: Ticket },
   { key: 'WALLET', label: 'My Wallet', icon: Wallet },
@@ -126,16 +125,11 @@ export function Navbar({
           <nav className="hidden lg:flex items-center gap-1">
             {TOURIST_TABS.map((t) => {
               const Icon = t.icon;
-              const isActive = t.key === 'ATTRACTIONS_LIST' ? false : activeTab === t.key;
+              const isActive = activeTab === t.key;
               return (
                 <button
                   key={t.key}
-                  onClick={() => {
-                    setActiveTab(t.tab || t.key);
-                    if (t.key === 'ATTRACTIONS_LIST') {
-                      setTimeout(() => document.getElementById('popular-attractions')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
-                    }
-                  }}
+                  onClick={() => setActiveTab(t.key)}
                   className={`px-2 xl:px-3 py-2 rounded-lg text-[13px] xl:text-sm font-semibold whitespace-nowrap flex items-center gap-1.5 transition-colors ${
                     isActive ? 'bg-cyan-700 text-white shadow-md' : 'text-slate-200 hover:text-white hover:bg-white/10'
                   }`}
@@ -241,7 +235,7 @@ export function Navbar({
           <nav className="px-4 py-3 space-y-1">
             {!isStaffUser && (
               <>
-                {TOURIST_TABS.filter((t) => t.key !== 'ATTRACTIONS_LIST').map((t) => {
+                {TOURIST_TABS.map((t) => {
                   const Icon = t.icon;
                   return (
                     <button
