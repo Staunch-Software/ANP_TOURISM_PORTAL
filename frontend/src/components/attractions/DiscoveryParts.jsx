@@ -141,9 +141,13 @@ export function IslandCarousel({ cards, onSelect }) {
         <div>
           <span className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-cyan-700">Explore</span>
           <h2 className="font-serif text-2xl md:text-3xl font-black text-navy-800 leading-tight">Discover the Islands</h2>
-          <p className="text-sm text-slate-500 mt-0.5">Four places to start planning your visit.</p>
+          <p className="text-sm text-slate-500 mt-0.5">{cards.length} places to start planning your visit.</p>
         </div>
         <div className="flex items-center gap-2">
+          <span className="hidden sm:flex flex-col items-end leading-tight mr-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Explore Islands</span>
+            <span className="text-sm font-bold text-navy-800 tabular-nums">{active + 1} <span className="text-slate-400">/ {cards.length}</span></span>
+          </span>
           <button type="button" onClick={() => go(-1)} aria-label="Previous destination"
             className="w-10 h-10 rounded-full bg-white border border-slate-200 text-navy-800 shadow-sm hover:bg-cyan-700 hover:text-white hover:border-cyan-700 flex items-center justify-center transition-colors">
             <ChevronLeft className="w-5 h-5" />
@@ -165,18 +169,18 @@ export function IslandCarousel({ cards, onSelect }) {
             key={card.title}
             type="button"
             onClick={() => onSelect(card)}
-            className="group relative shrink-0 snap-start w-[82%] sm:w-[46%] lg:w-[31.5%] xl:w-[24%] h-64 rounded-3xl overflow-hidden text-left shadow-md hover:shadow-2xl hover:-translate-y-1.5 transition-all duration-300 ring-0 hover:ring-2 hover:ring-cyan-400/70"
+            className="group relative shrink-0 snap-start w-[82%] sm:w-[46%] lg:w-[31.5%] xl:w-[24%] h-[236px] rounded-3xl overflow-hidden text-left shadow-md hover:shadow-2xl hover:-translate-y-1.5 transition-all duration-300 ring-0 hover:ring-2 hover:ring-cyan-400/70"
           >
             <img src={card.img} alt={card.title} loading="lazy"
-              className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-            <div className="absolute inset-0 bg-gradient-to-t from-navy-950/90 via-navy-900/25 to-transparent" />
+              className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+            <div className="absolute inset-0 bg-gradient-to-t from-navy-950 via-navy-900/70 via-35% to-transparent group-hover:from-navy-950 group-hover:via-navy-900/80 transition-colors duration-300" />
             <div className="absolute inset-x-0 bottom-0 p-4 pr-16 min-w-0">
-              <span className="block truncate text-[10px] font-bold uppercase tracking-wider text-cyan-300">{card.subtitle}</span>
-              <h3 className="font-serif text-xl font-black text-white leading-tight">{card.title}</h3>
-              <p className="text-[11px] text-slate-200 leading-snug line-clamp-2 mt-1">{card.blurb}</p>
+              <span className="block truncate text-[10px] font-bold uppercase tracking-wider text-cyan-200">{card.subtitle}</span>
+              <h3 className="font-serif text-2xl font-black text-white leading-tight drop-shadow-[0_1px_4px_rgba(0,0,0,0.5)]">{card.title}</h3>
+              <p className="text-xs text-slate-100 leading-snug truncate mt-0.5">{card.tags || card.blurb}</p>
             </div>
-            <span className="absolute bottom-4 right-4 w-10 h-10 rounded-full bg-white/90 text-navy-800 flex items-center justify-center shadow-lg group-hover:bg-cyan-600 group-hover:text-white transition-colors">
-              <ArrowRight className="w-4 h-4 -rotate-45 group-hover:rotate-0 transition-transform" />
+            <span className="absolute bottom-4 right-4 w-10 h-10 rounded-full bg-white text-navy-800 flex items-center justify-center shadow-lg group-hover:bg-cyan-500 group-hover:text-white transition-colors">
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
             </span>
           </button>
         ))}
@@ -257,14 +261,14 @@ export function TransitionBanner({ bandColor = '#dcf3f8', bottomColor = '#f4fbfd
   return (
     <section ref={ref} className="relative overflow-hidden bg-gradient-to-b from-white to-[#eaf9fc]" aria-label="Book your experience">
       {/* waves: the top blends from the carousel band, the bottom into the booking area */}
-      <svg aria-hidden="true" viewBox="0 0 1440 90" preserveAspectRatio="none" className="absolute top-0 left-0 w-full h-12 sm:h-16 z-[1]">
+      <svg aria-hidden="true" viewBox="0 0 1440 90" preserveAspectRatio="none" className="absolute top-0 left-0 w-full h-9 sm:h-12 z-[1]">
         <path d="M0,0 L1440,0 L1440,38 C1200,86 980,6 720,44 S260,92 0,34 Z" fill={bandColor} />
         <path d="M0,0 L1440,0 L1440,22 C1180,64 940,0 700,28 S240,70 0,20 Z" fill="#a5e3ee" fillOpacity="0.35" />
       </svg>
-      <svg aria-hidden="true" viewBox="0 0 2880 90" preserveAspectRatio="none" className="wave-slow absolute bottom-0 left-0 h-12 sm:h-16 w-[200%] z-[1]" fill="#bfeaf5" fillOpacity="0.45">
+      <svg aria-hidden="true" viewBox="0 0 2880 90" preserveAspectRatio="none" className="wave-slow absolute bottom-0 left-0 h-9 sm:h-12 w-[200%] z-[1]" fill="#bfeaf5" fillOpacity="0.45">
         <path d="M0,50 C240,10 480,90 720,50 S1200,10 1440,50 C1680,10 1920,90 2160,50 S2640,10 2880,50 L2880,90 L0,90 Z" />
       </svg>
-      <svg aria-hidden="true" viewBox="0 0 1440 90" preserveAspectRatio="none" className="absolute bottom-0 left-0 w-full h-10 sm:h-14 z-[1]">
+      <svg aria-hidden="true" viewBox="0 0 1440 90" preserveAspectRatio="none" className="absolute bottom-0 left-0 w-full h-8 sm:h-10 z-[1]">
         <path d="M0,60 C220,24 460,92 720,58 S1180,26 1440,62 L1440,90 L0,90 Z" fill={bottomColor} />
       </svg>
 
@@ -273,7 +277,7 @@ export function TransitionBanner({ bandColor = '#dcf3f8', bottomColor = '#f4fbfd
       <PalmFrond className="palm-sway hidden md:block left-24 bottom-6 w-20 h-20 text-cyan-600/10 rotate-12" />
       <PalmFrond className="palm-sway hidden md:block right-24 bottom-6 w-20 h-20 text-cyan-600/10 -rotate-12" flip />
 
-      <div className={`relative z-[2] max-w-6xl mx-auto px-4 pt-14 sm:pt-20 pb-14 sm:pb-20 transition-all duration-1000 ease-out ${shown ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+      <div className={`relative z-[2] max-w-6xl mx-auto px-4 pt-10 sm:pt-12 pb-11 sm:pb-14 transition-all duration-1000 ease-out ${shown ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
         <div className="text-center" style={{ fontFamily: "'Caveat', cursive" }}>
           <div className="flex flex-col md:flex-row items-center justify-center gap-x-6 gap-y-1 text-cyan-800 text-[26px] sm:text-[32px] leading-tight font-semibold">
             <span>From Islands of History</span>

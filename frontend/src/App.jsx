@@ -12,7 +12,7 @@ import { FerrySearch } from './components/FerrySearch';
 import { HeroBanner } from './components/ferry/FerryParts';
 import { WaveDivider } from './components/WaveDivider';
 import { HeroSlogan } from './components/HeroSlogan';
-import { AttractionsHero, IslandCarousel, TransitionBanner } from './components/attractions/DiscoveryParts';
+import { AttractionsHero, IslandCarousel, TransitionBanner, PalmFrond } from './components/attractions/DiscoveryParts';
 import { CartDrawer } from './components/CartDrawer';
 import { DigitalWallet } from './components/DigitalWallet';
 import { MyWallet } from './components/MyWallet';
@@ -63,6 +63,7 @@ const DISCOVER_CARDS = [
     title: 'Ross Island',
     subtitle: 'Netaji Subhash Chandra Bose Dweep',
     blurb: 'Colonial-era ruins reclaimed by banyan roots, roaming spotted deer, and the old British administrative capital of the islands.',
+    tags: 'Colonial ruins • Wildlife • History',
     island: 'PORT_BLAIR',
     attractionTitle: 'Ross Island (Netaji Subhash Chandra Bose Dweep)',
   },
@@ -71,6 +72,7 @@ const DISCOVER_CARDS = [
     title: 'Neil Island',
     subtitle: 'Shaheed Dweep',
     blurb: "A limestone sea arch carved by centuries of tide, best seen at low tide against the Bay of Bengal's turquoise water.",
+    tags: 'Natural bridge • Quiet beaches • Tidal views',
     island: 'NEIL',
     attractionTitle: null, // no bookable attraction listed for Neil Island yet — filtering the grid to it is the honest behavior
   },
@@ -79,6 +81,7 @@ const DISCOVER_CARDS = [
     title: 'Havelock Island',
     subtitle: 'Swaraj Dweep',
     blurb: 'Clear coral waters, white-sand beaches and the Andamans\' best scuba diving and sea-walk experiences.',
+    tags: 'Coral reefs • Scuba diving • Beaches',
     island: 'HAVELOCK',
     attractionTitle: 'Elephant Beach Scuba Diving & Sea Walk',
   },
@@ -87,6 +90,7 @@ const DISCOVER_CARDS = [
     title: 'Cellular Jail',
     subtitle: 'Port Blair — National Memorial',
     blurb: "The 'Kaala Pani' colonial prison that held India's freedom fighters — now a memorial with a nightly Light & Sound Show.",
+    tags: 'National memorial • Light & Sound • History',
     island: 'PORT_BLAIR',
     attractionTitle: 'Cellular Jail National Memorial',
   },
@@ -325,7 +329,9 @@ export default function App() {
           <AttractionsHero slides={HERO_SLIDES} activeSlide={heroSlide} onSelectSlide={setHeroSlide} />
 
           {/* Island discovery: cinematic carousel on a pale ocean band */}
-          <div className="bg-gradient-to-b from-cyan-50 to-[#dcf3f8]">
+          <div className="relative overflow-hidden bg-gradient-to-b from-white via-cyan-50 to-[#dcf3f8]">
+            <PalmFrond className="left-[-34px] top-6 w-40 h-40 text-cyan-700/[0.07] -rotate-6" />
+            <PalmFrond className="right-[-34px] top-6 w-40 h-40 text-cyan-700/[0.07] rotate-6" flip />
             <div className="max-w-7xl mx-auto px-4 pt-7 pb-2 relative z-10">
               <IslandCarousel cards={DISCOVER_CARDS} onSelect={handleDiscoverCardClick} />
             </div>
