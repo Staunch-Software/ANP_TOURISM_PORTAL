@@ -534,7 +534,7 @@ export default function App() {
         {activeTab === 'FERRY' && <HeroBanner />}
         {activeTab !== 'ATTRACTIONS' && activeTab !== 'FERRY' && (
           <section
-            className="relative h-28 sm:h-32 flex items-center overflow-hidden bg-navy-800"
+            className="relative h-36 sm:h-40 flex items-center overflow-hidden bg-navy-800"
             style={{ backgroundImage: "linear-gradient(90deg, rgba(5,26,48,0.78), rgba(5,26,48,0.35)), url('/images/home-hero-beach.jpg')", backgroundSize: 'cover', backgroundPosition: 'center 40%' }}
           >
             <div className="max-w-7xl w-full mx-auto px-4 pb-6">

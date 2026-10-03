@@ -2,8 +2,12 @@ import React, { useState, useEffect } from 'react';
 import API from '../api/client';
 import { QRCodeSVG } from 'qrcode.react';
 import {
-  Ticket, ShieldCheck, CheckCircle2, XCircle, Printer, RefreshCw, Ship, Landmark, Sparkles, CalendarClock, MessageCircle, Download, MoreVertical, X
+  Ticket, ShieldCheck, XCircle, RefreshCw, Ship, Landmark, Sparkles, CalendarClock, X, Clock, History
 } from 'lucide-react';
+import {
+  PassCard, PassFilterBar, PassSection, PassInfoBar, TripLines, StatusChip,
+  classifyPass, passStart,
+} from './wallet/PassParts';
 
 const ITEM_TYPE_ICON = { FERRY: Ship, ATTRACTION: Landmark };
 
@@ -14,6 +18,10 @@ export function DigitalWallet({ user, onRequireLogin }) {
   const [verifying, setVerifying] = useState(false);
   const [menuFor, setMenuFor] = useState(null); // booking_ref whose menu is open
   const [zoomPass, setZoomPass] = useState(null); // pass whose QR is enlarged
+  const [detailsPass, setDetailsPass] = useState(null); // booking_ref shown in the details dialog
+  const [filter, setFilter] = useState('all');
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState('latest');
   const [upgrading, setUpgrading] = useState(null); // ticket_ref currently being upgraded
   const [rescheduleTicket, setRescheduleTicket] = useState(null); // entitlement being rescheduled
   const [rescheduleDate, setRescheduleDate] = useState('');
@@ -123,6 +131,65 @@ export function DigitalWallet({ user, onRequireLogin }) {
     }
   };
 
+  const now = new Date();
+  const classified = passes.map((p) => ({ pass: p, status: classifyPass(p, now) }));
+  const counts = {
+    all: classified.length,
+    upcoming: classified.filter((c) => c.status === 'upcoming').length,
+    used: classified.filter((c) => c.status === 'used').length,
+    expired: classified.filter((c) => c.status === 'expired').length,
+    cancelled: classified.filter((c) => c.status === 'cancelled').length,
+  };
+  const q = query.trim().toLowerCase();
+  const matches = ({ pass }) => !q || [
+    pass.booking_ref, pass.order_ref, pass.lead_passenger_name,
+    ...pass.entitlements.flatMap((e) => [e.title, e.passenger_name, e.ticket_ref]),
+  ].some((v) => (v || '').toLowerCase().includes(q));
+  const byDate = (a, b) => {
+    const da = passStart(a.pass)?.getTime() ?? 0;
+    const db = passStart(b.pass)?.getTime() ?? 0;
+    return sort === 'earliest' ? da - db : db - da;
+  };
+  const groupOf = (status) => classified.filter((c) => c.status === status && matches(c)).sort(byDate);
+  const show = (status) => filter === 'all' || filter === status;
+  const groups = {
+    upcoming: groupOf('upcoming'),
+    used: groupOf('used'),
+    expired: groupOf('expired'),
+    cancelled: groupOf('cancelled'),
+  };
+  const visibleCount = ['upcoming', 'used', 'expired', 'cancelled'].reduce((n, k) => n + (show(k) ? groups[k].length : 0), 0);
+  const detailPass = detailsPass ? passes.find((p) => p.booking_ref === detailsPass) : null;
+
+  const menuItemsFor = (pass, status) => {
+    if (status === 'cancelled') return [];
+    const items = [{
+      label: 'Simulate turnstile scan', icon: ShieldCheck, disabled: verifying,
+      onClick: () => { setMenuFor(null); handleSimulateTurnstileScan(pass.booking_ref); },
+    }];
+    if (pass.entitlements.some((e) => e.check_in_status === 'ISSUED')) {
+      items.push({
+        label: 'Cancel booking', icon: XCircle, danger: true,
+        onClick: () => { setMenuFor(null); handleCancelBooking(pass.booking_ref); },
+      });
+    }
+    return items;
+  };
+
+  const renderCard = ({ pass, status }) => (
+    <PassCard
+      key={pass.booking_ref}
+      pass={pass}
+      status={status}
+      onZoom={() => setZoomPass(pass)}
+      onDetails={() => setDetailsPass(pass.booking_ref)}
+      onPrint={() => window.print()}
+      menuOpen={menuFor === pass.booking_ref}
+      onToggleMenu={() => setMenuFor(menuFor === pass.booking_ref ? null : pass.booking_ref)}
+      menuItems={menuItemsFor(pass, status)}
+    />
+  );
+
   if (!user) {
     return (
       <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center max-w-md mx-auto my-12 shadow-sm">
@@ -145,30 +212,30 @@ export function DigitalWallet({ user, onRequireLogin }) {
 
   return (
     <div className="space-y-5">
-      {/* Header Banner */}
-      <div className="bg-white border border-slate-200 rounded-2xl px-6 py-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* Header */}
+      <div className="bg-white border border-slate-200 rounded-2xl px-6 py-5 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-800 text-xs font-bold mb-2">
-            <ShieldCheck className="w-3.5 h-3.5" /> Ed25519 Cryptographically Signed · Unified QR per Order
-          </div>
-          <h2 className="font-serif text-2xl font-black text-navy-800">My Digital Passes</h2>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-sm font-semibold text-navy-800 flex items-center gap-2 flex-wrap">
+            <ShieldCheck className="w-4 h-4 text-cyan-700" /> Secure Digital Pass
+            <span className="text-slate-300">•</span>
+            <span className="text-cyan-800">Unified QR per Order</span>
+          </p>
+          <h2 className="font-serif text-3xl font-black text-navy-800 mt-1">My Digital Passes</h2>
+          <p className="text-sm text-slate-500 mt-0.5">
             One QR code per booking covers every attraction and ferry seat in that order — each gate checks off only its own entry.
           </p>
         </div>
-
         <button
           onClick={fetchPasses}
           disabled={loading}
-          className="px-4 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg text-xs font-bold text-navy-800 flex items-center gap-2 transition-all self-start md:self-auto"
+          className="px-5 py-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-sm font-bold text-navy-800 flex items-center gap-2 transition-all self-start md:self-auto"
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh Wallet
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh Wallet
         </button>
       </div>
 
-      {/* Passes List */}
-      {loading ? (
-        <div className="text-center py-20 text-slate-400 text-xs">Loading confirmed passes...</div>
+      {loading && passes.length === 0 ? (
+        <div className="text-center py-20 text-slate-400 text-sm">Loading confirmed passes...</div>
       ) : passes.length === 0 ? (
         <div className="bg-white border border-slate-200 rounded-2xl p-16 text-center">
           <Ticket className="w-12 h-12 text-slate-300 mx-auto mb-3" />
@@ -178,144 +245,41 @@ export function DigitalWallet({ user, onRequireLogin }) {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {passes.map((pass) => {
-            const hasCancellableEntitlement = pass.entitlements.some((e) => e.check_in_status === 'ISSUED');
-            const isCancelled = pass.order_status === 'CANCELLED';
-            return (
-            <div
-              key={pass.booking_ref}
-              className={`rounded-2xl border p-4 shadow-sm ${isCancelled ? 'bg-red-50/60 border-red-200' : 'bg-cyan-50/70 border-cyan-200'}`}
-            >
-              <div className="flex gap-4">
-                {isCancelled ? (
-                  <div className="w-[116px] h-[132px] rounded-xl border-2 border-dashed border-red-200 bg-white/60 flex flex-col items-center justify-center text-center text-red-300 shrink-0">
-                    <XCircle className="w-7 h-7 mb-1" />
-                    <span className="text-[10px] font-bold uppercase tracking-wider">QR void</span>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setZoomPass(pass)}
-                    className="bg-white rounded-xl border border-slate-200 p-2 shrink-0 self-start hover:border-cyan-400 transition-colors"
-                    title="Tap to enlarge"
-                  >
-                    <QRCodeSVG value={pass.qr_token} size={100} level="M" includeMargin={false} />
-                    <span className="block text-[10px] text-slate-500 mt-1 text-center">Tap to enlarge</span>
-                  </button>
-                )}
+        <>
+          <PassFilterBar counts={counts} filter={filter} setFilter={setFilter} query={query} setQuery={setQuery} sort={sort} setSort={setSort} />
 
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-white text-cyan-800 border border-cyan-200">
-                      Unified boarding pass
-                    </span>
-                    <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold flex items-center gap-1 shrink-0 border ${
-                      isCancelled ? 'bg-red-50 text-red-700 border-red-200' : 'bg-white text-cyan-800 border-cyan-300'
-                    }`}>
-                      {isCancelled ? <XCircle className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                      {isCancelled ? 'CANCELLED' : pass.entitlements.every((e) => e.check_in_status === 'CHECKED_IN') ? 'USED' : 'ISSUED'}
-                    </span>
-                  </div>
-                  <h3 className="font-serif text-lg font-black text-navy-800 mt-1.5 leading-tight">{pass.lead_passenger_name}</h3>
-                  <p className="text-xs text-slate-500">Order <span className="font-mono text-cyan-700 font-bold">{pass.order_ref}</span> · {pass.entitlements.length} entitlement(s)</p>
-
-                  <div className="mt-2 space-y-1.5">
-                    {pass.entitlements.map((ent) => {
-                      const TypeIcon = ITEM_TYPE_ICON[ent.item_type] || Ticket;
-                      const canModify = !isCancelled && ent.item_type === 'ATTRACTION' && ent.check_in_status === 'ISSUED';
-                      const isExpress = ent.ticket_tier === 'EXPRESS';
-                      return (
-                        <div key={ent.ticket_ref} className="text-xs">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <TypeIcon className="w-4 h-4 text-cyan-700 shrink-0" />
-                            <div className="min-w-0">
-                              <p className="font-bold text-navy-800 truncate flex items-center gap-1.5">
-                                {ent.title}
-                                {isExpress && <span className="px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-amber-50 text-amber-700 border border-amber-200 shrink-0">Express</span>}
-                              </p>
-                              <p className="text-[11px] text-slate-500 truncate">{ent.slot_or_seat_info} · {ent.passenger_name}</p>
-                            </div>
-                          </div>
-                          {canModify && (
-                            <div className="flex items-center gap-2 mt-1 ml-6">
-                              {!isExpress && (
-                                <button type="button" disabled={upgrading === ent.ticket_ref} onClick={() => handleUpgradeToExpress(ent.ticket_ref)}
-                                  className="px-2 py-1 rounded-md bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 text-[10px] font-bold flex items-center gap-1 disabled:opacity-50">
-                                  <Sparkles className="w-3 h-3" /> {upgrading === ent.ticket_ref ? 'Upgrading...' : 'Upgrade to Express'}
-                                </button>
-                              )}
-                              <button type="button" onClick={() => openRescheduleModal(ent)}
-                                className="px-2 py-1 rounded-md bg-white hover:bg-cyan-100 border border-cyan-200 text-cyan-800 text-[10px] font-bold flex items-center gap-1">
-                                <CalendarClock className="w-3 h-3" /> Request Reschedule
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              {isCancelled && (
-                <div className={`mt-3 px-3 py-2 rounded-lg text-xs font-semibold border ${
-                  pass.refund_status === 'FAILED' ? 'bg-red-100 text-red-800 border-red-200' : 'bg-white text-red-700 border-red-200'
-                }`}>
-                  {pass.refund_status === 'PROCESSED' && <>Booking cancelled — ₹{pass.refund_amount?.toFixed(2)} refunded{pass.cancelled_at ? ` on ${new Date(pass.cancelled_at).toLocaleDateString('en-IN')}` : ''}.</>}
-                  {pass.refund_status === 'FAILED' && <>Booking cancelled — refund could not be processed automatically. ANIIDCO support has been notified and will process it manually.</>}
-                  {pass.refund_status === 'NOT_APPLICABLE' && <>Booking cancelled — no payment was on record, so no refund was needed.</>}
-                </div>
-              )}
-
-              {!isCancelled && pass.cancelled_at && (pass.refund_status === 'PROCESSED' || pass.refund_status === 'FAILED') && (
-                <div className={`mt-3 px-3 py-2 rounded-lg text-xs font-semibold border ${
-                  pass.refund_status === 'FAILED' ? 'bg-red-50 text-red-700 border-red-100' : 'bg-amber-50 text-amber-800 border-amber-100'
-                }`}>
-                  {pass.refund_status === 'PROCESSED'
-                    ? <>A ticket in this booking was cancelled by ANIIDCO — ₹{pass.refund_amount?.toFixed(2)} refunded on {new Date(pass.cancelled_at).toLocaleDateString('en-IN')}. Your other tickets are still valid.</>
-                    : <>A ticket in this booking was cancelled by ANIIDCO, but its refund could not be processed automatically. ANIIDCO support has been notified. Your other tickets are still valid.</>}
-                </div>
-              )}
-
-              {!isCancelled && (
-                <div className="mt-3 flex items-center justify-end gap-2 relative">
-                  <button
-                    type="button"
-                    onClick={() => window.print()}
-                    className="px-4 py-2 rounded-lg bg-white border border-cyan-300 hover:bg-cyan-50 text-cyan-800 text-xs font-bold flex items-center gap-1.5 transition-colors"
-                  >
-                    <Download className="w-3.5 h-3.5" /> Download Pass
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="More actions"
-                    onClick={() => setMenuFor(menuFor === pass.booking_ref ? null : pass.booking_ref)}
-                    className="w-9 h-9 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 flex items-center justify-center"
-                  >
-                    <MoreVertical className="w-4 h-4" />
-                  </button>
-                  {menuFor === pass.booking_ref && (
-                    <div className="absolute right-0 bottom-11 z-20 w-52 bg-white border border-slate-200 rounded-xl shadow-xl py-1.5 text-xs font-semibold">
-                      <button type="button" disabled={verifying} onClick={() => { setMenuFor(null); handleSimulateTurnstileScan(pass.booking_ref); }}
-                        className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center gap-2 text-navy-800">
-                        <ShieldCheck className="w-4 h-4 text-cyan-700" /> Simulate turnstile scan
-                      </button>
-                      {hasCancellableEntitlement && (
-                        <button type="button" onClick={() => { setMenuFor(null); handleCancelBooking(pass.booking_ref); }}
-                          className="w-full text-left px-3 py-2 hover:bg-red-50 flex items-center gap-2 text-red-600">
-                          <XCircle className="w-4 h-4" /> Cancel booking
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
+          {visibleCount === 0 && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center text-sm text-slate-500">
+              No passes match this filter{q ? ' and search' : ''}.
             </div>
-            );
-          })}
-        </div>
+          )}
+
+          {show('upcoming') && groups.upcoming.length > 0 && (
+            <PassSection title="Upcoming Passes" count={groups.upcoming.length} hint="Upcoming bookings and active passes" icon={Clock}>
+              {groups.upcoming.map(renderCard)}
+            </PassSection>
+          )}
+          {show('used') && groups.used.length > 0 && (
+            <PassSection title="Used Passes" count={groups.used.length} hint="Already checked in at the gate" icon={ShieldCheck} tone="slate">
+              {groups.used.map(renderCard)}
+            </PassSection>
+          )}
+          {show('expired') && groups.expired.length > 0 && (
+            <PassSection title="Expired Passes" count={groups.expired.length} hint="Travel date has passed without a check-in" icon={History} tone="slate">
+              {groups.expired.map(renderCard)}
+            </PassSection>
+          )}
+          {show('cancelled') && groups.cancelled.length > 0 && (
+            <PassSection title="Cancelled Passes" count={groups.cancelled.length} hint="Cancelled bookings (refund details)" icon={XCircle} tone="red">
+              {groups.cancelled.map(renderCard)}
+            </PassSection>
+          )}
+
+          <PassInfoBar />
+        </>
       )}
+
+      {menuFor && <div className="fixed inset-0 z-10" onClick={() => setMenuFor(null)} />}
 
       {zoomPass && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-900/70 backdrop-blur-sm p-4" onClick={() => setZoomPass(null)}>
@@ -327,6 +291,72 @@ export function DigitalWallet({ user, onRequireLogin }) {
           </div>
         </div>
       )}
+
+      {detailPass && (() => {
+        const status = classifyPass(detailPass);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-900/70 backdrop-blur-sm p-4" onClick={() => setDetailsPass(null)}>
+            <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto p-6 shadow-2xl relative" onClick={(e) => e.stopPropagation()}>
+              <button type="button" aria-label="Close" onClick={() => setDetailsPass(null)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-700"><X className="w-5 h-5" /></button>
+              <StatusChip status={status} />
+              <h3 className="font-serif text-2xl font-black text-navy-800 mt-2">{detailPass.lead_passenger_name}</h3>
+              <p className="text-xs text-slate-500">
+                Pass <span className="font-mono font-bold text-cyan-700">{detailPass.booking_ref}</span> · Order <span className="font-mono">{detailPass.order_ref}</span>
+              </p>
+
+              {detailPass.order_status === 'CANCELLED' && (
+                <div className={`mt-3 px-3 py-2 rounded-lg text-xs font-semibold border ${detailPass.refund_status === 'FAILED' ? 'bg-red-100 text-red-800 border-red-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+                  {detailPass.refund_status === 'PROCESSED' && <>Booking cancelled — ₹{detailPass.refund_amount?.toFixed(2)} refunded{detailPass.cancelled_at ? ` on ${new Date(detailPass.cancelled_at).toLocaleDateString('en-IN')}` : ''}.</>}
+                  {detailPass.refund_status === 'FAILED' && <>Booking cancelled — refund could not be processed automatically. ANIIDCO support has been notified and will process it manually.</>}
+                  {detailPass.refund_status === 'NOT_APPLICABLE' && <>Booking cancelled — no payment was on record, so no refund was needed.</>}
+                </div>
+              )}
+              {detailPass.order_status !== 'CANCELLED' && detailPass.cancelled_at && (detailPass.refund_status === 'PROCESSED' || detailPass.refund_status === 'FAILED') && (
+                <div className={`mt-3 px-3 py-2 rounded-lg text-xs font-semibold border ${detailPass.refund_status === 'FAILED' ? 'bg-red-50 text-red-700 border-red-100' : 'bg-amber-50 text-amber-800 border-amber-100'}`}>
+                  {detailPass.refund_status === 'PROCESSED'
+                    ? <>A ticket in this booking was cancelled by ANIIDCO — ₹{detailPass.refund_amount?.toFixed(2)} refunded on {new Date(detailPass.cancelled_at).toLocaleDateString('en-IN')}. Your other tickets are still valid.</>
+                    : <>A ticket in this booking was cancelled by ANIIDCO, but its refund could not be processed automatically. ANIIDCO support has been notified. Your other tickets are still valid.</>}
+                </div>
+              )}
+
+              <div className="mt-4 space-y-3">
+                {detailPass.entitlements.map((ent) => {
+                  const canModify = status !== 'cancelled' && ent.item_type === 'ATTRACTION' && ent.check_in_status === 'ISSUED';
+                  const isExpress = ent.ticket_tier === 'EXPRESS';
+                  return (
+                    <div key={ent.ticket_ref} className="border border-slate-200 rounded-xl p-3 space-y-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <TripLines ent={ent} dim={status === 'cancelled'} />
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">{ent.check_in_status}</span>
+                          {isExpress && <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-amber-50 text-amber-700 border border-amber-200">Express</span>}
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-slate-500">
+                        {ent.passenger_name} · {ent.id_type}: •••• {String(ent.id_number).slice(-4)} · <span className="font-mono">{ent.ticket_ref}</span>
+                      </p>
+                      {canModify && (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {!isExpress && (
+                            <button type="button" disabled={upgrading === ent.ticket_ref} onClick={() => handleUpgradeToExpress(ent.ticket_ref)}
+                              className="px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 text-xs font-bold flex items-center gap-1 disabled:opacity-50">
+                              <Sparkles className="w-3.5 h-3.5" /> {upgrading === ent.ticket_ref ? 'Upgrading...' : 'Upgrade to Express'}
+                            </button>
+                          )}
+                          <button type="button" onClick={() => { setDetailsPass(null); openRescheduleModal(ent); }}
+                            className="px-2.5 py-1.5 rounded-lg bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 text-cyan-800 text-xs font-bold flex items-center gap-1">
+                            <CalendarClock className="w-3.5 h-3.5" /> Request Reschedule
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Turnstile Scan Simulator Modal — read-only signature + status preview */}
       {activeVerification && (

@@ -15,7 +15,7 @@ from app.models.order import Order, OrderItem
 from app.models.ticket import Ticket
 from app.models.attraction import Attraction, AttractionSlot
 from app.services.slot_service import ensure_slot_bookable
-from app.models.ferry import FerrySeat, FerrySchedule
+from app.models.ferry import FerrySeat, FerrySchedule, Vessel
 from app.models.reschedule import RescheduleRequest
 from app.api.v1.auth import get_current_user
 from app.api.v1.payments import process_cancellation_refund
@@ -58,8 +58,9 @@ def _format_12h(t) -> str:
     return t.strftime("%I:%M %p").lstrip("0")
 
 
-def _entitlement_to_response(ticket: Ticket) -> EntitlementResponse:
+def _entitlement_to_response(ticket: Ticket, details: Optional[dict] = None) -> EntitlementResponse:
     return EntitlementResponse(
+        **(details or {}),
         ticket_ref=ticket.ticket_ref,
         item_type=ticket.item_type,
         title=ticket.title,
@@ -70,6 +71,65 @@ def _entitlement_to_response(ticket: Ticket) -> EntitlementResponse:
         check_in_status=ticket.check_in_status,
         ticket_tier=ticket.ticket_tier,
     )
+
+
+async def _entitlement_details(db: AsyncSession, tickets: List[Ticket]) -> dict:
+    """Structured trip details (date, times, route, image) per ticket, resolved
+    from the same slot/seat rows the ticket was issued against."""
+    details: dict = {}
+    item_ids = [t.order_item_id for t in tickets]
+    if not item_ids:
+        return details
+    items = {i.id: i for i in (await db.execute(select(OrderItem).where(OrderItem.id.in_(item_ids)))).scalars().all()}
+
+    slot_ids = {i.attraction_slot_id for i in items.values() if i.attraction_slot_id}
+    seat_ids = {i.ferry_seat_id for i in items.values() if i.ferry_seat_id}
+
+    slots = {}
+    attractions = {}
+    if slot_ids:
+        slots = {s.id: s for s in (await db.execute(select(AttractionSlot).where(AttractionSlot.id.in_(slot_ids)))).scalars().all()}
+        att_ids = {s.attraction_id for s in slots.values()}
+        attractions = {a.id: a for a in (await db.execute(select(Attraction).where(Attraction.id.in_(att_ids)))).scalars().all()}
+
+    seats = {}
+    schedules = {}
+    vessels = {}
+    if seat_ids:
+        seats = {s.id: s for s in (await db.execute(select(FerrySeat).where(FerrySeat.id.in_(seat_ids)))).scalars().all()}
+        sched_ids = {s.schedule_id for s in seats.values()}
+        schedules = {s.id: s for s in (await db.execute(select(FerrySchedule).where(FerrySchedule.id.in_(sched_ids)))).scalars().all()}
+        v_ids = {s.vessel_id for s in schedules.values()}
+        vessels = {v.id: v for v in (await db.execute(select(Vessel).where(Vessel.id.in_(v_ids)))).scalars().all()}
+
+    for t in tickets:
+        item = items.get(t.order_item_id)
+        if not item:
+            continue
+        d: dict = {}
+        slot = slots.get(item.attraction_slot_id) if item.attraction_slot_id else None
+        if slot:
+            att = attractions.get(slot.attraction_id)
+            d.update(travel_date=slot.slot_date, start_time=slot.start_time, end_time=slot.end_time)
+            if att:
+                d.update(location=att.island, image_url=att.image_url)
+        seat = seats.get(item.ferry_seat_id) if item.ferry_seat_id else None
+        if seat:
+            sched = schedules.get(seat.schedule_id)
+            vessel = vessels.get(sched.vessel_id) if sched else None
+            d.update(seat_info=f"{seat.seat_number} ({seat.cabin_class})")
+            if sched:
+                d.update(
+                    travel_date=str(sched.departure_date),
+                    start_time=sched.departure_time.strftime("%H:%M"),
+                    end_time=sched.arrival_time.strftime("%H:%M") if sched.arrival_time else None,
+                    source_port=sched.source_port,
+                    destination_port=sched.destination_port,
+                )
+            if vessel:
+                d.update(image_url=vessel.image_url)
+        details[t.id] = d
+    return details
 
 
 async def _get_entry_window(db: AsyncSession, ticket: Ticket) -> Optional[Tuple[datetime, datetime, str, str]]:
@@ -130,6 +190,7 @@ async def get_my_passes(
         .order_by(Ticket.created_at.desc(), Ticket.item_index.asc())
     )
     tickets = res.scalars().all()
+    details = await _entitlement_details(db, tickets)
 
     bookings: dict[str, list[Ticket]] = {}
     order_refs: dict[str, str] = {}
@@ -151,7 +212,7 @@ async def get_my_passes(
                 order_ref=booking_ref,
                 lead_passenger_name=head.passenger_name,
                 qr_token=qr_combined,
-                entitlements=[_entitlement_to_response(t) for t in legs],
+                entitlements=[_entitlement_to_response(t, details.get(t.id)) for t in legs],
                 order_status=order.status if order else None,
                 refund_status=order.refund_status if order else None,
                 refund_amount=float(order.refund_amount) if order and order.refund_amount is not None else None,

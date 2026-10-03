@@ -13,6 +13,17 @@ class EntitlementResponse(BaseModel):
     id_number: str
     check_in_status: str
     ticket_tier: str = "STANDARD"
+    # Structured trip details so the wallet can lay a pass out properly
+    # instead of parsing slot_or_seat_info. All optional: a ticket whose
+    # slot/seat can no longer be resolved still renders from the fields above.
+    travel_date: Optional[str] = None  # YYYY-MM-DD
+    start_time: Optional[str] = None  # HH:MM
+    end_time: Optional[str] = None  # HH:MM (ferries: scheduled arrival)
+    source_port: Optional[str] = None
+    destination_port: Optional[str] = None
+    location: Optional[str] = None  # attraction island
+    seat_info: Optional[str] = None  # ferries: "D2B (DELUXE)"
+    image_url: Optional[str] = None
 
 
 class UpgradeToExpressResponse(BaseModel):
