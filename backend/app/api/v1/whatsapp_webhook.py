@@ -82,6 +82,20 @@ async def handle_whatsapp_message(request: Request):
                         # Process with Gemini asynchronously in the background
                         asyncio.create_task(_handle_and_reply(phone_number, text))
 
+                    elif msg.get("type") == "interactive":
+                        interactive = msg.get("interactive", {})
+                        int_type = interactive.get("type")
+                        
+                        # Meta usually sends 'payment_transaction_status' or 'payment' for UPI payment success
+                        if int_type in ("payment_transaction_status", "payment"):
+                            payment_data = interactive.get(int_type, {})
+                            status = payment_data.get("status")
+                            order_id = payment_data.get("reference_id")
+                            
+                            if status == "success" and order_id:
+                                phone_number = msg.get("from")
+                                asyncio.create_task(_handle_payment_success(phone_number, order_id))
+                                
     except Exception as e:
         logger.error(f"Error processing webhook payload: {e}")
 
@@ -112,3 +126,73 @@ async def _handle_and_reply(phone_number: str, message_text: str):
 
     # Send the real response
     await _send_whatsapp_text(phone_number, reply_text, "AI Chatbot Reply")
+
+
+async def _handle_payment_success(phone_number: str, rzp_order_id: str):
+    import razorpay
+    from app.core.database import AsyncSessionLocal
+    from sqlalchemy.future import select
+    from app.models.order import Order
+    from app.api.v1.payments import razorpay_client
+    from app.models.ticket import Ticket
+    from app.services.crypto_service import sign_ticket_payload
+    import json
+    
+    try:
+        # Fetch the razorpay order to get our internal booking_ref
+        rzp_order = razorpay_client.order.fetch(rzp_order_id)
+        booking_ref = rzp_order.get("receipt")
+        
+        async with AsyncSessionLocal() as db:
+            res = await db.execute(select(Order).where(Order.order_ref == booking_ref))
+            order = res.scalars().first()
+            if not order:
+                logger.error(f"WhatsApp payment succeeded but Order {booking_ref} not found.")
+                return
+            
+            # Since the webhook confirms payment, mark as CONFIRMED
+            order.status = "CONFIRMED"
+            order.razorpay_payment_id = "wa_native_" + str(int(time.time()))
+            
+            # Create the Ticket record
+            res_items = await order.awaitable_attrs.items
+            item = res_items[0]
+            
+            payload = {
+                "ref": order.order_ref,
+                "type": item.item_type,
+                "title": item.title,
+                "info": item.slot_or_seat_info,
+                "name": item.passenger_name,
+                "id": item.id_number
+            }
+            compact_json = json.dumps(payload, separators=(',', ':'))
+            signature_b64 = sign_ticket_payload(compact_json)
+
+            ticket = Ticket(
+                ticket_ref=f"TKT-{order.order_ref[-6:]}-{1}",
+                order_id=order.id,
+                order_item_id=item.id,
+                user_id=order.user_id,
+                item_type=item.item_type,
+                title=item.title,
+                slot_or_seat_info=item.slot_or_seat_info,
+                passenger_name=item.passenger_name,
+                passenger_age=item.passenger_age,
+                passenger_gender=item.passenger_gender,
+                id_type=item.id_type,
+                id_number=item.id_number,
+                qr_payload_json=compact_json,
+                qr_signature_b64=signature_b64,
+                check_in_status="ISSUED",
+                issued_by="CLOUD",
+            )
+            db.add(ticket)
+            await db.commit()
+            
+            # Send the ticket confirmation via WhatsApp
+            from app.services.whatsapp_service import send_whatsapp_ticket_confirmation
+            await send_whatsapp_ticket_confirmation(phone_number, order.order_ref, [ticket])
+            
+    except Exception as e:
+        logger.error(f"Failed to process WhatsApp payment success: {e}")

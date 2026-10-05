@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     
     WHATSAPP_WEBHOOK_VERIFY_TOKEN: str = "AndamanDemoWebhook2026"
 
+
     # Developer-stage safety net: the Meta developer WhatsApp token expires
     # daily and the test number only reaches pre-approved recipients, so OTP
     # delivery is often down while developing. When the WhatsApp send fails
@@ -65,6 +66,9 @@ class Settings(BaseSettings):
     # log in as anyone using the fixed code.
     OTP_DEV_FALLBACK: bool = True
     OTP_DEV_FALLBACK_CODE: str = "123456"
+
+    RAZORPAY_PAYMENT_CONFIG_NAME: str = "my_razorpay_config"
+
     
     # --- AI Settings ---
     GEMINI_API_KEY: str = ""

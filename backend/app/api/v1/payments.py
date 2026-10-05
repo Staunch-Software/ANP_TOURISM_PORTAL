@@ -332,6 +332,10 @@ async def confirm_payment_and_issue_tickets(
 
 @router.post("/webhook")
 async def razorpay_webhook(request: Request, db: AsyncSession = Depends(get_db)):
+    import json
+    from app.services.whatsapp_service import send_whatsapp_ticket_confirmation
+    from app.services.crypto_service import sign_ticket_payload
+    from app.models.ticket import Ticket
     try:
         body = await request.body()
         signature = request.headers.get("X-Razorpay-Signature")
@@ -349,11 +353,72 @@ async def razorpay_webhook(request: Request, db: AsyncSession = Depends(get_db))
 
         if event.get("event") == "payment.captured":
             payment_entity = event["payload"]["payment"]["entity"]
-            order_ref = payment_entity["notes"].get("receipt")
+            order_ref = payment_entity.get("notes", {}).get("booking_ref") or payment_entity.get("notes", {}).get("receipt")
             
-            # Additional fallback logic could go here to mark orders as PAID 
-            # if the user disconnected before reaching the `/confirm` endpoint.
+            if not order_ref:
+                # Fallback to description if receipt is missing in payment link
+                desc = payment_entity.get("description", "")
+                if "WA-" in desc:
+                    order_ref = "WA-" + desc.split("WA-")[1].split(" ")[0]
+            
             print(f"Webhook received: Payment captured for {order_ref}")
+            
+            if order_ref and order_ref.startswith("WA-"):
+                # This is a WhatsApp booking!
+                res = await db.execute(select(Order).where(Order.order_ref == order_ref))
+                order = res.scalars().first()
+                if order and order.status != "CONFIRMED":
+                    order.status = "CONFIRMED"
+                    order.razorpay_payment_id = payment_entity.get("id")
+                    
+                    # Create tickets
+                    res_items = await db.execute(select(OrderItem).where(OrderItem.order_id == order.id))
+                    items = res_items.scalars().all()
+                    
+                    tickets_to_create = []
+                    for item in items:
+                        for i in range(item.quantity):
+                            payload = {
+                                "ref": order.order_ref,
+                                "type": item.item_type,
+                                "title": item.title,
+                                "info": item.slot_or_seat_info,
+                                "name": item.passenger_name,
+                                "id": item.id_number
+                            }
+                            compact_json = json.dumps(payload, separators=(',', ':'))
+                            signature_b64 = sign_ticket_payload(compact_json)
+
+                            ticket = Ticket(
+                                ticket_ref=f"TKT-{order.order_ref[-6:]}-{i+1}",
+                                order_id=order.id,
+                                order_item_id=item.id,
+                                user_id=order.user_id,
+                                item_type=item.item_type,
+                                title=item.title,
+                                slot_or_seat_info=item.slot_or_seat_info,
+                                passenger_name=item.passenger_name,
+                                passenger_age=item.passenger_age,
+                                passenger_gender=item.passenger_gender,
+                                id_type=item.id_type,
+                                id_number=item.id_number,
+                                qr_payload_json=compact_json,
+                                qr_signature_b64=signature_b64,
+                                check_in_status="ISSUED",
+                                issued_by="CLOUD",
+                            )
+                            tickets_to_create.append(ticket)
+                    
+                    db.add_all(tickets_to_create)
+                    await db.commit()
+                    
+                    # Fetch phone number
+                    res_u = await db.execute(select(User).where(User.id == order.user_id))
+                    tourist = res_u.scalars().first()
+                    
+                    if tourist and tourist.phone_number:
+                        import asyncio
+                        asyncio.create_task(send_whatsapp_ticket_confirmation(tourist.phone_number, order.order_ref, tickets_to_create))
 
         elif event.get("event") == "payment.failed":
             payment_entity = event["payload"]["payment"]["entity"]

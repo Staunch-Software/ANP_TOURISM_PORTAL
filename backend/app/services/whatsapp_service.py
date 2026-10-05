@@ -195,6 +195,7 @@ async def send_whatsapp_voyage_cancellation(phone_number: str, order_ref: str, r
 
 
 
+
 async def send_whatsapp_slot_cancellation(phone_number: str, order_ref: str, details: str, reason: str, refund_amount: float, refund_to: str, whole_order: bool) -> None:
     text = (
         f"*BOOKING CANCELLED*\n\n"
@@ -210,3 +211,58 @@ async def send_whatsapp_slot_cancellation(phone_number: str, order_ref: str, det
         "text": {"body": text},
     }
     await asyncio.to_thread(_post_sync, payload, phone_number, "slot cancellation notice")
+
+async def send_whatsapp_payment_request(phone_number: str, order_ref: str, amount_inr: float) -> None:
+    # Meta requires total amount to be structured with value and offset. 
+    # For INR, offset is 100 (so value is in paisa).
+    value = int(amount_inr * 100)
+    
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": _to_e164(phone_number),
+        "type": "interactive",
+        "interactive": {
+            "type": "order_details",
+            "body": {
+                "text": f"Your ticket booking {order_ref} is ready. Please tap Pay Now to complete the payment via any UPI app."
+            },
+            "action": {
+                "name": "review_and_pay",
+                "parameters": {
+                    "reference_id": order_ref,
+                    "type": "payment",
+                    "payment_settings": [
+                        {
+                            "type": "payment_gateway",
+                            "payment_gateway": {
+                                "type": "razorpay",
+                                "configuration_name": settings.RAZORPAY_PAYMENT_CONFIG_NAME
+                            }
+                        }
+                    ],
+                    "currency": "INR",
+                    "total_amount": {
+                        "value": value,
+                        "offset": 100
+                    },
+                    "order": {
+                        "status": "pending",
+                        "items": [
+                            {
+                                "retailer_id": "TICKETS",
+                                "name": "Tourism Tickets",
+                                "amount": {
+                                    "value": value,
+                                    "offset": 100
+                                },
+                                "quantity": 1
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    }
+    await asyncio.to_thread(_post_sync, payload, phone_number, "UPI payment request")
+

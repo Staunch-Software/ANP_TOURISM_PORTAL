@@ -62,6 +62,7 @@ def get_general_info(topic: str) -> str:
 
 async def _async_list_attractions() -> str:
     async with AsyncSessionLocal() as db:
+
         result = await db.execute(select(Attraction.title).where(Attraction.is_active == True))
         titles = result.scalars().all()
         if not titles:
@@ -178,6 +179,12 @@ async def _async_create_booking_and_get_payment_link(attraction_name: str, date:
     id_number = profile.get("id_number", "")
 
     async with AsyncSessionLocal() as db:
+
+        from app.models.user import User
+        from app.models.order import Order, OrderItem
+        from app.models.attraction import AttractionSlot
+        
+
         result = await db.execute(
             select(Attraction)
             .where(Attraction.title.ilike(f"%{attraction_name}%"))
@@ -198,9 +205,58 @@ async def _async_create_booking_and_get_payment_link(attraction_name: str, date:
         total_amount = price_per_person * num_tix
         booking_ref = f"WA-{str(uuid.uuid4())[:8].upper()}"
 
+        # Find the tourist user
+        res_u = await db.execute(select(User).where(User.phone_number == phone_number))
+        tourist = res_u.scalars().first()
+        if not tourist:
+            return "Could not find your profile. Please provide your details again."
+
+        # Find the exact slot
+        res_s = await db.execute(
+            select(AttractionSlot)
+            .where(AttractionSlot.attraction_id == attraction.id)
+            .where(AttractionSlot.slot_date == date)
+            .where(AttractionSlot.start_time.ilike(f"{time_slot[:5]}%"))
+        )
+        slot = res_s.scalars().first()
+        slot_id = slot.id if slot else None
+
+        # Create Order in DB
+        db_order = Order(
+            order_ref=booking_ref,
+            user_id=tourist.id,
+            channel="WHATSAPP",
+            gross_amount=total_amount,
+            tax_amount=0.0,
+            net_payable=total_amount,
+            status="PENDING_PAYMENT"
+        )
+        db.add(db_order)
+        await db.flush()
+
+        db_item = OrderItem(
+            order_id=db_order.id,
+            position=0,
+            item_type="ATTRACTION",
+            attraction_slot_id=slot_id,
+            title=attraction.title,
+            slot_or_seat_info=f"{date} ({time_slot})",
+            unit_price=price_per_person,
+            quantity=num_tix,
+            subtotal=total_amount,
+            passenger_name=visitor_name,
+            id_type=id_type,
+            id_number=id_number,
+            nationality="FOREIGN" if is_foreign else "INDIAN"
+        )
+        db.add(db_item)
+        await db.commit()
+
     try:
         rzp = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
 
+        # FALLBACK: Meta blocked native payments on this test account.
+        # Create a standard web Payment Link instead.
         payment_link = rzp.payment_link.create({
             "amount": int(total_amount * 100),  # paise
             "currency": "INR",
@@ -210,6 +266,7 @@ async def _async_create_booking_and_get_payment_link(attraction_name: str, date:
             "notify": {"sms": False, "email": False},
             "reminder_enable": False,
             "notes": {
+                "booking_ref": booking_ref,
                 "attraction": str(attraction.title)[:255],
                 "date": str(date)[:255],
                 "time_slot": str(time_slot)[:255],
@@ -222,24 +279,33 @@ async def _async_create_booking_and_get_payment_link(attraction_name: str, date:
             }
         })
 
-        # Prefer the standard rzp.io short URL over any custom domain the Razorpay
-        # account may have configured — custom domains only work if DNS is set up.
         link_id = payment_link.get("id", "")
         short_url = payment_link.get("short_url") or f"https://rzp.io/l/{link_id}"
-        # If short_url is using a custom domain (not rzp.io), fall back to rzp.io
         if short_url and "rzp.io" not in short_url and link_id:
             short_url = f"https://rzp.io/l/{link_id}"
+            
         nat_label = "Foreign national" if is_foreign else "Indian citizen"
         return (
-            f"Booking Created!\n"
-            f"Reference: {booking_ref}\n"
-            f"Visitor: {visitor_name}\n"
-            f"Attraction: {attraction.title}\n"
-            f"Date: {date} | {time_slot}\n"
-            f"Visitors: {num_tickets} ({nat_label} rate)\n"
-            f"Total: INR {int(total_amount)}\n\n"
-            f"Pay securely here:\n{short_url}\n\n"
-            f"Your ticket QR code will be emailed once payment is confirmed."
+            f"Booking Created!
+"
+            f"Reference: {booking_ref}
+"
+            f"Visitor: {visitor_name}
+"
+            f"Attraction: {attraction.title}
+"
+            f"Date: {date} | {time_slot}
+"
+            f"Visitors: {num_tickets} ({nat_label} rate)
+"
+            f"Total: INR {int(total_amount)}
+
+"
+            f"Pay securely here:
+{short_url}
+
+"
+            f"Your ticket QR code will be sent here automatically once payment is confirmed!"
         )
     except Exception as e:
         import traceback
