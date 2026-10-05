@@ -286,25 +286,14 @@ async def _async_create_booking_and_get_payment_link(attraction_name: str, date:
             
         nat_label = "Foreign national" if is_foreign else "Indian citizen"
         return (
-            f"Booking Created!
-"
-            f"Reference: {booking_ref}
-"
-            f"Visitor: {visitor_name}
-"
-            f"Attraction: {attraction.title}
-"
-            f"Date: {date} | {time_slot}
-"
-            f"Visitors: {num_tickets} ({nat_label} rate)
-"
-            f"Total: INR {int(total_amount)}
-
-"
-            f"Pay securely here:
-{short_url}
-
-"
+            f"Booking Created!\n"
+            f"Reference: {booking_ref}\n"
+            f"Visitor: {visitor_name}\n"
+            f"Attraction: {attraction.title}\n"
+            f"Date: {date} | {time_slot}\n"
+            f"Visitors: {num_tickets} ({nat_label} rate)\n"
+            f"Total: INR {int(total_amount)}\n\n"
+            f"Pay securely here:\n{short_url}\n\n"
             f"Your ticket QR code will be sent here automatically once payment is confirmed!"
         )
     except Exception as e:
